@@ -1,0 +1,1501 @@
+﻿/* ==========================================================================
+   APEX â€” design system for the PolyTrack mod
+   Dark "pit wall" surfaces, hairline borders, one volt accent, DIN-style type.
+
+   Everything is scoped under #ui so it out-ranks the game's own class-based
+   rules without touching the game code. Game tokens (--surface-color, ...) are
+   remapped to Apex tokens at the top, so untouched screens inherit the theme.
+   ========================================================================== */
+
+/* ---------- 1. Tokens ---------------------------------------------------- */
+html:root {
+	/* Ink (surfaces) */
+	--apx-ink-950: #07080b;
+	--apx-ink-900: #0c0e13;
+	--apx-ink-850: #11141b;
+	--apx-ink-800: #171b24;
+	--apx-ink-700: #222835;
+	--apx-ink-600: #2f3747;
+
+	/* Foreground */
+	--apx-fg: #f3f5f8;
+	--apx-fg-muted: rgba(243, 245, 248, 0.62);
+	--apx-fg-subtle: rgba(243, 245, 248, 0.36);
+
+	/* Accent + status */
+	--apx-accent: #d7ff3e;
+	--apx-accent-ink: #141a00;
+	--apx-accent-soft: rgba(215, 255, 62, 0.13);
+	--apx-accent-ring: rgba(215, 255, 62, 0.55);
+	--apx-good: #4ff0a1;
+	--apx-bad: #ff5a6e;
+	--apx-warn: #ffd24a;
+
+	/* Lines, glass, depth */
+	--apx-line: rgba(255, 255, 255, 0.09);
+	--apx-line-strong: rgba(255, 255, 255, 0.18);
+	--apx-fill: rgba(255, 255, 255, 0.055);
+	--apx-fill-hover: rgba(255, 255, 255, 0.11);
+	--apx-glass: rgba(12, 14, 19, 0.72);
+	--apx-glass-strong: rgba(12, 14, 19, 0.9);
+	--apx-blur: blur(22px) saturate(140%);
+	--apx-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+	--apx-glow: 0 0 0 1px var(--apx-accent-ring), 0 10px 40px rgba(215, 255, 62, 0.16);
+
+	/* Shape + motion */
+	--apx-r-sm: 8px;
+	--apx-r-md: 12px;
+	--apx-r-lg: 18px;
+	--apx-r-xl: 26px;
+	--apx-r-pill: 999px;
+	--apx-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+	/* Type */
+	--apx-font: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+
+	/* Game tokens remapped */
+	--text-color: var(--apx-fg);
+	--text-disabled-color: var(--apx-fg-subtle);
+	--surface-color: var(--apx-ink-850);
+	--surface-secondary-color: var(--apx-ink-900);
+	--surface-tertiary-color: var(--apx-ink-950);
+	--surface-transparent-color: rgba(12, 14, 19, 0.6);
+	--button-color: var(--apx-ink-800);
+	--button-hover-color: var(--apx-ink-700);
+	--button-active-color: var(--apx-ink-850);
+	--button-disabled-color: var(--apx-ink-850);
+}
+
+/* ---------- 2. Base ------------------------------------------------------- */
+html body {
+	scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+#ui,
+#ui * {
+	font-family: var(--apx-font);
+	font-style: normal;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0.005em;
+	/* The original UI is built from clipped parallelograms; Apex uses radii instead. */
+	clip-path: none !important;
+}
+
+#ui ::selection {
+	background-color: var(--apx-accent);
+	color: var(--apx-accent-ink);
+}
+
+#ui ::-webkit-scrollbar {
+	width: 10px;
+	background-color: transparent;
+}
+#ui ::-webkit-scrollbar-thumb {
+	border-radius: var(--apx-r-pill);
+	border: 3px solid transparent;
+	background-clip: content-box;
+	background-color: rgba(255, 255, 255, 0.22);
+}
+#ui ::-webkit-scrollbar-thumb:hover {
+	background-color: rgba(255, 255, 255, 0.4);
+}
+
+#ui h2,
+#ui h3 {
+	font-weight: 600;
+	letter-spacing: 0.01em;
+}
+
+/* ---------- 3. Components -------------------------------------------------- */
+
+/* Button */
+:is(#ui, dialog.message-box-ui) .button {
+	border-radius: var(--apx-r-md);
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.04));
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+	font-weight: 600;
+	overflow: hidden;
+	transition: background 0.16s ease, box-shadow 0.16s ease, color 0.16s ease, transform 0.16s var(--apx-ease), opacity 0.16s ease;
+}
+:is(#ui, dialog.message-box-ui) .button::after {
+	display: none;
+}
+:is(#ui, dialog.message-box-ui) .button:hover:not(:disabled) {
+	background: var(--apx-fill-hover);
+	box-shadow: inset 0 0 0 1px var(--apx-line-strong);
+}
+:is(#ui, dialog.message-box-ui) .button:active:not(:disabled) {
+	transform: scale(0.975);
+}
+:is(#ui, dialog.message-box-ui) .button:focus-visible {
+	box-shadow: inset 0 0 0 1px var(--apx-line-strong), 0 0 0 2px var(--apx-accent-ring);
+	text-decoration: none;
+}
+:is(#ui, dialog.message-box-ui) .button.selected {
+	background: var(--apx-accent-soft);
+	box-shadow: inset 0 0 0 1px var(--apx-accent-ring);
+	color: var(--apx-accent);
+}
+:is(#ui, dialog.message-box-ui) .button:disabled {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+	color: var(--apx-fg-subtle);
+}
+:is(#ui, dialog.message-box-ui) .button > img.button-icon {
+	margin: -4px 2px 0 -2px;
+}
+
+/* Text field */
+#ui input[type="text"],
+#ui textarea {
+	border-radius: var(--apx-r-md);
+	background-color: var(--apx-ink-950);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+	text-indent: 0;
+	font-weight: 500;
+	transition: box-shadow 0.16s ease;
+}
+#ui input[type="text"]:focus-visible,
+#ui textarea:focus-visible {
+	box-shadow: inset 0 0 0 1px var(--apx-accent-ring), 0 0 0 3px var(--apx-accent-soft);
+}
+#ui input[type="text"]::placeholder {
+	color: var(--apx-fg-subtle);
+	opacity: 1;
+}
+
+/* Slider */
+#ui input[type="range"]::-webkit-slider-runnable-track {
+	height: 6px;
+	border-radius: var(--apx-r-pill);
+	background-color: var(--apx-ink-600);
+}
+#ui input[type="range"]::-webkit-slider-thumb,
+#ui input[type="range"]::-webkit-slider-thumb:hover,
+#ui input[type="range"]::-webkit-slider-thumb:active {
+	width: 22px;
+	height: 22px;
+	margin: -8px 0 0 0;
+	border-radius: 50%;
+	border: none;
+	outline: none;
+	background: var(--apx-accent);
+	box-shadow: 0 0 0 5px var(--apx-accent-soft);
+}
+
+/* Spinner + progress */
+#ui .loading-spinner-ui {
+	border-width: 3px;
+	border-color: var(--apx-line);
+	border-left-color: var(--apx-accent);
+}
+#ui .loading-ui > p {
+	font-size: 15px;
+	font-weight: 600;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	color: var(--apx-fg-muted);
+}
+#ui .loading-ui > div {
+	height: 6px;
+	width: 420px;
+	border-radius: var(--apx-r-pill);
+	background-color: var(--apx-ink-700);
+}
+#ui .loading-ui > div > div {
+	margin: 0;
+	width: 100%;
+	height: 100%;
+	background: transparent;
+	box-shadow: none;
+}
+#ui .loading-ui > div > div > div {
+	border-radius: var(--apx-r-pill);
+	background-color: var(--apx-accent);
+	box-shadow: 0 0 14px rgba(215, 255, 62, 0.6);
+}
+
+/* Dialog shells: every floating panel shares one card look */
+#ui .message-box-ui > div,
+#ui .invite-ui,
+#ui .news-popup-ui,
+#ui .player-list-ui,
+#ui .multiplayer-ui .main-box,
+#ui .multiplayer-ui .error-box,
+#ui .graph-ui {
+	border-radius: var(--apx-r-xl);
+	overflow: hidden;
+	background-color: var(--apx-ink-850);
+	box-shadow: inset 0 0 0 1px var(--apx-line), var(--apx-shadow);
+}
+#ui .message-box-ui,
+#ui .track-export-ui > .background {
+	background-color: rgba(4, 5, 8, 0.62);
+	-webkit-backdrop-filter: blur(10px);
+	backdrop-filter: blur(10px);
+}
+#ui .message-box-ui > div {
+	padding: 18px;
+}
+#ui .message-box-ui > div > p {
+	border-radius: var(--apx-r-lg);
+	padding: 22px 18px;
+	font-size: 24px;
+	line-height: 1.25;
+	font-weight: 500;
+}
+#ui .invite-ui > h2,
+#ui .news-popup-ui > h2,
+#ui .player-list-ui > h2,
+#ui .graph-ui > h2,
+#ui .multiplayer-ui .main-box > h2,
+#ui .settings-menu-ui > h2,
+#ui .terms-privacy-ui > h2,
+#ui .leaderboard-ui > h2 {
+	padding-top: 16px;
+	padding-bottom: 14px;
+	font-size: 22px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	background-color: transparent;
+}
+#ui .multiplayer-ui .main-box .buttons,
+#ui .graph-ui > .buttons-container {
+	background-color: transparent;
+	box-shadow: inset 0 1px 0 var(--apx-line);
+}
+#ui .multiplayer-ui .main-box .game-mode-container,
+#ui .multiplayer-ui .main-box .maximum-players-container,
+#ui .terms-privacy-ui > .container > .box {
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-fill);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+}
+#ui .multiplayer-ui .experimental-warning .warning-text {
+	color: var(--apx-warn);
+}
+#ui .multiplayer-ui .error-box,
+#ui .invite-ui .error-container {
+	color: var(--apx-bad);
+}
+
+/* Full-height column panels */
+#ui .settings-menu-ui,
+#ui .terms-privacy-ui,
+#ui .leaderboard-ui,
+#ui .track-info-ui > .side-panel,
+#ui .track-export-ui > .box {
+	background-color: var(--apx-glass-strong);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 1px 0 0 var(--apx-line), inset -1px 0 0 var(--apx-line);
+}
+#ui .settings-menu-ui > .container,
+#ui .terms-privacy-ui > .container,
+#ui .leaderboard-ui > .container {
+	background-color: transparent;
+	box-shadow: inset 0 1px 0 var(--apx-line), inset 0 -1px 0 var(--apx-line);
+}
+
+/* ---------- 4. Main menu --------------------------------------------------- */
+#ui .menu-ui {
+	background: radial-gradient(120% 90% at 50% 0%, rgba(18, 22, 32, 0.5), rgba(5, 6, 9, 0.9));
+	-webkit-backdrop-filter: blur(10px) saturate(120%);
+	backdrop-filter: blur(10px) saturate(120%);
+}
+#ui .menu-ui.loading-screen {
+	background: var(--apx-ink-950);
+}
+#ui .menu-ui > .logo {
+	-webkit-filter: grayscale(1) brightness(1.7) drop-shadow(0 10px 40px rgba(215, 255, 62, 0.22));
+	filter: grayscale(1) brightness(1.7) drop-shadow(0 10px 40px rgba(215, 255, 62, 0.22));
+}
+#ui .menu-ui > .warning-message {
+	font-size: 18px;
+	font-weight: 500;
+	color: var(--apx-bad);
+}
+#ui .menu-ui > .warning-message.modded {
+	color: var(--apx-warn);
+}
+#ui .menu-ui .button-image {
+	margin: 10px 9px;
+	width: 196px;
+	height: 212px;
+	border-radius: var(--apx-r-xl);
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02)), var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 0 0 1px var(--apx-line), 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+#ui .menu-ui .button-image > img {
+	margin: 46px 50px 0 50px;
+	width: 80px;
+	height: 80px;
+	opacity: 0.92;
+	transition: transform 0.25s var(--apx-ease), opacity 0.2s ease;
+}
+#ui .menu-ui .button-image > p {
+	margin-top: 22px;
+	font-size: 15px;
+	font-weight: 600;
+	letter-spacing: 0.2em;
+	text-transform: uppercase;
+	color: var(--apx-fg-muted);
+	transition: color 0.2s ease;
+}
+#ui .menu-ui .button-image:hover:not(:disabled) {
+	transform: translateY(-6px);
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03)), var(--apx-glass);
+	box-shadow: var(--apx-glow), 0 18px 40px rgba(0, 0, 0, 0.4);
+}
+#ui .menu-ui .button-image:hover:not(:disabled) > img {
+	transform: scale(1.06);
+	opacity: 1;
+}
+#ui .menu-ui .button-image:hover:not(:disabled) > p {
+	color: var(--apx-fg);
+}
+/* The last tile is the primary action */
+#ui .menu-ui > .main-buttons-container > .button-image:last-child {
+	background: var(--apx-accent);
+	box-shadow: 0 14px 44px rgba(215, 255, 62, 0.28);
+}
+#ui .menu-ui > .main-buttons-container > .button-image:last-child > img {
+	filter: brightness(0);
+	opacity: 0.88;
+}
+#ui .menu-ui > .main-buttons-container > .button-image:last-child > p {
+	color: var(--apx-accent-ink);
+}
+#ui .menu-ui > .main-buttons-container > .button-image:last-child:hover:not(:disabled) {
+	background: #e4ff73;
+	box-shadow: 0 20px 60px rgba(215, 255, 62, 0.42);
+}
+#ui .menu-ui > .button-bar {
+	padding: 12px calc(16px + var(--safe-area-horizontal));
+	background-color: transparent;
+}
+#ui .menu-ui > .button-bar > button {
+	margin-right: 6px;
+	padding: 9px 16px;
+	border-radius: var(--apx-r-pill);
+	font-size: 15px;
+	letter-spacing: 0.04em;
+}
+#ui .menu-ui > .button-bar > button > img {
+	width: 18px;
+	height: 18px;
+	margin: -2px 4px 0 0;
+}
+#ui .menu-ui > .info > a {
+	font-size: 14px;
+	color: var(--apx-fg-subtle);
+}
+#ui .menu-ui > .info > .social-links > a > img {
+	height: 40px;
+	width: 136px;
+	opacity: 0.85;
+}
+
+/* ---------- 5. Track selection --------------------------------------------- */
+#ui .track-selection-ui > .bar {
+	padding-top: 6px;
+	padding-bottom: 6px;
+	background-color: var(--apx-glass-strong);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 -1px 0 var(--apx-line);
+}
+#ui .track-selection-ui > .bar > .button {
+	font-size: 20px;
+	padding: 10px 18px;
+}
+#ui .track-selection-ui > .bar > .button > img.button-icon {
+	width: 22px;
+	height: 22px;
+}
+#ui .track-selection-ui > .bar > .search-bar-container > input {
+	margin: 8px 0;
+	padding: 0 52px 0 18px;
+	border-radius: var(--apx-r-pill);
+	font-size: 18px;
+}
+#ui .track-selection-ui > .bar > .search-bar-container > img {
+	position: absolute;
+	right: 6px;
+	top: 14px;
+	margin: 0;
+	padding: 8px 12px;
+	width: 16px;
+	border-radius: var(--apx-r-pill);
+	background-color: var(--apx-fill-hover);
+}
+#ui .track-selection-ui .image-button-container {
+	gap: 10px;
+	padding: 12px calc(16px + var(--safe-area-right)) 12px calc(16px + var(--safe-area-left));
+	background-color: var(--apx-glass-strong);
+}
+#ui .image-button-container > button {
+	margin: 0;
+	border-radius: var(--apx-r-lg);
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+	font-size: calc(1.5vw / var(--ui-scale-factor));
+	font-weight: 600;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+	color: var(--apx-fg-muted);
+}
+#ui .image-button-container > button > .cover {
+	background-color: rgba(7, 8, 11, 0.78);
+}
+#ui .image-button-container > button:hover > .cover {
+	background-color: rgba(7, 8, 11, 0.5);
+}
+#ui .image-button-container > button.selected {
+	color: var(--apx-fg);
+	box-shadow: inset 0 0 0 2px var(--apx-accent);
+}
+#ui .image-button-container > button.selected > .cover {
+	background-color: rgba(7, 8, 11, 0.25);
+}
+#ui .image-button-container.community-track-versions {
+	margin: 40px 0 0 0;
+	padding: 0;
+	background-color: transparent;
+}
+#ui .image-button-container.community-track-versions > button {
+	font-size: calc(1.6vw / var(--ui-scale-factor));
+}
+#ui .track-selection-ui.with-background .tracks-container {
+	background-color: rgba(7, 8, 11, 0.8);
+	-webkit-backdrop-filter: blur(14px);
+	backdrop-filter: blur(14px);
+}
+#ui .track-selection-ui .group-title {
+	margin: 1.2em 10px 0.5em 10px;
+	padding-bottom: 12px;
+	font-size: 15px;
+	font-weight: 600;
+	letter-spacing: 0.24em;
+	text-transform: uppercase;
+	color: var(--apx-fg-muted);
+	border-bottom: 1px solid var(--apx-line);
+	border-image: none;
+}
+#ui .track-selection-ui .group-title.winter {
+	color: #a9cdf5;
+	border-image: none;
+}
+#ui .track-selection-ui .group-title.desert {
+	color: #ecd9a0;
+	border-image: none;
+}
+#ui .track-selection-ui .group-title > img {
+	margin: 0 10px -4px 0;
+	width: 20px;
+	height: 20px;
+}
+#ui .track-selection-ui .tracks-container .track button {
+	border-radius: var(--apx-r-lg);
+	background: var(--apx-ink-850);
+	font-size: 18px;
+}
+#ui .track-selection-ui .tracks-container .track button:hover {
+	transform: translateY(-3px);
+	background: var(--apx-ink-800);
+	box-shadow: var(--apx-glow);
+}
+#ui .track-selection-ui .track-title {
+	padding: 12px 4px 0 4px;
+	font-size: 17px;
+	font-weight: 600;
+	background-color: transparent;
+}
+#ui .track-selection-ui .track-title > p {
+	padding: 0 14px;
+}
+#ui .track-selection-ui .record {
+	padding: 4px 4px 14px 4px;
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--apx-fg-muted);
+	background-color: transparent;
+}
+#ui .track-selection-ui .track > .button > .thumbnail {
+	padding: 12px 40px 8px 40px;
+}
+#ui .track-selection-ui .delete-button {
+	top: 18px;
+	right: 18px;
+	border-radius: var(--apx-r-sm);
+	background-color: var(--apx-ink-700);
+}
+#ui .track-selection-ui .delete-button:hover {
+	background-color: var(--apx-bad);
+}
+/* Track of the week: hero card */
+#ui .track-selection-ui .track.track-of-the-week button {
+	border-radius: var(--apx-r-xl);
+}
+#ui .track-selection-ui .track.track-of-the-week button .track-of-the-week-info > .title {
+	font-size: 40px;
+	font-weight: 700;
+	letter-spacing: 0.01em;
+}
+#ui .track-selection-ui .track.track-of-the-week button .track-of-the-week-info > .author,
+#ui .track-selection-ui .track.track-of-the-week button .track-of-the-week-info > .date-range {
+	margin-top: 6px;
+	font-size: 15px;
+	font-weight: 500;
+	color: var(--apx-fg-muted);
+	opacity: 1;
+}
+#ui .track-selection-ui .track.track-of-the-week button .track-of-the-week-info > .time-remaining {
+	font-size: 22px;
+	color: var(--apx-accent);
+}
+#ui .track-selection-ui .track.track-of-the-week button .track-of-the-week-info > .time-remaining.ending-soon,
+#ui .track-selection-ui .track-of-the-week-error {
+	color: var(--apx-bad);
+}
+#ui .track-selection-ui .tracks-container > .empty > .title {
+	font-size: 30px;
+	font-weight: 600;
+}
+#ui .track-selection-ui .tracks-container > .empty > .description {
+	font-size: 18px;
+	opacity: 0.6;
+}
+
+/* ---------- 6. Track info + leaderboard ------------------------------------- */
+#ui .track-info-ui > .side-panel > h2 {
+	margin: 18px 16px 0 16px;
+	font-size: 24px;
+	font-weight: 700;
+}
+#ui .track-info-ui > .side-panel > .thumbnail {
+	margin: 14px 12px 0 12px;
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-ink-950);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+}
+#ui .track-info-ui > .side-panel > .thumbnail > .delete,
+#ui .track-info-ui > .side-panel > .thumbnail > .share {
+	padding: 6px 9px;
+	border-radius: var(--apx-r-sm);
+}
+#ui .track-info-ui > .side-panel > .track-author,
+#ui .track-info-ui > .side-panel > .last-modified {
+	margin-left: 16px;
+	margin-right: 16px;
+	font-size: 15px;
+	font-weight: 600;
+}
+#ui .track-info-ui > .side-panel > .divider {
+	margin: 0 16px;
+	border-top-color: var(--apx-line);
+}
+#ui .track-info-ui > .side-panel > .personal-best-title,
+#ui .track-info-ui > .side-panel > .opponents-title {
+	margin: 18px 16px 0 16px;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.22em;
+	text-transform: uppercase;
+	color: var(--apx-fg-muted);
+}
+#ui .track-info-ui > .side-panel > .personal-best {
+	font-size: 22px;
+	font-weight: 600;
+}
+#ui .track-info-ui > .side-panel > .personal-best > div {
+	padding: 0 16px;
+	font-size: 22px;
+}
+#ui .track-info-ui > .side-panel > .opponents-container,
+#ui .track-info-ui > .side-panel > .opponents-container > .no-opponents {
+	font-size: 15px;
+}
+#ui .track-info-ui > .side-panel > .button.watch,
+#ui .track-info-ui > .side-panel > .button.play {
+	margin: 0 12px 12px 12px;
+	width: calc(100% - 24px);
+	height: 76px;
+	border-radius: var(--apx-r-lg);
+	font-size: 24px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+}
+#ui .track-info-ui > .side-panel > .button.watch {
+	height: 52px;
+	font-size: 17px;
+}
+#ui .track-info-ui > .side-panel > .button.watch > img {
+	width: 22px;
+	height: 22px;
+}
+#ui .track-info-ui > .side-panel > .button.play > img {
+	width: 28px;
+	height: 28px;
+}
+#ui .track-info-ui > .side-panel > .button.play:not(:disabled) {
+	background: var(--apx-accent);
+	box-shadow: 0 12px 36px rgba(215, 255, 62, 0.25);
+	color: var(--apx-accent-ink);
+}
+#ui .track-info-ui > .side-panel > .button.play:not(:disabled) > img {
+	filter: brightness(0);
+}
+#ui .track-info-ui > .side-panel > .button.play:hover:not(:disabled) {
+	background: #e4ff73;
+}
+
+#ui .leaderboard-ui > h3 {
+	font-size: 13px;
+	letter-spacing: 0.2em;
+	text-transform: uppercase;
+	margin-bottom: 14px;
+}
+#ui .leaderboard-ui > .container > button.main {
+	height: 72px;
+	margin: 8px 10px 0 12px;
+	width: calc(100% - 22px);
+	border-radius: var(--apx-r-lg);
+}
+#ui .leaderboard-ui > .container > button.main > .image-container {
+	width: 72px;
+	height: 72px;
+	background-color: transparent;
+}
+#ui .leaderboard-ui > .container > button.main > div > p {
+	padding: 8px 12px 4px 12px;
+	font-size: 21px;
+	font-weight: 600;
+}
+#ui .leaderboard-ui > .container > button.main > div > .position > span {
+	font-size: 14px;
+	opacity: 0.45;
+}
+#ui .leaderboard-ui > .container > button.main > div > .name-container {
+	font-size: 17px;
+	font-weight: 500;
+	color: var(--apx-fg-muted);
+}
+#ui .leaderboard-ui > .container > button.main > div > .name-container > .name {
+	padding: 4px 12px 8px 12px;
+}
+#ui .leaderboard-ui > .container > button.main > div > .name-container > .country-flag {
+	width: 24px;
+	height: 18px;
+	border-radius: 3px;
+}
+#ui .leaderboard-ui > .container > button.main > div > .verified-state {
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+}
+#ui .leaderboard-ui > .container > button.main > div > .verified-state.verified {
+	color: var(--apx-good);
+}
+#ui .leaderboard-ui > .container > button.main > div > .verified-state.invalid {
+	color: var(--apx-bad);
+}
+#ui .leaderboard-ui > .container > button.main > div > .verified-state.pending {
+	color: var(--apx-warn);
+}
+#ui .leaderboard-ui > .container > button.main.self:not(:focus-visible) {
+	background: var(--apx-accent-soft);
+	box-shadow: inset 0 0 0 1px var(--apx-accent-ring);
+}
+#ui .leaderboard-ui > .pages {
+	gap: 6px;
+	margin: 12px 12px 0 12px;
+}
+#ui .leaderboard-ui > .pages > button.page {
+	padding: 8px 0;
+	font-size: 17px;
+	border-radius: var(--apx-r-sm);
+}
+#ui .leaderboard-ui > .button-wrapper > .button,
+#ui .settings-menu-ui > .button-wrapper > .button,
+#ui .terms-privacy-ui > .button-bar > .button {
+	font-size: 20px;
+	padding: 10px 18px;
+}
+#ui .leaderboard-ui > .button-wrapper > .button.only-verified {
+	font-size: 15px;
+	line-height: 22px;
+	margin-right: 8px;
+}
+#ui .leaderboard-ui > .button-wrapper > .button.only-verified > img {
+	width: 18px;
+}
+#ui .leaderboard-ui > .button-wrapper > .icon-button > img {
+	width: 20px;
+}
+
+/* ---------- 7. Settings ------------------------------------------------------ */
+#ui .settings-menu-ui > .container > h2 {
+	margin: 26px 18px 8px 18px;
+	padding: 0 0 10px 0;
+	font-size: 13px;
+	letter-spacing: 0.24em;
+	text-transform: uppercase;
+	color: var(--apx-accent);
+	border-bottom: 1px solid var(--apx-line);
+}
+#ui .settings-menu-ui > .container > h3 {
+	margin: 18px 18px 6px 18px;
+	padding: 0 0 8px 0;
+	font-size: 12px;
+	letter-spacing: 0.2em;
+	text-transform: uppercase;
+	color: var(--apx-fg-muted);
+	border-bottom: 1px solid var(--apx-line);
+}
+#ui .settings-menu-ui > .container > .setting {
+	margin: 4px 18px;
+	align-items: center;
+}
+#ui .settings-menu-ui > .container > .setting > p {
+	margin: 10px 10px 10px 0;
+	font-size: 18px;
+	font-weight: 500;
+}
+#ui .settings-menu-ui > .container > .setting > .button-wrapper {
+	gap: 6px;
+	margin-bottom: 0;
+	padding: 4px 0;
+}
+#ui .settings-menu-ui > .container > .setting > .button-wrapper > button {
+	margin-bottom: 0;
+	height: 40px;
+	padding: 0 16px;
+	border-radius: var(--apx-r-sm);
+	font-size: 16px;
+}
+#ui .settings-menu-ui > .container > .setting.wrappable > .button-wrapper > button {
+	width: calc(100% / 4 - 5px);
+	font-size: 15px;
+}
+#ui .settings-menu-ui > .container > .setting.key-binding > .button-wrapper > button {
+	width: 190px;
+	font-size: 15px;
+}
+
+/* ---------- 8. Race HUD ------------------------------------------------------- */
+#ui .timer-ui {
+	bottom: 16px;
+	opacity: 1;
+}
+#ui .timer-ui.up {
+	bottom: auto;
+	top: 16px;
+}
+#ui .timer-ui > div {
+	width: auto;
+	margin: 0 4px;
+}
+#ui .timer-ui > div > .title-container {
+	height: 24px;
+	width: 100%;
+}
+#ui .timer-ui > div > .title-container > h2 {
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.24em;
+	text-transform: uppercase;
+	color: var(--apx-fg-muted);
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+#ui .timer-ui:not(.up) > div > .title-container > .title {
+	margin-top: 4px;
+}
+#ui .timer-ui > div > .title-container > .checkpoint-time {
+	font-size: 20px;
+	letter-spacing: 0.02em;
+	margin-top: -4px;
+}
+#ui .timer-ui > div > .time,
+#ui .timer-ui > .center > .time {
+	margin: 0;
+	padding: 9px 18px;
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 0 0 1px var(--apx-line), 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+#ui .timer-ui > div > .time > p {
+	background-color: transparent;
+	font-size: 24px;
+	font-weight: 600;
+	color: var(--apx-fg-muted);
+}
+#ui .timer-ui > .center > .time {
+	padding: 9px 22px;
+	box-shadow: inset 0 0 0 1px var(--apx-line-strong), 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+#ui .timer-ui > .center > .time > p {
+	font-size: 38px;
+	font-weight: 700;
+	color: var(--apx-fg);
+}
+#ui .timer-ui > div > .time > p > span {
+	width: 0.6em;
+}
+#ui .timer-ui > div > .time > p > span.sign {
+	margin-left: 0;
+	width: 0.7em;
+}
+#ui .timer-ui > div > .time > p.green,
+#ui .timer-ui > div > .title-container > .checkpoint-time.green,
+#ui .speedometer-ui > .checkpoint-speed.green {
+	color: var(--apx-good);
+}
+#ui .timer-ui > div > .time > p.red,
+#ui .timer-ui > div > .title-container > .checkpoint-time.red,
+#ui .speedometer-ui > .checkpoint-speed.red {
+	color: var(--apx-bad);
+}
+
+#ui .speedometer-ui {
+	right: calc(16px + var(--safe-area-horizontal));
+	bottom: 16px;
+}
+#ui .speedometer-ui.up {
+	bottom: auto;
+	top: 16px;
+}
+#ui .speedometer-ui > .box,
+#ui .checkpoint-ui {
+	padding: 9px 18px;
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 0 0 1px var(--apx-line), 0 8px 24px rgba(0, 0, 0, 0.3);
+	font-size: 38px;
+	font-weight: 700;
+	opacity: 1;
+}
+#ui .speedometer-ui > .box > .container,
+#ui .checkpoint-ui > div {
+	padding: 0;
+	background-color: transparent;
+}
+#ui .speedometer-ui > .box > .container > span > span {
+	width: 0.6em;
+}
+#ui .speedometer-ui > .box > .container > span:last-of-type {
+	margin: 0 0 0 0.5em;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.2em;
+	text-transform: uppercase;
+	opacity: 0.6;
+}
+#ui .speedometer-ui > .checkpoint-speed {
+	font-size: 20px;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+#ui .checkpoint-ui {
+	left: calc(16px + var(--safe-area-horizontal));
+	bottom: 16px;
+}
+#ui .checkpoint-ui.up {
+	bottom: auto;
+	top: 16px;
+}
+#ui .checkpoint-ui > div > img {
+	width: 20px;
+	height: 20px;
+	margin: 0 12px 6px 0;
+	/* yellow flag -> accent */
+	filter: grayscale(1) brightness(1.4);
+}
+
+#ui .hint-ui {
+	padding: 12px 22px;
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+	text-shadow: none;
+}
+#ui .hint-ui > .title {
+	font-size: 20px;
+	font-weight: 600;
+}
+#ui .hint-ui > .subtitle {
+	margin-top: 10px;
+	font-size: 16px;
+	color: var(--apx-fg-muted);
+}
+#ui .hint-ui > .title > .key-binding,
+#ui .hint-ui > .subtitle > .key-binding {
+	padding: 0 8px;
+	min-width: 30px;
+	line-height: 28px;
+	border-radius: 6px;
+	background-color: var(--apx-fill-hover);
+	box-shadow: inset 0 0 0 1px var(--apx-line-strong), 0 2px 0 rgba(0, 0, 0, 0.4);
+	font-size: 0.85em;
+	color: var(--apx-fg);
+}
+
+#ui .game-toolbar-ui {
+	left: calc(16px + var(--safe-area-horizontal));
+	bottom: 86px;
+	gap: 8px;
+}
+#ui .game-toolbar-ui.up {
+	bottom: auto;
+	top: 86px;
+}
+#ui .game-toolbar-ui > .info-container,
+#ui .game-toolbar-ui > .button-container,
+#ui .preview-toolbar-ui {
+	margin: 0;
+	padding: 10px;
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+}
+#ui .game-toolbar-ui > .info-container > .content {
+	padding: 4px 8px;
+	background-color: transparent;
+}
+#ui .game-toolbar-ui > .info-container > .content > .track-name {
+	font-size: 20px;
+}
+#ui .game-toolbar-ui > .info-container > .content > .game-mode,
+#ui .game-toolbar-ui > .info-container > .content > .record {
+	margin-top: 4px;
+	font-size: 15px;
+	font-weight: 500;
+}
+#ui .game-toolbar-ui .button,
+#ui .preview-toolbar-ui .button {
+	font-size: 18px;
+	padding: 8px 14px;
+}
+#ui .game-toolbar-ui .button > img.button-icon,
+#ui .preview-toolbar-ui .button > img.button-icon {
+	width: 20px;
+	height: 20px;
+}
+
+#ui .input-visualizer-ui > div {
+	border-radius: var(--apx-r-md);
+	background-color: var(--apx-glass);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+	transform: scale(0.92);
+}
+#ui .input-visualizer-ui > div.active {
+	background-color: var(--apx-accent);
+}
+#ui .input-visualizer-ui > div.active > img {
+	filter: brightness(0);
+}
+
+#ui .time-bar-ui {
+	background-color: var(--apx-glass-strong);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 1px 0 var(--apx-line);
+	opacity: 1;
+}
+#ui .time-bar-ui > .bar {
+	margin: 6px 8px 6px 0;
+	border-radius: var(--apx-r-md);
+	overflow: hidden;
+}
+#ui .time-bar-ui > .bar > div > .fill {
+	background-color: var(--apx-accent);
+	opacity: 0.85;
+}
+#ui .time-bar-ui > .bar > div > .dash-container > .checkpoint-dash {
+	width: 3px;
+	background-color: var(--apx-fg);
+}
+
+/* Finish / pause overlays */
+#ui .pause-screen-ui,
+#ui .session-end-ui,
+#ui .loading-screen-ui > .background {
+	background-color: rgba(5, 6, 9, 0.72);
+	-webkit-backdrop-filter: blur(12px);
+	backdrop-filter: blur(12px);
+}
+#ui .pause-screen-ui > .title {
+	font-size: 64px;
+	font-weight: 700;
+	letter-spacing: 0.3em;
+	text-transform: uppercase;
+}
+#ui .time-announcer-ui > .track-name {
+	font-size: 34px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	padding: 14px 20px;
+	background-color: var(--apx-glass-strong);
+}
+#ui .time-announcer-ui > .current {
+	font-size: 44px;
+	font-weight: 700;
+	padding: 6px 0;
+	background-color: var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+}
+#ui .time-announcer-ui > .difference > p {
+	font-size: 24px;
+	font-weight: 600;
+	color: var(--apx-good);
+	background-color: var(--apx-glass-strong);
+}
+#ui .time-announcer-ui > .difference.red > p {
+	color: var(--apx-bad);
+}
+#ui .time-announcer-ui > .record {
+	font-size: 44px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	text-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+}
+#ui .time-announcer-ui > .record.personal-best {
+	color: var(--apx-accent);
+}
+#ui .time-announcer-ui > .record.session-best {
+	color: var(--apx-good);
+}
+
+#ui .ghost-loading-ui,
+#ui .server-message-ui {
+	margin: 12px 16px;
+	font-size: 14px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* Multiplayer player list */
+#ui .player-list-ui > .content > div {
+	font-size: 19px;
+	gap: 4px;
+}
+#ui .player-list-ui > .content > div > div,
+#ui .player-list-ui > .content > div > .car-thumbnail {
+	border-radius: var(--apx-r-sm);
+	background-color: var(--apx-fill);
+}
+#ui .player-list-ui > .content > div.self > div,
+#ui .player-list-ui > .content > div.self > .car-thumbnail,
+#ui .player-list-ui > .content > div.self > .kick-button-placeholder {
+	background-color: var(--apx-accent-soft);
+}
+
+/* ---------- 9. Toolbars (shared by garage, editor, replay) ------------------- */
+:is(#ui, dialog.message-box-ui) .button {
+	font-size: 20px;
+	padding: 10px 18px;
+}
+:is(#ui, dialog.message-box-ui) .button > img.button-icon {
+	width: 22px;
+	height: 22px;
+}
+#ui .customization-ui > .top,
+#ui .editor-ui > .top > .button-bar,
+#ui .customization-panel-ui > .tab-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px calc(12px + var(--safe-area-horizontal));
+	box-sizing: border-box;
+	background-color: var(--apx-glass-strong);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 -1px 0 var(--apx-line);
+}
+#ui .customization-panel-ui > .tab-bar {
+	box-shadow: inset 0 1px 0 var(--apx-line);
+}
+#ui .customization-ui > .top > .button.right {
+	margin-left: auto;
+}
+#ui .customization-ui > .profile-button-container,
+#ui .editor-ui > .top > .track-settings-container {
+	margin: 10px 0 0 12px;
+	padding: 0;
+	background-color: transparent;
+}
+#ui .customization-ui > .profile-button-container > .button,
+#ui .editor-ui > .top > .track-settings-container > .button {
+	border-radius: var(--apx-r-pill);
+	background: var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+}
+#ui .customization-ui > .save-message,
+#ui .editor-ui > .message {
+	font-size: 16px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* ---------- 10. Garage -------------------------------------------------------- */
+#ui .customization-panel-ui .color {
+	border-radius: var(--apx-r-lg);
+	overflow: hidden;
+	background-color: var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 0 0 1px var(--apx-line), 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+#ui .customization-panel-ui .color > h2 {
+	padding: 12px 0 4px 0;
+	font-size: 12px;
+	letter-spacing: 0.24em;
+	text-transform: uppercase;
+	color: var(--apx-fg-muted);
+	background-color: transparent;
+}
+#ui .customization-panel-ui .color input[type="text"] {
+	font-size: 16px;
+	letter-spacing: 0.08em;
+	border-radius: var(--apx-r-sm) 0 0 var(--apx-r-sm);
+}
+#ui .customization-panel-ui .color .color-preview {
+	border-radius: 0 var(--apx-r-sm) var(--apx-r-sm) 0;
+	box-shadow: inset 0 0 0 1px var(--apx-line-strong);
+}
+#ui .customization-panel-ui .color-picker-ui > .value-saturation-picker {
+	border-radius: var(--apx-r-sm);
+	overflow: hidden;
+}
+#ui .customization-panel-ui .color-picker-ui > .hue-picker {
+	border-radius: var(--apx-r-sm);
+	overflow: hidden;
+}
+#ui .customization-panel-ui > .options-panel,
+#ui .editor-ui .side-panel {
+	background-color: var(--apx-glass-strong);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 1px 0 0 var(--apx-line);
+}
+#ui .customization-panel-ui > .options-panel > button,
+#ui .editor-ui .side-panel button {
+	border-radius: var(--apx-r-md);
+	background-color: var(--apx-fill);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+	transition: background-color 0.16s ease, box-shadow 0.16s ease;
+}
+#ui .customization-panel-ui > .options-panel > button:hover,
+#ui .editor-ui .side-panel button:hover {
+	background-color: var(--apx-fill-hover);
+}
+#ui .customization-panel-ui > .options-panel > button.selected,
+#ui .editor-ui .side-panel button.selected {
+	background-color: var(--apx-accent-soft);
+	box-shadow: inset 0 0 0 2px var(--apx-accent);
+}
+
+/* ---------- 11. Editor --------------------------------------------------------- */
+#ui .editor-side-toolbar-ui {
+	left: calc(12px + var(--safe-area-horizontal));
+}
+#ui .editor-side-toolbar-ui button {
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-glass);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+	transform: scale(0.9);
+	transition: background-color 0.16s ease, box-shadow 0.16s ease;
+}
+#ui .editor-side-toolbar-ui button:hover {
+	background-color: rgba(34, 40, 53, 0.85);
+}
+#ui .editor-side-toolbar-ui button.selected {
+	background-color: rgba(34, 40, 53, 0.9);
+	box-shadow: inset 0 0 0 2px var(--apx-accent);
+}
+#ui .editor-side-toolbar-ui button.rotate > span {
+	font-size: 14px;
+	font-weight: 600;
+}
+#ui .editor-ui .mini-toolbar-container {
+	margin: 10px 10px 0 0;
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+}
+#ui .editor-ui .mini-toolbar-container > .undo-container {
+	border-radius: 0 var(--apx-r-lg) var(--apx-r-lg) 0;
+	background-color: transparent;
+	box-shadow: inset 1px 0 0 var(--apx-line);
+}
+#ui .editor-ui .mini-toolbar-container .button {
+	padding: 10px 14px;
+}
+#ui .editor-height-selector-ui {
+	left: calc(16px + var(--safe-area-horizontal));
+	bottom: 14px;
+}
+#ui .editor-height-selector-ui > p {
+	border-radius: var(--apx-r-md) 0 0 var(--apx-r-md);
+	background-color: var(--apx-glass);
+	font-size: 16px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	line-height: 40px;
+}
+#ui .editor-height-selector-ui > .buttons > button {
+	background-color: var(--apx-ink-700);
+}
+#ui .editor-height-selector-ui > .buttons > button:hover {
+	background-color: var(--apx-ink-600);
+}
+
+/* ---------- 12. Fixes after visual review -------------------------------------- */
+#ui .timer-ui > div > .time {
+	min-width: 132px;
+	box-sizing: border-box;
+}
+#ui .timer-ui > div > .title-container > h2 {
+	white-space: nowrap;
+}
+#ui .leaderboard-ui > .button-wrapper > .button.only-verified {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	white-space: nowrap;
+}
+#ui .leaderboard-ui > .button-wrapper > .button.only-verified > img {
+	margin: 0;
+}
+#ui .settings-menu-ui .button.cancel,
+#ui .settings-menu-ui .button.reset {
+	margin-right: 6px;
+}
+#ui .settings-menu-ui .button.apply {
+	background: var(--apx-accent);
+	box-shadow: 0 8px 26px rgba(215, 255, 62, 0.22);
+	color: var(--apx-accent-ink);
+}
+#ui .settings-menu-ui .button.apply > img {
+	filter: brightness(0);
+}
+#ui .settings-menu-ui .button.apply:hover {
+	background: #e4ff73;
+}
+#ui .customization-panel-ui > .tab-bar > .button > img.button-icon {
+	margin-left: 8px;
+}
+#ui .editor-height-selector-ui {
+	bottom: 0;
+}
+
+/* ---------- 13. Multiplayer room board (apex-room.js) --------------------------- */
+#ui .apex-room-board {
+	position: absolute;
+	/* top right: the top left corner belongs to the game's own toolbar */
+	right: calc(16px + var(--safe-area-horizontal));
+	top: 16px;
+	min-width: 300px;
+	padding: 12px 14px 10px 14px;
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 0 0 1px var(--apx-line), 0 8px 24px rgba(0, 0, 0, 0.3);
+	color: var(--apx-fg);
+	pointer-events: none;
+}
+#ui .apex-room-board > .title {
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: 8px;
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.24em;
+	color: var(--apx-fg-muted);
+}
+#ui .apex-room-board > .title > span {
+	letter-spacing: 0.04em;
+	color: var(--apx-fg-subtle);
+}
+#ui .apex-room-board > .title > span::before {
+	content: "\25CF  ";
+	color: var(--apx-good);
+}
+#ui .apex-room-board > .empty {
+	padding: 6px 0 4px 0;
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--apx-fg-subtle);
+}
+#ui .apex-room-board > .row {
+	display: grid;
+	grid-template-columns: 22px minmax(0, 1fr) auto 62px;
+	align-items: baseline;
+	gap: 8px;
+	margin: 0 -6px;
+	padding: 5px 6px;
+	border-radius: var(--apx-r-sm);
+	font-size: 17px;
+	font-weight: 600;
+}
+#ui .apex-room-board > .row > .rank {
+	font-size: 13px;
+	color: var(--apx-fg-subtle);
+}
+#ui .apex-room-board > .row:first-of-type > .rank {
+	color: var(--apx-accent);
+}
+#ui .apex-room-board > .row > .name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 500;
+}
+#ui .apex-room-board > .row > .gap {
+	text-align: right;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--apx-fg-muted);
+}
+#ui .apex-room-board > .row.self {
+	background-color: var(--apx-accent-soft);
+	box-shadow: inset 0 0 0 1px var(--apx-accent-ring);
+}
+/* the run currently replayed as the ghost */
+#ui .apex-room-board > .row.ghost > .name::after {
+	content: "  \25C8";
+	color: var(--apx-accent);
+}
+
+/* ---------- 14. Modal dialogs (rendered in the top layer, outside #ui) ----------- */
+dialog.message-box-ui,
+dialog.message-box-ui * {
+	font-family: var(--apx-font);
+	font-style: normal;
+	clip-path: none !important;
+}
+html dialog.message-box-ui {
+	background-color: rgba(4, 5, 8, 0.62);
+	-webkit-backdrop-filter: blur(10px);
+	backdrop-filter: blur(10px);
+}
+html dialog.message-box-ui > div {
+	padding: 18px;
+	border-radius: var(--apx-r-xl);
+	background-color: var(--apx-ink-850);
+	box-shadow: inset 0 0 0 1px var(--apx-line), var(--apx-shadow);
+}
+html dialog.message-box-ui > div > p {
+	margin-bottom: 16px;
+	padding: 22px 18px;
+	border-radius: var(--apx-r-lg);
+	font-size: 22px;
+	font-weight: 500;
+	line-height: 1.3;
+}
+/* confirm button = primary action */
+:is(#ui, dialog.message-box-ui.confirm) > div > button:last-of-type:not(:disabled) {
+	background: var(--apx-accent);
+	box-shadow: none;
+	color: var(--apx-accent-ink);
+}
+:is(#ui, dialog.message-box-ui.confirm) > div > button:last-of-type:hover:not(:disabled) {
+	background: #e4ff73;
+}
+/* ---------- 15. Race mode (apex-room.js) ----------------------------------------- */
+#ui .apex-room-board > .row.pending > .name {
+	color: var(--apx-fg-muted);
+}
+#ui .apex-room-board > .race-button {
+	display: block;
+	width: 100%;
+	margin-top: 10px;
+	padding: 9px 12px;
+	border: none;
+	border-radius: var(--apx-r-md);
+	background: var(--apx-accent);
+	color: var(--apx-accent-ink);
+	font-size: 14px;
+	font-weight: 700;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	cursor: pointer;
+	pointer-events: auto;
+	transition: background 0.16s ease, transform 0.16s var(--apx-ease);
+}
+#ui .apex-room-board > .race-button:hover {
+	background: #e4ff73;
+}
+#ui .apex-room-board > .race-button:active {
+	transform: scale(0.98);
+}
+#ui .apex-room-board > .race-button.stop {
+	background: var(--apx-fill-hover);
+	box-shadow: inset 0 0 0 1px var(--apx-line-strong);
+	color: var(--apx-fg);
+}
+#ui .apex-race-lights {
+	position: absolute;
+	left: 50%;
+	top: 13%;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 16px 22px;
+	border-radius: var(--apx-r-xl);
+	background-color: var(--apx-glass-strong);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 0 0 1px var(--apx-line), var(--apx-shadow);
+	pointer-events: none;
+	transition: opacity 0.6s ease 0.6s;
+}
+#ui .apex-race-lights > span {
+	width: 46px;
+	height: 46px;
+	border-radius: 50%;
+	background-color: #1c1012;
+	box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+	transition: background-color 0.08s linear, box-shadow 0.08s linear;
+}
+#ui .apex-race-lights > span.on {
+	background-color: #ff2a3c;
+	box-shadow: 0 0 26px rgba(255, 42, 60, 0.85), inset 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+#ui .apex-race-lights > p {
+	display: none;
+	margin: 0;
+	padding: 0 18px;
+	font-size: 34px;
+	font-weight: 700;
+	letter-spacing: 0.3em;
+	color: var(--apx-accent);
+}
+#ui .apex-race-lights.go {
+	opacity: 0;
+}
+#ui .apex-race-lights.go > span {
+	display: none;
+}
+#ui .apex-race-lights.go > p {
+	display: block;
+}
