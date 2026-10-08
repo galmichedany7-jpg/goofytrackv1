@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Main menu logo, installed by build.js over the game's images/logo.svg (same 1000 x 200 frame). -->
+<svg width="1000" height="200" viewBox="0 0 1000 200" version="1.1" xmlns="http://www.w3.org/2000/svg">
+ <text x="500" y="168" text-anchor="middle" textLength="940" lengthAdjust="spacingAndGlyphs"
+       font-family="Impact, Bahnschrift, 'Arial Black', sans-serif" font-size="190"
+       fill="#f3f5f8" stroke="#0c0e13" stroke-width="5" paint-order="stroke">GoofyTrack</text>
+</svg>

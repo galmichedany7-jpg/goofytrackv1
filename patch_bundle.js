@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { APP, ORIGINALS } = require('./config');
+const MOD_TRACKS = require('./tracks');
 
 const SRC = path.join(ORIGINALS, 'main.bundle.js');
 const OUT = path.join(APP, 'main.bundle.js');
@@ -23,7 +24,7 @@ const patches = [
     name: 'room context',
     anchor: 'e(k.multiplayerConnection);const t=.15;',
     before: true,
-    insert: HOOK + 'begin({owner:this,connection:k.multiplayerConnection,'
+    insert: HOOK + 'begin({owner:this,connection:k.multiplayerConnection,track:()=>(0,R.gn)(this,ra,"f"),'
       + 'makeCar:()=>new z.A(null,' + START.slice(0, -1) + ',null,null,(0,R.gn)(this,la,"f"),(0,R.gn)(this,ca,"f"),(0,R.gn)(this,aa,"f"),(0,R.gn)(this,ra,"f"),(0,R.gn)(this,Ta,"f"),(0,R.gn)(this,ua,"f"),null),'
       + 'getSelfCar:()=>(0,R.gn)(this,Xa,"f"),interpolate:qr,'
       + 'restart:()=>{(0,R.gn)(this,ta,"m",Ts).call(this),(0,R.gn)(this,ta,"m",Ms).call(this)}});',
@@ -71,9 +72,41 @@ const patches = [
     replace: '.isControlsDisabled=' + MENU_OPEN + '||' + DIALOG_OPEN + '||!!' + LOCKED + ',!' + MENU_OPEN + '&&!' + DIALOG_OPEN + '&&!' + LOCKED + '){',
   },
   {
-    name: 'race runs are never saved or uploaded as records',
-    find: 'if((0,R.gn)(this,ya,"f")){const e=(0,R.gn)(this,ha,"f").profileSlot',
-    replace: 'if((0,R.gn)(this,ya,"f")&&!(window.ApexRoom&&window.ApexRoom.raceActive())){const e=(0,R.gn)(this,ha,"f").profileSlot',
+    name: 'multi-lap races give the physics a track that never finishes',
+    find: 'trackData:i.toSaveString(),carId:g',
+    // only the car being driven: replays (they come with a recording) must finish where they did
+    replace: 'trackData:window.ApexRoom&&null==s?window.ApexRoom.simTrack(i):i.toSaveString(),carId:g',
+  },
+  {
+    // qualifying, formation and race laps: no personal best, no room record, no ghost
+    name: 'event runs are never saved or uploaded as records',
+    find: 's.addFinishCallback((e=>{const t=e.getTime(),i=e.getRecording(),r=e.getCarStyle();',
+    replace: 's.addFinishCallback((e=>{if(window.ApexRoom&&window.ApexRoom.raceActive())return;const t=e.getTime(),i=e.getRecording(),r=e.getCarStyle();',
+  },
+
+  {
+    name: 'mod texts follow the game language',
+    find: 'class js{constructor(e){Hs.set(this,void 0),(0,R.GG)(this,Hs,e,"f")}set language(e){(0,R.GG)(this,Hs,e,"f")}',
+    replace: 'class js{constructor(e){Hs.set(this,void 0),(0,R.GG)(this,Hs,e,"f"),window.apexLanguage=e}set language(e){(0,R.GG)(this,Hs,e,"f"),window.apexLanguage=e}',
+  },
+
+  // ---------------------------------------------------------------- "Race" game mode on the host screen
+  // The server only knows Casual and Competitive: a race room is hosted as Competitive and the mod
+  // tells the players running it that the room is a race room.
+  {
+    name: 'host screen offers a third game mode',
+    find: 'for(const e of[an.Casual,an.Competitive]){const t=document.createElement("button");switch(t.className="button",e){case an.Casual:t.textContent=(0,R.gn)(this,bc,"f").get("Casual");break;case an.Competitive:t.textContent=(0,R.gn)(this,bc,"f").get("Competitive")}',
+    replace: 'for(const e of window.ApexRoom?[an.Casual,an.Competitive,"race"]:[an.Casual,an.Competitive]){const t=document.createElement("button");switch(t.className="button",e){case an.Casual:t.textContent=(0,R.gn)(this,bc,"f").get("Casual");break;case an.Competitive:t.textContent=(0,R.gn)(this,bc,"f").get("Competitive");break;case"race":t.textContent=window.ApexRoom.modeLabel()}',
+  },
+  {
+    name: 'host screen describes the race mode and shows its options',
+    find: 'case an.Competitive:c.textContent=(0,R.gn)(this,bc,"f").get("Players compete to set the best time in the session.")}},c=document.createElement("div")',
+    replace: 'case an.Competitive:c.textContent=(0,R.gn)(this,bc,"f").get("Players compete to set the best time in the session.");break;case"race":c.textContent=window.ApexRoom.modeInfo()}window.ApexRoom&&window.ApexRoom.hostModeChanged(a,r)},c=document.createElement("div")',
+  },
+  {
+    name: 'race rooms are hosted as competitive sessions',
+    find: 'a=i.startNewSessionImmediate(r,e,t);this.dispose(),(0,R.gn)(this,_c,"f").call(this,e,t,"custom",[],{multiplayerConnection:i,sessionId:a,gameMode:r},!1)',
+    replace: 'apexMode=(window.ApexRoom&&window.ApexRoom.hosting(r),"race"===r?an.Competitive:r),a=i.startNewSessionImmediate(apexMode,e,t);this.dispose(),(0,R.gn)(this,_c,"f").call(this,e,t,"custom",[],{multiplayerConnection:i,sessionId:a,gameMode:apexMode},!1)',
   },
 
   // ---------------------------------------------------------------- mod messages (type 255, reserved by the game)
@@ -98,6 +131,24 @@ const patches = [
     anchor: 'getPlayers(){const e=(0,R.gn)(this,Wl,"f").getCurrentUserProfile()',
     before: true,
     insert: 'apexSend(e){const t=(0,R.gn)(this,Hl,"f");if(null!=t)try{t.send(e)}catch(e){console.error("Failed to send mod message:",e)}}',
+  },
+
+  // ---------------------------------------------------------------- mod tracks in the official list
+  // A string group gets its own heading after Summer / Winter / Desert. Their records stay local:
+  // these tracks do not exist on the game's leaderboard server.
+  {
+    name: 'mod tracks are listed with the official tracks',
+    find: 'thumbnail:"tracks/official/thumbnails/desert5.png"}].map((e=>({id:e.id,group:e.environment,',
+    replace: 'thumbnail:"tracks/official/thumbnails/desert5.png"},' + MOD_TRACKS.map(t => '{id:' + JSON.stringify(t.id)
+      + ',group:' + JSON.stringify(t.group) + ',trackMetadata:{name:' + JSON.stringify(t.name) + ',author:' + JSON.stringify(t.author)
+      + ',lastModified:new Date(' + JSON.stringify(t.lastModified) + ')},environment:Cl.A.Summer,trackUrl:'
+      + JSON.stringify('tracks/official/' + t.file) + ',thumbnail:' + JSON.stringify('tracks/official/thumbnails/' + t.thumbnail) + '}').join(',')
+      + '].map((e=>({id:e.id,group:e.group??e.environment,',
+  },
+  {
+    name: 'mod track records are never uploaded to the leaderboard',
+    find: 'Jd=async function(e,t,n,i,r){if((0,R.gn)(this,jd,"f").determinismState!=Mo.Ok)return null;',
+    replace: 'Jd=async function(e,t,n,i,r){if((0,R.gn)(this,jd,"f").determinismState!=Mo.Ok)return null;if(' + JSON.stringify(MOD_TRACKS.map(t => t.id)) + '.includes(t))return null;',
   },
 
   // ---------------------------------------------------------------- invite codes

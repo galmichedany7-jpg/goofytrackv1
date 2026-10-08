@@ -40,10 +40,15 @@ run('build_patterns.js');
 run('patch_bundle.js');
 
 for (const file of ['apex-theme.css', 'apex-room.js']) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
+fs.copyFileSync(path.join(__dirname, 'goofytrack-logo.svg'), path.join(APP, 'images', 'logo.svg'));
+for (const track of require('./tracks')) {
+  fs.copyFileSync(path.join(__dirname, 'tracks', track.file), path.join(APP, 'tracks', 'official', track.file));
+  fs.copyFileSync(path.join(__dirname, 'tracks', track.thumbnail), path.join(APP, 'tracks', 'official', 'thumbnails', track.thumbnail));
+}
 const mainScript = '<script defer="defer" src="main.bundle.js">';
 let html = fs.readFileSync(path.join(ORIGINALS, 'index.html'), 'utf8');
 if (!html.includes(mainScript) || !html.includes('</head>')) throw new Error('index.html does not look like the supported game version');
 html = html.replace(mainScript, '<script defer="defer" src="apex-room.js"></script>' + mainScript).replace('</head>', '<link rel="stylesheet" href="apex-theme.css"/></head>');
 fs.writeFileSync(path.join(APP, 'index.html'), html);
-console.log('Installed: apex-theme.css, apex-room.js');
+console.log('Installed: apex-theme.css, apex-room.js, goofytrack-logo.svg, ' + require('./tracks').map(t => t.file).join(', '));
 console.log(`Done. Start ${path.join(GAME, 'PolyTrack.exe')}`);
