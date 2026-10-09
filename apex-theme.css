@@ -307,8 +307,9 @@ html body {
 	background: var(--apx-ink-950);
 }
 #ui .menu-ui > .logo {
-	-webkit-filter: grayscale(1) brightness(1.7) drop-shadow(0 10px 40px rgba(215, 255, 62, 0.22));
-	filter: grayscale(1) brightness(1.7) drop-shadow(0 10px 40px rgba(215, 255, 62, 0.22));
+	/* the logo keeps its own colours (goofytrack-logo.svg), with a soft glow */
+	-webkit-filter: drop-shadow(0 10px 40px rgba(184, 194, 251, 0.25));
+	filter: drop-shadow(0 10px 40px rgba(184, 194, 251, 0.25));
 }
 #ui .menu-ui > .warning-message {
 	font-size: 18px;

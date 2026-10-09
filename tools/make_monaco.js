@@ -2,16 +2,15 @@
 //
 //   tracks/monaco/monaco.glb         the drivable circuit as custom track parts (road ribbon with
 //                                    kerbs and barriers, start line, checkpoint and finish gates)
-//   tracks/monaco/monaco_decor.bin   the town around it, simplified, with its texture coordinates
-//   tracks/monaco/monaco_decor.jpg   its texture, reduced to 2048 px (made from the model's PNG, see README)
-//   tracks/monaco/monaco.json        where everything goes (tiles, gates, waypoints)
+//   tracks/monaco/monaco.json        where everything goes (tiles, gates, waypoints); apex-monaco.js builds
+//                                    the town, harbour and mountains around the circuit from its waypoints
 //
 // The circuit is the asphalt-coloured ribbon of the model: its centreline is traced, smoothed and
-// rebuilt as a clean road. The model itself is only scenery (it is not collided with).
+// rebuilt as a clean road. Nothing else is taken from the model.
 //
 //   node tools/make_monaco.js "C:\path\to\model folder"      (folder with output.obj and the texture)
 //
-// The model is not part of this repository; the three generated files are.
+// The model is not part of this repository; the generated files are.
 const fs = require('fs');
 const zlib = require('zlib');
 const path = require('path');
@@ -348,58 +347,6 @@ jh.writeUInt32LE(json.length, 0); jh.writeUInt32LE(0x4E4F534A, 4); bh.writeUInt3
 fs.writeFileSync(path.join(OUT, 'monaco.glb'), Buffer.concat([head, jh, json, bh, bin]));
 const roadTriangles = Object.values(parts.MonacoRoad).reduce((s, a) => s + a.length / 9, 0);
 
-// ------------------------------------------------------------------ the town: simplified scenery, still textured
-// Vertices are merged when they are close in space AND close in the texture, so each merged vertex
-// keeps a meaningful texture coordinate and the facades stay readable.
-// nearest distance from a point to the centreline, through a coarse grid of its points
-const bucket = new Map();
-line.forEach((q, i) => { const k = Math.floor(q[0] / 12) + ',' + Math.floor(q[1] / 12); (bucket.get(k) || bucket.set(k, []).get(k)).push(i); });
-// is this point inside the space the road needs (corridor, from below the deck up to tunnel height)?
-const inRoadSpace = (x, y, z) => {
-  const bx = Math.floor(x / 12), bz = Math.floor(z / 12);
-  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const k of bucket.get((bx + i) + ',' + (bz + j)) || [])
-    if (Math.hypot(line[k][0] - x, line[k][1] - z) < W + 1.5 && y > height[k] - 4 && y < height[k] + 7.5) return true;
-  return false;
-};
-const world = (x, y, z) => { const [lx, lz] = toLocal(x * SCALE, z * SCALE); return [lx, (y - ROAD_Y) * SCALE, lz]; };
-const CELL = 3.4, UV_CELLS = 160;                                        // metres / texture grid: closer vertices are merged
-const clusters = new Map(), cPos = [], cUv = [], cCount = [];
-// OBJ corners pair a position with a texture coordinate; the cluster is chosen per corner
-const cornerCluster = (vi, ti) => {
-  const w = world(V[vi * 3], V[vi * 3 + 1], V[vi * 3 + 2]);
-  const key = Math.floor(w[0] / CELL) + ',' + Math.floor(w[1] / CELL) + ',' + Math.floor(w[2] / CELL) + '|' + Math.floor(T[ti * 2] * UV_CELLS) + ',' + Math.floor(T[ti * 2 + 1] * UV_CELLS);
-  let c = clusters.get(key);
-  if (c == null) { c = cCount.length; clusters.set(key, c); cPos.push(0, 0, 0); cUv.push(0, 0); cCount.push(0); }
-  cPos[c * 3] += w[0]; cPos[c * 3 + 1] += w[1]; cPos[c * 3 + 2] += w[2]; cUv[c * 2] += T[ti * 2]; cUv[c * 2 + 1] += T[ti * 2 + 1]; cCount[c]++;
-  return c;
-};
-const indices = [], seen = new Set();
-for (let f = 0; f < faces; f++) {
-  const w = world(faceCentre[f * 3], faceCentre[f * 3 + 1], faceCentre[f * 3 + 2]);
-  // clear the road corridor up to tunnel height: the model's own road, and whatever stands where ours passes
-  if (inRoadSpace(w[0], w[1], w[2])) continue;
-  const a = cornerCluster(F[f * 6], F[f * 6 + 1]), b = cornerCluster(F[f * 6 + 2], F[f * 6 + 3]), c = cornerCluster(F[f * 6 + 4], F[f * 6 + 5]);
-  if (a === b || b === c || a === c) continue;
-  const key = [a, b, c].sort((x, y) => x - y).join(',');
-  if (seen.has(key)) continue;
-  seen.add(key);
-  indices.push(a, b, c);
-}
-// keep only the vertices that are still used
-const remap = new Int32Array(cCount.length).fill(-1); let used = 0;
-for (const v of indices) if (remap[v] < 0) remap[v] = used++;
-const positions = new Float32Array(used * 3), uvs = new Float32Array(used * 2);
-for (let c = 0; c < remap.length; c++) {
-  const n = remap[c]; if (n < 0) continue;
-  for (let k = 0; k < 3; k++) positions[n * 3 + k] = cPos[c * 3 + k] / cCount[c];
-  uvs[n * 2] = cUv[c * 2] / cCount[c]; uvs[n * 2 + 1] = cUv[c * 2 + 1] / cCount[c];
-}
-const index = new Uint32Array(indices.map(v => remap[v]));
-const header = Buffer.from(JSON.stringify({ vertices: used, triangles: index.length / 3 }));
-const headerLength = Buffer.alloc(4); headerLength.writeUInt32LE(header.length, 0);
-const pad = Buffer.alloc((4 - (4 + header.length) % 4) % 4, 0x20);
-fs.writeFileSync(path.join(OUT, 'monaco_decor.bin'), Buffer.concat([headerLength, header, pad, Buffer.from(positions.buffer), Buffer.from(index.buffer), Buffer.from(uvs.buffer)]));
-
 // ------------------------------------------------------------------ monaco.json
 fs.writeFileSync(path.join(OUT, 'monaco.json'), JSON.stringify({
   ids: IDS, scale: SCALE, lapLength: Math.round(lapLength), bridgeHeight: BRIDGE_HEIGHT, roadHalfWidth: ROAD_HALF, gateWidth: 2 * W + 6,
@@ -408,6 +355,6 @@ fs.writeFileSync(path.join(OUT, 'monaco.json'), JSON.stringify({
   roadCells: [...cells].filter(c => !gateCells.has(c)).map(c => c.split(',').map(Number)),
   waypoints: line.filter((_, i) => i % 4 === 0).map(q => [+q[0].toFixed(1), +q[1].toFixed(1)]),
 }));
-console.log(`Road: ${roadTriangles} triangles. Town: ${index.length / 3} triangles, ${used} vertices (from ${faces}).`);
+console.log(`Road: ${roadTriangles} triangles.`);
 console.log('Checkpoints:', checkpoints.map(c => `(${c.gx * GRID}, ${c.gz * GRID}) ${c.rotation ? 'x' : 'z'} straight ${c.straightness.toFixed(3)} clear ${c.clear.toFixed(0)} m`).join('  '));
 console.log('Written to ' + OUT);

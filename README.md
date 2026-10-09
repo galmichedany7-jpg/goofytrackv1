@@ -4,7 +4,7 @@ Mod pour le jeu [PolyTrack](https://www.kodub.com) 0.6.3 (Windows).
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier du jeu : le script d'installation transforme votre propre copie de PolyTrack.
 
-**Version actuelle : 2.2.1** 
+**Version actuelle : 2.5** 
 Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 ![Menu principal](docs/menu.jpg)
@@ -68,6 +68,23 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
+
+### V2.5 : nouveau Monaco, nouveau logo
+
+**Monaco**
+- Nouveau décor, entièrement généré par le mod ([`apex-monaco.js`](apex-monaco.js)) à partir du tracé du circuit : plus aucun modèle 3D ni texture extérieurs. La même ville est construite chez tous les joueurs, au chargement de la piste (environ une seconde).
+- La mer au sud, avec un port : quais, pontons, yachts amarrés, une digue et son phare, quelques grands yachts au large.
+- Une ville dense le long de la route : immeubles aux façades pastel, volets, commerces et auvents au rez-de-chaussée, tours plus haut sur la pente, villas sur les collines.
+- Une place de casino avec jardins, fontaine, dôme et tourelles ; des tribunes le long de la ligne droite et face au port ; des palmiers en bord de mer et sur les boulevards.
+- Un tunnel sous un hôtel, le long de la mer, à la place du tunnel de l'ancien décor. Les bâtiments, le tunnel et les tribunes projettent leur ombre sur la route.
+- Les montagnes boisées sont remplacées, sur Monaco seulement, par des collines de maquis et des sommets de calcaire.
+- Le circuit lui-même (route, vibreurs, glissières, points de contrôle) ne change pas : les temps restent comparables.
+- L'ancien décor (`tracks/monaco/monaco_decor.bin` et `.jpg`, 4,8 Mo) est supprimé du dépôt et de l'installation.
+
+**Interface**
+- Nouveau logo GoofyTrack dans le menu principal ([`goofytrack-logo.svg`](goofytrack-logo.svg)) : lettres carrées penchées, bleu lavande cerné de bleu marine, traits de vitesse. Le thème ne le passe plus en niveaux de gris.
+
+**Mise à jour** : `git pull` puis `node build.js`. L'empreinte du build change (nouvelle version et thème), donc tous les joueurs d'une room doivent passer en V2.5. Le décor de Monaco (`apex-monaco.js`) ne compte pas dans l'empreinte : il ne change que l'affichage.
 
 ### V2.4 : collisions entre voitures
 
@@ -268,9 +285,10 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `apex-room.js` | Tableau de room, fantôme, mode course |
 | `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
 | `apex-hud.js` | Mini-carte et écart en direct |
-| `apex-scenery.js` | Décor : montagnes, forêts, rochers, ville des circuits |
+| `apex-scenery.js` | Décor : montagnes, forêts, rochers ; affiche la ville des circuits qui en ont une |
+| `apex-monaco.js` | Décor de Monaco généré à partir du tracé : ville, port, mer, tunnel, montagnes |
 | `apex-collide.js` | Collisions entre voitures en course (page du jeu et moteur physique) |
-| `tools/make_monaco.js`, `tracks/monaco/` | Circuit de Monaco : générateur et fichiers produits |
+| `tools/make_monaco.js`, `tracks/monaco/` | Circuit de Monaco : générateur de la route et fichiers produits |
 | `apex-theme.css` | Thème de l'interface |
 | `goofytrack-logo.svg` | Logo du menu principal |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |
