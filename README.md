@@ -4,7 +4,7 @@ Mod pour le jeu [PolyTrack](https://www.kodub.com) 0.6.3 (Windows).
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier du jeu : le script d'installation transforme votre propre copie de PolyTrack.
 
-**Version actuelle : 2.2.1** 
+**Version actuelle : 2.4.1** 
 Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 ![Menu principal](docs/menu.jpg)
@@ -27,7 +27,7 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 - Pièces de piste ombrées en lissé : virages, pentes, loopings, barrières et piliers n'ont plus de facettes visibles. Seul l'ombrage change, calculé une fois au chargement ; la géométrie, qui sert aussi aux collisions, reste identique.
 - Ambiances au choix depuis l'écran d'accueil (jour, heure dorée, crépuscule, couvert) : seules les couleurs du ciel et de la lumière changent, sans coût en performance.
 - Montagnes redessinées : relief plus fin, chaîne lointaine, roche, neige, forêts de sapins ou rochers selon l'environnement (`apex-scenery.js`).
-- Les voitures et la physique ne sont pas touchées. Les réglages sont en tête de `apex-gfx.js` et `apex-scenery.js`.
+- Ces changements ne touchent ni les voitures ni la physique. Les réglages sont en tête de `apex-gfx.js` et `apex-scenery.js`.
 
 **Aides au pilotage** (solo et multijoueur)
 - Mini-carte : le tracé de la piste, votre voiture en flèche et, dans une room, les autres joueurs en points.
@@ -38,14 +38,24 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 - Fantôme du meilleur tour vu dans la room, rejoué à côté de vous.
 - Les rooms passent par le serveur GoofyTrack (voir plus bas) : un code d'invitation reste valable tant que l'hôte est dans la room, et seuls les joueurs qui ont exactement le même build du mod peuvent la rejoindre.
 
+**Circuits**
+- Une catégorie « Circuits » s'ajoute aux pistes officielles, avec Killer Loop et **Monaco** : 1,9 km de route au tracé libre (vibreurs, glissières, tunnel, pont) au milieu de la ville en 3D.
+- Les records sur ces pistes restent locaux.
+
+**Collisions entre voitures**
+- Dans une room « Course », les voitures sont solides les unes pour les autres, en permanence : essais libres, qualifications, tour de formation et course. On se pousse, on se bloque, un choc à l'arrière propulse la voiture de devant, un choc de côté fait tourner.
+- « Collisions activées » s'affiche sous le classement de la room. Pas de collisions dans les rooms Casual et Compétitif.
+- Détails et limites dans les patch notes [V2.4](#v24--collisions-entre-voitures) et dans les [limites connues](#limites-connues).
+
 **Mode course**
 
-Sur l'écran « Héberger », un troisième mode **Course** s'ajoute à Casual et Competitive, avec ses options : nombre de tours (1 à 20), qualifications et tour de formation. L'hôte peut encore les changer dans la room, entre deux courses. Une course enchaîne :
+Sur l'écran
+ « Héberger », un troisième mode **Course** s'ajoute à Casual et Competitive, avec ses options : nombre de tours (1 à 20), qualifications et tour de formation. L'hôte peut encore les changer dans la room, entre deux courses. Une course enchaîne :
 
 1. **Entraînement** : chacun roule librement, le tableau affiche les 5 meilleurs temps.
 2. **Qualifications** (optionnel) : tours chronométrés libres depuis le départ, le meilleur de chacun compte. L'hôte passe à la suite quand il veut.
 3. **Tour de formation** (optionnel) : un tour non chronométré depuis la grille. La course part quand tout le monde l'a bouclé (ou quand l'hôte la lance).
-4. **Course** : grille dans l'ordre des qualifications (ou des temps de la room), cinq feux rouges, puis N tours. Le tableau donne le classement en direct (tour en cours, écarts) et un bandeau affiche votre tour et votre dernier temps au tour.
+4. **Course** : grille dans l'ordre des qualifications (ou des temps de la room), où chaque voiture part réellement de son emplacement, cinq feux rouges, puis N tours. Le tableau donne le classement en direct (tour en cours, écarts) et un bandeau affiche votre tour et votre dernier temps au tour.
 5. **Résultats** : classement final, puis retour à l'entraînement.
 
 Les courses en plusieurs tours demandent un **circuit** : une piste dont la ligne d'arrivée est posée juste derrière le départ (à moins de 50 m), avec ses checkpoints sur le tour. Sur une piste qui ne boucle pas, la course se fait en un seul tour. Le mod ajoute une catégorie **Circuits** aux pistes officielles, après Été, Hiver et Désert, avec le circuit « Killer Loop », un rectangle en route large ([`tracks/killer_loop.track`](tracks/killer_loop.track), généré par [`tracks/make_loop_track.js`](tracks/make_loop_track.js)). Les pistes du mod sont déclarées dans [`tracks/index.js`](tracks/index.js) ; leurs records restent sur votre machine et ne sont jamais envoyés au classement en ligne du jeu, qui ne les connaît pas.
