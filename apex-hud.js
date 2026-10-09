@@ -8,6 +8,9 @@
 //
 // Both read what the game already knows (track layout, car positions); nothing is sent anywhere
 // and the physics is not involved.
+//
+// The mini-map is shown or hidden with a key of its own ("Mini-map" in the game's controls settings,
+// M by default), and stays as the player left it from one game to the next.
 // The game calls into window.ApexHud from the hooks added by patch_bundle.js.
 (() => {
   'use strict';
@@ -18,6 +21,7 @@
   const SAMPLE_FRAMES = 50;       // own car sampled every 50 ms of race time
   const DELTA_MAX_DISTANCE = 30;  // metres from the reference line beyond which the delta is hidden
   const REMOTE_TIMEOUT = 4000;    // ms without news before another player's dot disappears
+  const MAP_HIDDEN_KEY = 'goofytrack.minimapHidden';
 
   let ctx = null;                 // { owner, track, getSelfCar }
   let map = null;                 // { canvas, layer, scale, toPixel(x, z) }
@@ -29,6 +33,9 @@
   let refIndex = 0;
   let frame = 0;
   let lastDelta = null;
+  let mapHidden = false;
+  try { mapHidden = localStorage.getItem(MAP_HIDDEN_KEY) === 'true'; } catch (e) { /* storage unavailable */ }
+  const showMapState = () => { if (map) map.canvas.style.display = mapHidden ? 'none' : ''; };
 
   const ui = () => document.getElementById('ui');
   const raceActive = () => !!(window.ApexRoom && window.ApexRoom.raceActive && window.ApexRoom.raceActive());
@@ -199,13 +206,26 @@
       if (self == null) return;
       if (map === null) {
         try { map = buildMap() || false; } catch (e) { console.error('Apex: mini-map unavailable', e); map = false; }
-        if (map) ui().appendChild(map.canvas);
+        if (map) { ui().appendChild(map.canvas); showMapState(); }
       }
       const state = sample(self);
       if (++frame % 2 === 0) {                 // 30 redraws per second are plenty for both widgets
         if (map) drawMap(self);
         showDelta(state, self);
       }
+    },
+    // The "Mini-map" key (patch_bundle.js adds it to the game's key bindings)
+    toggleMap() {
+      mapHidden = !mapHidden;
+      try { localStorage.setItem(MAP_HIDDEN_KEY, String(mapHidden)); } catch (e) { /* storage unavailable */ }
+      showMapState();
+    },
+    mapLabel: () => ((window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr') ? 'Mini-carte' : 'Mini-map'),
+    // M used to be the second key of the cockpit camera. Key bindings saved before the mini-map key
+    // existed give M back to the mini-map, once: afterwards the player's own choice is kept.
+    migrateKeys(bindings, ids) {
+      if (bindings.some(([id]) => id === ids.ApexToggleMinimap)) return bindings;
+      return bindings.map(([id, keys]) => (id === ids.VehicleCockpitCamera ? [id, keys.map(k => (k === 'KeyM' ? null : k))] : [id, keys]));
     },
     end(owner) {
       if (owner !== undefined && ctx != null && ctx.owner !== owner) return;

@@ -190,6 +190,34 @@ const patches = [
   },
 
   // ---------------------------------------------------------------- driving HUD (apex-hud.js), every game mode
+  // The mini-map gets a key binding of its own, set in the game's controls settings (M by default).
+  // Saved bindings of a game without the mod skip the unknown "ApexToggleMinimap" name, and the other way round.
+  {
+    name: 'mini-map key: a new key binding',
+    find: 'e[e.PreviewStepBack=34]="PreviewStepBack"}',
+    replace: 'e[e.PreviewStepBack=34]="PreviewStepBack",e[e.ApexToggleMinimap=35]="ApexToggleMinimap"}',
+  },
+  {
+    // M was the second key of the cockpit camera: it goes to the mini-map
+    name: 'mini-map key: M by default',
+    find: '[ge.A.VehicleCockpitCamera,["KeyC","KeyM"]]',
+    replace: '[ge.A.VehicleCockpitCamera,["KeyC",null]],[ge.A.ApexToggleMinimap,["KeyM",null]]',
+  },
+  {
+    name: 'mini-map key: bindings saved before it existed hand M over',
+    find: 'n.push([i,[r[0],r[1]]])))}return n}',
+    replace: 'n.push([i,[r[0],r[1]]])))}return window.ApexHud?window.ApexHud.migrateKeys(n,ge.A):n}',
+  },
+  {
+    name: 'mini-map key: listed in the controls settings, under the cockpit camera',
+    find: '"Cockpit camera"),ge.A.VehicleCockpitCamera),',
+    replace: '"Cockpit camera"),ge.A.VehicleCockpitCamera),(0,R.gn)(this,qs,"m",yo).call(this,window.ApexHud?window.ApexHud.mapLabel():"Mini-map",ge.A.ApexToggleMinimap),',
+  },
+  {
+    name: 'mini-map key: shows / hides the mini-map while driving',
+    find: 'else if(f.checkKeyBinding(e,ge.A.ToggleUI))',
+    replace: 'else if(f.checkKeyBinding(e,ge.A.ApexToggleMinimap))e.repeat||window.ApexHud&&window.ApexHud.toggleMap(),e.preventDefault();else if(f.checkKeyBinding(e,ge.A.ToggleUI))',
+  },
   {
     name: 'HUD context (track, own car)',
     anchor: '(0,R.gn)(this,ta,"m",Ms).call(this),window.addEventListener("keydown",(0,R.GG)(this,ds',

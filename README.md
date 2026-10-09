@@ -30,7 +30,7 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 - Ces changements ne touchent ni les voitures ni la physique. Les réglages sont en tête de `apex-gfx.js` et `apex-scenery.js`.
 
 **Aides au pilotage** (solo et multijoueur)
-- Mini-carte : le tracé de la piste, votre voiture en flèche et, dans une room, les autres joueurs en points.
+- Mini-carte : le tracé de la piste, votre voiture en flèche et, dans une room, les autres joueurs en points. La touche M (réglable dans Paramètres > Contrôles) l'affiche ou la masque.
 - Écart en direct : pendant le tour, votre avance ou votre retard sur votre meilleur tour de la session, mesuré en continu le long de la piste et pas seulement aux points de contrôle.
 
 **Multijoueur**
@@ -90,10 +90,16 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 - Le circuit lui-même (route, vibreurs, glissières, points de contrôle) ne change pas : les temps restent comparables.
 - L'ancien décor (`tracks/monaco/monaco_decor.bin` et `.jpg`, 4,8 Mo) est supprimé du dépôt et de l'installation.
 
+**Mini-carte**
+- Nouvelle touche « Mini-carte » pour l'afficher ou la masquer en pleine course : M par défaut, réglable dans Paramètres > Contrôles > Véhicule, sous « Caméra cockpit ». Le choix est gardé d'une partie à l'autre.
+- M était aussi la deuxième touche de la caméra cockpit : la caméra garde C. Les touches enregistrées avant cette version sont reprises une fois de cette façon, ensuite vos réglages sont respectés.
+
 **Interface**
 - Nouveau logo GoofyTrack dans le menu principal ([`goofytrack-logo.svg`](goofytrack-logo.svg)) : lettres carrées penchées, bleu lavande cerné de bleu marine, traits de vitesse. Le thème ne le passe plus en niveaux de gris.
 
-**Mise à jour** : `git pull` puis `node build.js`. L'empreinte du build change (nouvelle version et thème), donc tous les joueurs d'une room doivent passer en V2.5. Le décor de Monaco (`apex-monaco.js`) ne compte pas dans l'empreinte : il ne change que l'affichage.
+La V2.5 contient aussi le correctif des collisions de la V2.4.1.
+
+**Mise à jour** : `git pull` puis `node build.js`. L'empreinte du build change (nouvelle version), donc tous les joueurs d'une room doivent passer en V2.5. Le décor de Monaco (`apex-monaco.js`) ne compte pas dans l'empreinte : il ne change que l'affichage.
 
 ### V2.4.1 : correctif des collisions
 
