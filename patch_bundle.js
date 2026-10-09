@@ -1,4 +1,4 @@
-﻿// Adds the ApexRoom hooks to the game's main bundle.
+// Adds the ApexRoom hooks to the game's main bundle.
 // Always patches from the pristine copy in original/, so it can be re-run safely.
 //
 // Usage: node patch_bundle.js
@@ -39,19 +39,19 @@ const patches = [
     name: 'remote car update',
     anchor: '((e,n,i,r)=>{if(e!=k.sessionId)return;',
     context: '((e,n,i,r)=>{if(e!=k.sessionId)return;const a=(0,R.gn)(this,as,"f").get(n);',
-    insert: HOOK + 'onRemoteState(n,i,r);',
+    insert: HOOK + 'onRemoteState(n,i,r);window.ApexHud&&window.ApexHud.remote(n,r);',
   },
   {
     name: 'per-frame update',
     anchor: '.frames/1e3-t}e.car.update(n)}',
     context: '.frames/1e3-t}e.car.update(n)}(0,R.gn)(this,ta,"m",Cs).call(this)',
-    insert: HOOK + 'update(n),',
+    insert: HOOK + 'update(n),window.ApexHud&&window.ApexHud.update(),',
   },
   {
     name: 'game disposed',
     anchor: '(0,R.gn)(this,as,"f").clear(),',
     context: '(0,R.gn)(this,as,"f").clear(),window.removeEventListener("keydown",(0,R.gn)(this,ds',
-    insert: HOOK + 'end(this),',
+    insert: HOOK + 'end(this),window.ApexHud&&window.ApexHud.end(this),',
   },
 
   // ---------------------------------------------------------------- race mode
@@ -149,6 +149,37 @@ const patches = [
     name: 'mod track records are never uploaded to the leaderboard',
     find: 'Jd=async function(e,t,n,i,r){if((0,R.gn)(this,jd,"f").determinismState!=Mo.Ok)return null;',
     replace: 'Jd=async function(e,t,n,i,r){if((0,R.gn)(this,jd,"f").determinismState!=Mo.Ok)return null;if(' + JSON.stringify(MOD_TRACKS.map(t => t.id)) + '.includes(t))return null;',
+  },
+
+  // ---------------------------------------------------------------- driving HUD (apex-hud.js), every game mode
+  {
+    name: 'HUD context (track, own car)',
+    anchor: '(0,R.gn)(this,ta,"m",Ms).call(this),window.addEventListener("keydown",(0,R.GG)(this,ds',
+    before: true,
+    insert: 'window.ApexHud&&window.ApexHud.begin({owner:this,track:(0,R.gn)(this,ra,"f"),getSelfCar:()=>(0,R.gn)(this,Xa,"f")}),',
+  },
+
+  // ---------------------------------------------------------------- graphics (apex-gfx.js)
+  {
+    name: 'renderer created: soft shadows',
+    anchor: '.add(new r.dth(3891597,11714755,4.7))',
+    insert: ',window.ApexGfx&&window.ApexGfx.init((0,i.gn)(this,S,"f"))',
+  },
+  {
+    name: 'before each frame: shadow strength',
+    find: '(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f"))}addMaterial(e){',
+    replace: 'window.ApexGfx&&window.ApexGfx.frame((0,i.gn)(this,S,"f"),(0,i.gn)(this,E,"f")),(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f"))}addMaterial(e){',
+  },
+  {
+    name: 'sky dome material',
+    anchor: 's.side=M.hsX,s.depthWrite=!1,',
+    insert: 'window.ApexGfx&&window.ApexGfx.sky(s),',
+  },
+  {
+    // r is also the geometry the physics reads its vertices from: only its normals are rewritten
+    name: 'track parts are shaded smooth across shallow edges',
+    find: 'const r=vu.pP(i,!0).toNonIndexed();r.computeVertexNormals();',
+    replace: 'const r=vu.pP(i,!0).toNonIndexed();r.computeVertexNormals(),window.ApexGfx&&window.ApexGfx.smooth(r);',
   },
 
   // ---------------------------------------------------------------- invite codes

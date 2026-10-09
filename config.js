@@ -13,4 +13,6 @@ module.exports = {
   APP: path.join(RESOURCES, 'app'),                           // unpacked, modded copy the game loads instead
   ORIGINALS: path.join(__dirname, 'original'),                // pristine game files the build starts from (never committed)
   SUPPORTED_VERSION: '0.6.3',
+  MOD_NAME: 'GoofyTrack',                                     // shown on the home screen, with the version
+  MOD_VERSION: '2.3',
 };

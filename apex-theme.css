@@ -1,4 +1,4 @@
-﻿/* ==========================================================================
+/* ==========================================================================
    APEX â€” design system for the PolyTrack mod
    Dark "pit wall" surfaces, hairline borders, one volt accent, DIN-style type.
 
@@ -1629,4 +1629,107 @@ html dialog.message-box-ui > div > p {
 	min-width: 28px;
 	text-align: right;
 	font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 16. Home screen: centred tiles, version badge ------------------------- */
+/* The tiles inherited the generic button padding, which pushed icon and label off centre. */
+#ui .menu-ui .button-image {
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 22px;
+	padding: 0;
+	vertical-align: top;
+}
+#ui .menu-ui .button-image > img {
+	display: block;
+	margin: 6px 0 0 0;
+}
+#ui .menu-ui .button-image > p {
+	margin: 0;
+	width: 100%;
+	text-align: center;
+	/* letter-spacing adds a trailing gap after the last letter: shift the text back by half of it */
+	text-indent: 0.2em;
+}
+/* Name and version of the mod (set by build.js from config.js), under the logo */
+#ui .menu-ui:has(> .logo:not(.hidden))::before {
+	content: var(--apx-version, "");
+	position: absolute;
+	left: 50%;
+	top: 300px;
+	transform: translateX(-50%);
+	padding: 7px 16px 6px 16px;
+	border-radius: var(--apx-r-pill);
+	background-color: var(--apx-accent-soft);
+	box-shadow: inset 0 0 0 1px var(--apx-accent-ring);
+	color: var(--apx-accent);
+	font-family: var(--apx-font);
+	font-size: 15px;
+	font-weight: 700;
+	letter-spacing: 0.22em;
+	text-indent: 0.22em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+#ui .menu-ui.loading-screen::before {
+	display: none;
+}
+
+/* ---------- 17. Home screen: no outbound links -------------------------------------- */
+/* Store, Discord and Reddit badges and the link to the game's site are removed. Two credits stay,
+   as plain text: the game this mod is built on, and the music (its CC-BY licence requires it). */
+#ui .menu-ui > .info > .social-links,
+#ui .menu-ui > .info > a:first-of-type {
+	display: none;
+}
+#ui .menu-ui > .info::before {
+	content: "Mod non officiel, basé sur PolyTrack 0.6.3 de Kodub";
+	display: block;
+	padding: 5px;
+	font-size: 14px;
+	color: var(--apx-fg-subtle);
+}
+#ui .menu-ui > .info > a {
+	pointer-events: none;
+	cursor: default;
+}
+#ui .menu-ui > .info {
+	bottom: 78px;
+}
+/* ---------- 18. Driving HUD (apex-hud.js) -------------------------------------------- */
+#ui .apex-minimap {
+	position: absolute;
+	left: calc(16px + var(--safe-area-horizontal));
+	bottom: 92px;
+	padding: 10px;
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-glass);
+	box-shadow: inset 0 0 0 1px var(--apx-line), 0 8px 24px rgba(0, 0, 0, 0.3);
+	pointer-events: none;
+	image-rendering: auto;
+}
+#ui .apex-delta {
+	position: absolute;
+	left: 50%;
+	bottom: 104px;
+	transform: translateX(-50%);
+	min-width: 92px;
+	padding: 6px 14px 5px 14px;
+	border-radius: var(--apx-r-pill);
+	background-color: var(--apx-glass-strong);
+	box-shadow: inset 0 0 0 1px rgba(255, 90, 110, 0.55);
+	color: var(--apx-bad);
+	font-size: 20px;
+	font-weight: 700;
+	text-align: center;
+	pointer-events: none;
+}
+#ui .apex-delta.ahead {
+	box-shadow: inset 0 0 0 1px rgba(79, 240, 161, 0.55);
+	color: var(--apx-good);
+}
+#ui .apex-delta.hidden {
+	display: none;
 }

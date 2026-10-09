@@ -19,6 +19,17 @@ Un mod pour la version bureau de [PolyTrack](https://www.kodub.com) 0.6.3 (Windo
 - Surfaces sombres translucides, coins arrondis, un seul accent de couleur, police Bahnschrift.
 - Les couleurs, rayons et ombres sont des variables en tête de `apex-theme.css`.
 
+**Graphismes**
+- Ombres plus douces et un peu plus marquées.
+- Ciel plus profond avec un halo autour du soleil, nuages plus lumineux.
+- Pièces de piste ombrées en lissé : virages, pentes, loopings, barrières et piliers n'ont plus de facettes visibles. Seul l'ombrage change, calculé une fois au chargement ; la géométrie, qui sert aussi aux collisions, reste identique.
+- Ambiances au choix depuis l'écran d'accueil (jour, heure dorée, crépuscule, couvert) : seules les couleurs du ciel et de la lumière changent, sans coût en performance.
+- Les voitures et la physique ne sont pas touchées. Tout est dans `apex-gfx.js`, réglable en tête de fichier.
+
+**Aides au pilotage** (solo et multijoueur)
+- Mini-carte : le tracé de la piste, votre voiture en flèche et, dans une room, les autres joueurs en points.
+- Écart en direct : pendant le tour, votre avance ou votre retard sur votre meilleur tour de la session, mesuré en continu le long de la piste et pas seulement aux points de contrôle.
+
 **Multijoueur**
 - Tableau des 5 meilleurs temps de la room, affiché pendant la course.
 - Fantôme du meilleur tour vu dans la room, rejoué à côté de vous.
@@ -87,6 +98,8 @@ Le dossier `resources/app` est supprimé et l'archive d'origine remise en place.
 | `build_patterns.js` | Génération des 16 livrées |
 | `patch_bundle.js` | Points d'accroche ajoutés au code du jeu |
 | `apex-room.js` | Tableau de room, fantôme, mode course |
+| `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
+| `apex-hud.js` | Mini-carte et écart en direct |
 | `apex-theme.css` | Thème de l'interface |
 | `goofytrack-logo.svg` | Logo du menu principal |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |
