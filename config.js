@@ -13,4 +13,7 @@ module.exports = {
   APP: path.join(RESOURCES, 'app'),                           // unpacked, modded copy the game loads instead
   ORIGINALS: path.join(__dirname, 'original'),                // pristine game files the build starts from (never committed)
   SUPPORTED_VERSION: '0.6.3',
+  MOD_VERSION: '2.1',                                         // shown in the main menu, under the game version
+  // Our matchmaking server (server/), in place of the PolyTrack one. GOOFY_SERVER overrides it, e.g. for a local test.
+  SERVER_URL: process.env.GOOFY_SERVER || 'https://goofytrack.onrender.com/',
 };

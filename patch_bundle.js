@@ -4,9 +4,19 @@
 // Usage: node patch_bundle.js
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
-const { APP, ORIGINALS } = require('./config');
+const { APP, ORIGINALS, MOD_VERSION, SERVER_URL } = require('./config');
 const MOD_TRACKS = require('./tracks');
+
+// Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
+// so a modified game never meets an older one (their race messages or physics would not match).
+const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js',
+  ...MOD_TRACKS.map(t => path.join('tracks', t.file))];
+const BUILD_ID = MOD_VERSION + '-' + BUILD_SOURCES
+  .reduce((hash, file) => hash.update(fs.readFileSync(path.join(__dirname, file))), crypto.createHash('sha256'))
+  .digest('hex').slice(0, 8);
+const SERVER_QUERY = '?mod=' + encodeURIComponent(BUILD_ID);
 
 const SRC = path.join(ORIGINALS, 'main.bundle.js');
 const OUT = path.join(APP, 'main.bundle.js');
@@ -151,11 +161,46 @@ const patches = [
     replace: 'Jd=async function(e,t,n,i,r){if((0,R.gn)(this,jd,"f").determinismState!=Mo.Ok)return null;if(' + JSON.stringify(MOD_TRACKS.map(t => t.id)) + '.includes(t))return null;',
   },
 
+  // ---------------------------------------------------------------- our own matchmaking server
+  // Rooms are set up through server/ instead of vps.kodub.com (leaderboards still use the official server).
+  // The game refuses multiplayer when it finds modified physics or assets; with our server that is allowed,
+  // so the game can be changed freely as long as every player runs the same build.
+  {
+    name: 'rooms are hosted through the GoofyTrack server',
+    find: 'createMultiplayerHostWebSocket(){if(this.determinismState!=Mo.Ok)throw new Error("WebSocket creation not allowed with non-deterministic physics");return new WebSocket("https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"multiplayer/host")}',
+    replace: 'createMultiplayerHostWebSocket(){return new WebSocket(' + JSON.stringify(SERVER_URL + 'multiplayer/host' + SERVER_QUERY) + ')}',
+  },
+  {
+    name: 'rooms are joined through the GoofyTrack server',
+    find: 'createMultiplayerJoinWebSocket(){if(this.determinismState!=Mo.Ok)throw new Error("WebSocket creation not allowed with non-deterministic physics");return new WebSocket("https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"multiplayer/join")}',
+    replace: 'createMultiplayerJoinWebSocket(){return new WebSocket(' + JSON.stringify(SERVER_URL + 'multiplayer/join' + SERVER_QUERY) + ')}',
+  },
+  {
+    // the server turns away a player whose build differs from the host's with the "incompatible mods" reason
+    name: 'a different build is reported as such when joining',
+    find: 'case"mods-not-vanilla-compatible":n=(0,R.gn)(this,bc,"f").get("Error: Incompatible mods");',
+    replace: 'case"mods-not-vanilla-compatible":n=window.ApexRoom?window.ApexRoom.buildMismatch():(0,R.gn)(this,bc,"f").get("Error: Incompatible mods");',
+  },
+  {
+    name: 'ICE servers come from the GoofyTrack server',
+    find: 'const n="https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"iceServers?version=0.6.3"',
+    replace: 'const n=' + JSON.stringify(SERVER_URL + 'iceServers?version=0.6.3'),
+  },
+
   // ---------------------------------------------------------------- invite codes
   {
     name: 'invite code renews itself when it expires',
     find: 'n=setTimeout((()=>{n=null,e.close()}),r)',
     replace: 'n=setTimeout((()=>{n=null,e.close(),setTimeout((()=>{(0,R.gn)(this,Gn,"f")||this.renewInvite(!0)}),1500)}),r)',
+  },
+
+  // ---------------------------------------------------------------- main menu footer
+  {
+    // keeps the copyright and music credit, drops the Google Play / Discord / Reddit links
+    name: 'main menu shows the mod version instead of the social links',
+    find: '{const e=document.createElement("div");e.className="social-links",(0,R.gn)(this,_h,"f").appendChild(e);{const t=document.createElement("a");t.href="https://www.kodub.com/googleplay/polytrack",t.target="_blank",e.appendChild(t);const n=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(n.classList.add("loading"),n.addEventListener("load",(()=>{n.classList.remove("loading")}))),n.src="images/google_play.svg",t.appendChild(n)}const t=document.createElement("a");t.href="https://www.kodub.com/discord/polytrack",t.target="_blank",e.appendChild(t);const n=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(n.classList.add("loading"),n.addEventListener("load",(()=>{n.classList.remove("loading")}))),n.src="images/discord.svg",t.appendChild(n);const i=document.createElement("a");i.href="https://www.kodub.com/reddit/polytrack",i.target="_blank",e.appendChild(i);const r=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(r.classList.add("loading"),r.addEventListener("load",(()=>{r.classList.remove("loading")}))),r.src="images/reddit.svg",i.appendChild(r)}}',
+    replace: '{const e=document.createElement("a");e.textContent=' + JSON.stringify('Mod GoofyTrack V' + MOD_VERSION)
+      + ',e.title=' + JSON.stringify('Build ' + BUILD_ID) + ',(0,R.gn)(this,_h,"f").appendChild(e)}}',
   },
 ];
 
@@ -169,4 +214,4 @@ for (const p of patches) {
   code = code.slice(0, at) + p.insert + code.slice(at);
 }
 fs.writeFileSync(OUT, code);
-console.log(`Patched main.bundle.js (${patches.length} hooks)`);
+console.log(`Patched main.bundle.js (${patches.length} hooks), build ${BUILD_ID}, server ${SERVER_URL}`);
