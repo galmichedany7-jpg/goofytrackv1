@@ -49,8 +49,7 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 **Mode course**
 
-Sur l'écran
- « Héberger », un troisième mode **Course** s'ajoute à Casual et Competitive, avec ses options : nombre de tours (1 à 20), qualifications et tour de formation. L'hôte peut encore les changer dans la room, entre deux courses. Une course enchaîne :
+Sur l'écran « Héberger », un troisième mode **Course** s'ajoute à Casual et Competitive, avec ses options : nombre de tours (1 à 20), qualifications et tour de formation. L'hôte peut encore les changer dans la room, entre deux courses. Une course enchaîne :
 
 1. **Entraînement** : chacun roule librement, le tableau affiche les 5 meilleurs temps.
 2. **Qualifications** (optionnel) : tours chronométrés libres depuis le départ, le meilleur de chacun compte. L'hôte passe à la suite quand il veut.
