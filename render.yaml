@@ -1,0 +1,13 @@
+# Render blueprint for the GoofyTrack multiplayer server (see README, "Serveur multijoueur")
+services:
+  - type: web
+    name: goofytrack
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: ICE_SERVERS   # optional TURN servers, JSON array
+        sync: false

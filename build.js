@@ -10,7 +10,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 if (process.argv[2]) process.env.POLYTRACK_DIR = process.argv[2];
-const { GAME, ARCHIVE, ARCHIVE_BACKUP, APP, ORIGINALS, SUPPORTED_VERSION, MOD_NAME, MOD_VERSION } = require('./config');
+const { GAME, ARCHIVE, ARCHIVE_BACKUP, APP, ORIGINALS, SUPPORTED_VERSION, MOD_NAME, MOD_VERSION, SERVER_URL } = require('./config');
 const asar = require('./asar');
 
 if (!fs.existsSync(path.join(GAME, 'resources'))) {
@@ -50,7 +50,9 @@ for (const track of require('./tracks')) {
 const mainScript = '<script defer="defer" src="main.bundle.js">';
 let html = fs.readFileSync(path.join(ORIGINALS, 'index.html'), 'utf8');
 if (!html.includes(mainScript) || !html.includes('</head>')) throw new Error('index.html does not look like the supported game version');
-html = html.replace(mainScript, '<script defer="defer" src="apex-gfx.js"></script><script defer="defer" src="apex-hud.js"></script><script defer="defer" src="apex-room.js"></script>' + mainScript).replace('</head>', '<link rel="stylesheet" href="apex-theme.css"/></head>');
+// wake the GoofyTrack server as the game starts: a free host can take ~30 s to come out of sleep
+const wake = '<script>fetch(' + JSON.stringify(SERVER_URL + 'health') + ').catch(()=>{})</script>';
+html = html.replace(mainScript, wake + '<script defer="defer" src="apex-gfx.js"></script><script defer="defer" src="apex-hud.js"></script><script defer="defer" src="apex-room.js"></script>' + mainScript).replace('</head>', '<link rel="stylesheet" href="apex-theme.css"/></head>');
 fs.writeFileSync(path.join(APP, 'index.html'), html);
 console.log(`${MOD_NAME} ${MOD_VERSION} installed: apex-theme.css, apex-room.js, apex-gfx.js, apex-hud.js, goofytrack-logo.svg, ` + '' + require('./tracks').map(t => t.file).join(', '));
 console.log(`Done. Start ${path.join(GAME, 'PolyTrack.exe')}`);

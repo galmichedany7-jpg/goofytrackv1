@@ -48,6 +48,7 @@
     waitGrid: 'En attente de la grille', finished: p => `ARRIVÉE  P${p}`, notLoop: 'Piste sans boucle : 1 tour',
     start: 'Lancer', toFormation: 'Tour de formation', toRace: 'Départ', stop: 'Arrêter', done: 'Terminer',
     qualiHud: 'QUALIFICATIONS', formationHud: 'TOUR DE FORMATION', resultsHud: 'COURSE TERMINÉE',
+    buildMismatch: "Erreur : votre version de GoofyTrack n'est pas celle de l'hôte. Installez le même build que lui.",
   };
   const TEXTS_EN = {
     top: 'TOP 5', race: 'RACE', quali: 'QUALIFYING', formation: 'FORMATION', results: 'RESULTS', go: 'GO',
@@ -57,6 +58,7 @@
     waitGrid: 'Waiting for the grid', finished: p => `FINISHED  P${p}`, notLoop: 'Track does not loop: 1 lap',
     start: 'Start', toFormation: 'Formation lap', toRace: 'Start race', stop: 'Stop', done: 'Finish',
     qualiHud: 'QUALIFYING', formationHud: 'FORMATION LAP', resultsHud: 'RACE OVER',
+    buildMismatch: "Error: your GoofyTrack build is not the same as the host's. Install the same build.",
   };
   const T = new Proxy({}, {
     get: (_, key) => ((window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr') ? TEXTS_FR : TEXTS_EN)[key],
@@ -529,9 +531,11 @@
       } else if (course.finishes.some(d => crosses(d, last, p))) lapDone = true;
     }
     if (state.finishFrames != null) lapDone = true; // single-lap race: the game's own finish
-    if (!lapDone) return;
+    if (lapDone) completeLap(now, state.finishFrames != null);
+  }
+  function completeLap(now, lastLap) {
     const ms = Math.round(now - race.goAt);
-    run.lap = state.finishFrames != null ? race.laps : run.lap + 1;
+    run.lap = lastLap ? race.laps : run.lap + 1;
     run.nextCp = 0;
     run.lastLapTime = ms - (run.lastLapMs || 0);
     run.lastLapMs = ms;
@@ -737,7 +741,7 @@
   window.ApexRoom = {
     // Debug helpers for the console: a read-only snapshot, your own car, and a way to simulate laps
     debugCar: () => (ctx != null ? ctx.getSelfCar() : null),
-    debugLap:() => { if (run != null && race != null && race.phase === 'race') { run.nextCp = course.checkpoints.length; updateLaps({ position: run.lastPos || { x: 0, y: 0, z: 0 }, finishFrames: null }, performance.now()); } },
+    debugLap:() => { if (run != null && !run.finished && race != null && race.phase === 'race') completeLap(performance.now(), false); },
     debug: () => ({
       players: players.length, host: isHost(), hostIsMod: !!(ctx && ctx.connection.apexHostIsMod), room: ctx && ctx.connection.apexRoom,
       modPeers: isHost() ? ctx.connection.apexPeers().filter(p => p.apexMod).map(p => p.id) : null,
@@ -809,6 +813,7 @@
     modeInfo: () => T.modeInfo,
     hostModeChanged(container, mode) { renderHostOptions(container, mode); },
     hosting(mode) { pendingRoom = mode === 'race' ? { race: true, ...settings } : null; },
+    buildMismatch: () => T.buildMismatch,
 
     // --- mod messages
     fromPeer(connection, peer, payload) {          // host received a mod message from a player
