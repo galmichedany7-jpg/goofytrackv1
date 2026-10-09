@@ -69,6 +69,16 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+### V2.4.1 : correctif des collisions
+
+- **Correctif** : en V2.4 les voitures se traversaient la plupart du temps. Le mod retrouvait la voiture dans la mémoire du moteur physique grâce à trois copies de sa position, dont l'une n'est pas toujours identique aux autres au dernier chiffre près ; la recherche échouait alors et le choc n'était pas appliqué. La voiture est maintenant reconnue par les deux copies fiables et par d'autres champs du corps rigide.
+- Les collisions sont actives en permanence dans une room « Course » : essais libres avant le lancement, qualifications, tour de formation et course. En V2.4 elles ne l'étaient que pendant le tour de formation et la course, donc pas tant que l'hôte n'avait pas lancé l'épreuve, ni en qualifications.
+- Hors grille, tout le monde part du même point : une voiture à l'arrêt sur la ligne n'est pas solide, et une voiture qui démarre à l'intérieur d'une autre ne le devient qu'une fois dégagée.
+- La mention « Collisions activées » s'affiche sous le classement de la room quand elles le sont.
+- Une mise à jour de position arrivée en retard (après une plus récente) n'est plus prise pour un redémarrage de la voiture, ce qui la rendait traversable un instant.
+
+**Mise à jour** : `git pull` puis `node build.js`. Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.4.1.
+
 ### V2.4 : collisions entre voitures
 
 En course, les voitures se percutent. Le fantôme du meilleur temps se fait plus discret.
@@ -248,7 +258,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 ## Limites connues
 
 - Collisions : chaque joueur voit les autres avec un léger retard (le temps du réseau), compensé en prolongeant leur trajectoire. Un contact n'est donc pas exactement le même sur les deux écrans, et une voiture qui change brutalement de direction peut être touchée à quelques dizaines de centimètres de l'endroit où elle est dessinée. Les voitures sont testées comme des rectangles vues de dessus : on ne monte pas sur une autre voiture, et deux voitures à plus de 90 cm de hauteur d'écart se croisent sans se toucher.
-- Les collisions s'appuient sur l'emplacement des données de la voiture dans la mémoire du moteur physique de la version 0.6.3 ; elles sont vérifiées à chaque utilisation et, si elles ne correspondent pas, les voitures se traversent simplement.
+- Les collisions s'appuient sur l'emplacement des données de la voiture dans la mémoire du moteur physique de la version 0.6.3 ; elles sont vérifiées à chaque utilisation et, si elles ne correspondent pas, les voitures se traversent simplement. Dans la console du jeu, `ApexCollide.debug().physics` indique chaque seconde le nombre de contacts traités et de recherches échouées (`failedScans`).
 - Tours multiples : la physique du jeu termine une course dès l'arrivée franchie avec tous les checkpoints. Pendant une course en plusieurs tours, elle reçoit donc la piste avec un checkpoint de plus, hors d'atteinte au-dessus du circuit, et c'est le mod qui compte les tours. Conséquence : à partir du 2e tour, le compteur de checkpoints du jeu reste plein, et « revenir au dernier checkpoint » ramène au dernier checkpoint du tour (et non à celui que vous venez de passer).
 - Recommencer pendant une course renvoie sur la grille et remet votre compteur de tours à zéro ; le chrono de course, lui, continue.
 - Les temps de course sont mesurés sur l'horloge de chaque joueur depuis l'extinction des feux, à quelques centièmes près selon la latence.

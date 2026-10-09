@@ -47,7 +47,7 @@
     mode: 'Course', modeInfo: 'Qualifications, tour de formation puis course en plusieurs tours, départ arrêté aux feux.',
     laps: 'Tours', qualiOpt: 'Qualifications', formationOpt: 'Tour de formation',
     lapsOf: (a, b) => `${a}/${b}`, lap: 'TOUR', best: 'Meilleur', last: 'Dernier',
-    waitGrid: 'En attente de la grille', finished: p => `ARRIVÉE  P${p}`, notLoop: 'Piste sans boucle : 1 tour',
+    waitGrid: 'En attente de la grille', finished: p => `ARRIVÉE  P${p}`, notLoop: 'Piste sans boucle : 1 tour', contact: 'Collisions activées',
     start: 'Lancer', toFormation: 'Tour de formation', toRace: 'Départ', stop: 'Arrêter', done: 'Terminer',
     qualiHud: 'QUALIFICATIONS', formationHud: 'TOUR DE FORMATION', resultsHud: 'COURSE TERMINÉE',
     buildMismatch: "Erreur : votre version de GoofyTrack n'est pas celle de l'hôte. Installez le même build que lui.",
@@ -57,7 +57,7 @@
     mode: 'Race', modeInfo: 'Qualifying, formation lap, then a race over several laps from a standing start.',
     laps: 'Laps', qualiOpt: 'Qualifying', formationOpt: 'Formation lap',
     lapsOf: (a, b) => `${a}/${b}`, lap: 'LAP', best: 'Best', last: 'Last',
-    waitGrid: 'Waiting for the grid', finished: p => `FINISHED  P${p}`, notLoop: 'Track does not loop: 1 lap',
+    waitGrid: 'Waiting for the grid', finished: p => `FINISHED  P${p}`, notLoop: 'Track does not loop: 1 lap', contact: 'Collisions on',
     start: 'Start', toFormation: 'Formation lap', toRace: 'Start race', stop: 'Stop', done: 'Finish',
     qualiHud: 'QUALIFYING', formationHud: 'FORMATION LAP', resultsHud: 'RACE OVER',
     buildMismatch: "Error: your GoofyTrack build is not the same as the host's. Install the same build.",
@@ -368,12 +368,18 @@
 
   const slotFor = id => (race == null || race.grid == null || (race.phase !== 'formation' && race.phase !== 'race')
     ? null : race.grid.find(s => s.id === id) || null);
-  // Cars are solid for each other while they are on the grid of a formation lap or a race
-  // (not in qualifying, where everybody starts from the same spot). See apex-collide.js.
+  // Cars are solid for each other in a race room, all the time: free practice, qualifying,
+  // formation lap and race. See apex-collide.js.
+  //   on a grid (formation, race)   the cars of the grid, from the moment they sit on it
+  //   otherwise                     every car that is moving; cars start from the same spot there,
+  //                                 and a car inside another one only turns solid once clear of it
   const collisionSession = () => {
-    if (race == null || race.grid == null || slotFor(selfId) == null) return null;
+    if (ctx == null || !room().race) return null;
+    const onGrid = race != null && race.grid != null && (race.phase === 'formation' || race.phase === 'race');
+    if (!onGrid) return { remotes: ctx.remotes(), solid: () => true, moving: true };
+    if (slotFor(selfId) == null) return null;       // joined during the race: only watching
     const grid = race.grid;
-    return { remotes: ctx.remotes(), solid: id => grid.some(s => s.id === id) };
+    return { remotes: ctx.remotes(), solid: id => grid.some(s => s.id === id), moving: false };
   };
   const applySlot = (transform, slot) => {
     if (slot == null) return transform;
@@ -719,6 +725,7 @@
     else renderTopFive();
 
     if (!raceRoom) return;
+    if (window.ApexCollide) board.appendChild(el('div', 'contact', T.contact));
     if (race == null) renderSettings(isHost());
     if (!isHost()) return;
     if (race == null) board.appendChild(button(T.start, '', hostStart));

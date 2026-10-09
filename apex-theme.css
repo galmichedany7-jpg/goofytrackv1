@@ -1725,3 +1725,12 @@ html dialog.message-box-ui > div > p {
 #ui .apex-delta.hidden {
 	display: none;
 }
+/* race rooms: reminder that cars are solid */
+#ui .apex-room-board > .contact {
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--apx-accent, #c8f02a);
+  opacity: 0.8;
+}
