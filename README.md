@@ -26,7 +26,8 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 - Ciel plus profond avec un halo autour du soleil, nuages plus lumineux.
 - Pièces de piste ombrées en lissé : virages, pentes, loopings, barrières et piliers n'ont plus de facettes visibles. Seul l'ombrage change, calculé une fois au chargement ; la géométrie, qui sert aussi aux collisions, reste identique.
 - Ambiances au choix depuis l'écran d'accueil (jour, heure dorée, crépuscule, couvert) : seules les couleurs du ciel et de la lumière changent, sans coût en performance.
-- Les voitures et la physique ne sont pas touchées. Tout est dans `apex-gfx.js`, réglable en tête de fichier.
+- Montagnes redessinées : relief plus fin, chaîne lointaine, roche, neige, forêts de sapins ou rochers selon l'environnement (`apex-scenery.js`).
+- Les voitures et la physique ne sont pas touchées. Les réglages sont en tête de `apex-gfx.js` et `apex-scenery.js`.
 
 **Aides au pilotage** (solo et multijoueur)
 - Mini-carte : le tracé de la piste, votre voiture en flèche et, dans une room, les autres joueurs en points.
@@ -67,6 +68,33 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
+
+### V2.2 : décors, aides au pilotage, ambiances
+
+Le jeu est plus beau et donne plus d'informations au pilote, sans toucher à la physique ni au protocole multijoueur.
+
+**Décors**
+- Montagnes redessinées dans [`apex-scenery.js`](apex-scenery.js) : relief plus fin, seconde chaîne plus haute à l'horizon, faces colorées selon la pente et l'altitude (herbe, roche et neige en été ; neige, roche nue et glace en hiver ; sable et roche rouge stratifiée dans le désert).
+- Forêts de sapins sur les contreforts (été, hiver), rochers dans le désert.
+- Le maillage d'origine des montagnes est conservé tel quel pour les collisions : seul ce qui est affiché change.
+
+**Graphismes**
+- Ombres plus douces et un peu plus marquées, ciel plus profond avec un halo autour du soleil.
+- Pièces de piste ombrées en lissé : virages, pentes, loopings, barrières et piliers n'ont plus de facettes visibles. La géométrie, qui sert aux collisions, est identique.
+- Ambiances au choix (jour, heure dorée, crépuscule, couvert) avec le bouton « Ambiance » de l'écran d'accueil. Le choix est propre à chaque joueur.
+
+**Aides au pilotage** (solo et multijoueur, dans [`apex-hud.js`](apex-hud.js))
+- Mini-carte : tracé de la piste, votre voiture en flèche, les autres joueurs de la room en points.
+- Écart en direct sur votre meilleur tour de la session, mesuré en continu le long de la piste.
+
+**Interface**
+- Écran d'accueil : pastille « GoofyTrack 2.2 » sous le logo, icônes et libellés des tuiles recentrés.
+- Les liens du bas du menu ne sont plus cliquables (plus aucune redirection vers l'extérieur).
+
+**Corrections**
+- Le fichier du thème contenait une marque d'encodage invisible (BOM) qui pouvait casser toute l'interface ; elle est retirée des sources et tolérée par `build.js`.
+
+**Mise à jour** : `git pull` puis `node build.js`. L'empreinte du build change (nouvelle version), donc tous les joueurs d'une room doivent passer en V2.2. Les fichiers `apex-gfx.js`, `apex-hud.js` et `apex-scenery.js` ne comptent pas dans l'empreinte : ils ne changent que l'affichage.
 
 ### V2.1 : mise à jour des serveurs
 
@@ -199,6 +227,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `apex-room.js` | Tableau de room, fantôme, mode course |
 | `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
 | `apex-hud.js` | Mini-carte et écart en direct |
+| `apex-scenery.js` | Décor : montagnes, forêts, rochers |
 | `apex-theme.css` | Thème de l'interface |
 | `goofytrack-logo.svg` | Logo du menu principal |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |

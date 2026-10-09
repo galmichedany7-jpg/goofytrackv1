@@ -178,7 +178,7 @@ const patches = [
   {
     name: 'before each frame: shadow strength',
     find: '(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f"))}addMaterial(e){',
-    replace: 'window.ApexGfx&&window.ApexGfx.frame((0,i.gn)(this,S,"f"),(0,i.gn)(this,E,"f")),(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f"))}addMaterial(e){',
+    replace: 'window.ApexGfx&&window.ApexGfx.frame((0,i.gn)(this,S,"f"),(0,i.gn)(this,E,"f")),window.ApexScenery&&window.ApexScenery.frame(),(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f"))}addMaterial(e){',
   },
   {
     name: 'sky dome material',
@@ -190,6 +190,19 @@ const patches = [
     name: 'track parts are shaded smooth across shallow edges',
     find: 'const r=vu.pP(i,!0).toNonIndexed();r.computeVertexNormals();',
     replace: 'const r=vu.pP(i,!0).toNonIndexed();r.computeVertexNormals(),window.ApexGfx&&window.ApexGfx.smooth(r);',
+  },
+
+  // ---------------------------------------------------------------- scenery (apex-scenery.js)
+  {
+    name: 'mountains are redrawn in detail',
+    find: '(0,s.gn)(this,f,"f").scene.add(r),(0,s.GG)(this,A,r,"f")}static createMountainVertices',
+    replace: '(0,s.gn)(this,f,"f").scene.add(r),(0,s.GG)(this,A,r,"f"),window.ApexScenery&&window.ApexScenery.mountains(r)}static createMountainVertices',
+  },
+  {
+    // the physics must keep colliding with the game's own mountains, vertex for vertex
+    name: 'the physics reads the original mountain mesh',
+    find: 'const e=(0,s.gn)(this,A,"f").geometry;if(!(e.attributes.position instanceof o.THS))throw new Error("Vertices must use BufferAttribute");return Array.from(e.attributes.position.array)}getMountainOffset',
+    replace: 'const e=(0,s.gn)(this,A,"f").userData.apexPhysics||(0,s.gn)(this,A,"f").geometry;if(!(e.attributes.position instanceof o.THS))throw new Error("Vertices must use BufferAttribute");return Array.from(e.attributes.position.array)}getMountainOffset',
   },
 
   // ---------------------------------------------------------------- our own matchmaking server

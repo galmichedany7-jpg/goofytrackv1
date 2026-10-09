@@ -1678,20 +1678,12 @@ html dialog.message-box-ui > div > p {
 }
 
 /* ---------- 17. Home screen: no outbound links -------------------------------------- */
-/* Store, Discord and Reddit badges and the link to the game's site are removed. Two credits stay,
-   as plain text: the game this mod is built on, and the music (its CC-BY licence requires it). */
-#ui .menu-ui > .info > .social-links,
-#ui .menu-ui > .info > a:first-of-type {
+/* The footer keeps the game's copyright, the music credit (its CC-BY licence requires it) and the
+   mod version line, as plain text: nothing in it opens an outside page any more. */
+#ui .menu-ui > .info > .social-links {
 	display: none;
 }
-#ui .menu-ui > .info::before {
-	content: "Mod non officiel, basé sur PolyTrack 0.6.3 de Kodub";
-	display: block;
-	padding: 5px;
-	font-size: 14px;
-	color: var(--apx-fg-subtle);
-}
-#ui .menu-ui > .info > a {
+#ui .menu-ui > .info > a[href] {
 	pointer-events: none;
 	cursor: default;
 }
