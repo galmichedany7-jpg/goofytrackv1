@@ -102,6 +102,7 @@
   });
 
   let lights = { scanned: -1, list: [] };
+  let gameRenderer = null;
 
   function sceneLights(scene) {
     // Lights sit directly in the scene; rescan only when its content changes.
@@ -115,10 +116,16 @@
   window.ApexGfx = {
     look: LOOK, // tweakable live from the console
 
-    // Renderer created
-    init(renderer) {
+    // Renderer created (game = the game's own wrapper around the three.js renderer)
+    init(renderer, game) {
       renderer.shadowMap.type = PCF_SOFT_SHADOW_MAP;
+      gameRenderer = game;
     },
+
+    // For other modules: a new material must be declared to the game (its shadow system patches shaders),
+    // and textures are built with the class the sky's cloud texture is made of.
+    registerMaterial(material) { if (gameRenderer != null) gameRenderer.addMaterial(material); },
+    makeTexture(image) { return skyMaterial == null ? null : new skyMaterial.uniforms.sampler.value.constructor(image); },
 
     // Before each frame: the game recreates its lights and fog when settings change
     frame(renderer, scene) {

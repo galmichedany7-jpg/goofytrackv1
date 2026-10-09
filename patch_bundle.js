@@ -8,10 +8,13 @@ const crypto = require('crypto');
 
 const { APP, ORIGINALS, MOD_VERSION, SERVER_URL } = require('./config');
 const MOD_TRACKS = require('./tracks');
+const MONACO = require('./tracks/monaco/monaco.json');
+// SHA-256 of each Monaco part's collision mesh, as the game computes it (see tools/make_monaco.js)
+const MONACO_SUMS = fs.existsSync(path.join(__dirname, 'tracks', 'monaco', 'checksums.json')) ? require('./tracks/monaco/checksums.json') : {};
 
 // Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
 // so a modified game never meets an older one (their race messages or physics would not match).
-const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js',
+const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'),
   ...MOD_TRACKS.map(t => path.join('tracks', t.file))];
 // Hashed as text with LF line endings and no BOM: git on Windows may check the same files out with
 // CRLF (and a ZIP download has LF), which must not make two copies of the same code look different.
@@ -21,8 +24,6 @@ const BUILD_ID = MOD_VERSION + '-' + BUILD_SOURCES
   .digest('hex').slice(0, 8);
 const SERVER_QUERY = '?mod=' + encodeURIComponent(BUILD_ID);
 
-const SRC = path.join(ORIGINALS, 'main.bundle.js');
-const OUT = path.join(APP, 'main.bundle.js');
 const HOOK = 'window.ApexRoom&&window.ApexRoom.';
 const LOCKED = '(window.ApexRoom&&window.ApexRoom.locked())';
 const START = '(0,R.gn)(this,ra,"f").getStartTransform();';
@@ -64,7 +65,7 @@ const patches = [
     name: 'game disposed',
     anchor: '(0,R.gn)(this,as,"f").clear(),',
     context: '(0,R.gn)(this,as,"f").clear(),window.removeEventListener("keydown",(0,R.gn)(this,ds',
-    insert: HOOK + 'end(this),window.ApexHud&&window.ApexHud.end(this),',
+    insert: HOOK + 'end(this),window.ApexHud&&window.ApexHud.end(this),window.ApexScenery&&window.ApexScenery.trackEnd(this),',
   },
 
   // ---------------------------------------------------------------- race mode
@@ -169,14 +170,14 @@ const patches = [
     name: 'HUD context (track, own car)',
     anchor: '(0,R.gn)(this,ta,"m",Ms).call(this),window.addEventListener("keydown",(0,R.GG)(this,ds',
     before: true,
-    insert: 'window.ApexHud&&window.ApexHud.begin({owner:this,track:(0,R.gn)(this,ra,"f"),getSelfCar:()=>(0,R.gn)(this,Xa,"f")}),',
+    insert: 'window.ApexHud&&window.ApexHud.begin({owner:this,track:(0,R.gn)(this,ra,"f"),getSelfCar:()=>(0,R.gn)(this,Xa,"f")}),window.ApexScenery&&window.ApexScenery.track(this,(0,R.gn)(this,ra,"f")),',
   },
 
   // ---------------------------------------------------------------- graphics (apex-gfx.js)
   {
     name: 'renderer created: soft shadows',
     anchor: '.add(new r.dth(3891597,11714755,4.7))',
-    insert: ',window.ApexGfx&&window.ApexGfx.init((0,i.gn)(this,S,"f"))',
+    insert: ',window.ApexGfx&&window.ApexGfx.init((0,i.gn)(this,S,"f"),this)',
   },
   {
     name: 'before each frame: shadow strength',
@@ -206,6 +207,37 @@ const patches = [
     name: 'the physics reads the original mountain mesh',
     find: 'const e=(0,s.gn)(this,A,"f").geometry;if(!(e.attributes.position instanceof o.THS))throw new Error("Vertices must use BufferAttribute");return Array.from(e.attributes.position.array)}getMountainOffset',
     replace: 'const e=(0,s.gn)(this,A,"f").userData.apexPhysics||(0,s.gn)(this,A,"f").geometry;if(!(e.attributes.position instanceof o.THS))throw new Error("Vertices must use BufferAttribute");return Array.from(e.attributes.position.array)}getMountainOffset',
+  },
+
+  // ---------------------------------------------------------------- Monaco: free-form circuit made of custom track parts
+  // A track part is any mesh: the game draws it and the physics collides with it as it is. The circuit
+  // is one big part (the road), plus a start line and checkpoint / finish gates carrying the detectors.
+  // Track files only accept ids from the game's part list, so the four ids are added to it; the game then
+  // checks their collision meshes like any stock part, against the checksums in tracks/monaco/checksums.json.
+  {
+    name: 'Monaco part ids are valid in track files',
+    find: 'e[e.StartWide=91]="StartWide",',
+    replace: 'e[e.StartWide=91]="StartWide",' + [['MonacoRoad', MONACO.ids.road], ['MonacoStart', MONACO.ids.start], ['MonacoCheckpoint', MONACO.ids.checkpoint], ['MonacoFinish', MONACO.ids.finish]]
+      .map(([name, id]) => 'e[e.' + name + '=' + id + ']="' + name + '",').join(''),
+  },
+  {
+    name: 'Monaco models are loaded with the other track parts',
+    find: '"models/road_wide.glb","models/signs.glb","models/wall_track.glb"]',
+    replace: '"models/road_wide.glb","models/signs.glb","models/wall_track.glb","models/monaco.glb"]',
+  },
+  {
+    name: 'Monaco track parts are registered',
+    find: '],f=new Map;for(const e of u){if(f.has(e.id))throw new Error("Duplicate track part id "',
+    replace: (() => {
+      const cell = '[[[-2,0,-2],[1,0,1]]]';
+      const detector = type => '{type:o.A.' + type + ',center:[0,3.5,0],size:[' + MONACO.gateWidth + ',7,1]}';
+      const roadTiles = JSON.stringify(MONACO.roadCells.map(([i, j]) => [[4 * i - 2, 0, 4 * j - 2], [4 * i + 1, 0, 4 * j + 1]]));
+      return ',new d(' + JSON.stringify(MONACO_SUMS[MONACO.ids.road] || '') + ',r.A.Special,' + MONACO.ids.road + ',[["Monaco","MonacoRoad"]],c,' + roadTiles + ')'
+        + ',new d(' + JSON.stringify(MONACO_SUMS[MONACO.ids.start] || '') + ',r.A.Special,' + MONACO.ids.start + ',[["Monaco","MonacoStart"]],c,' + cell + ',null,new i.Pq0(0,.35,0))'
+        + ',new d(' + JSON.stringify(MONACO_SUMS[MONACO.ids.checkpoint] || '') + ',r.A.Special,' + MONACO.ids.checkpoint + ',[["Monaco","MonacoCheckpoint"]],c,' + cell + ',' + detector('Checkpoint') + ')'
+        + ',new d(' + JSON.stringify(MONACO_SUMS[MONACO.ids.finish] || '') + ',r.A.Special,' + MONACO.ids.finish + ',[["Monaco","MonacoFinish"]],c,' + cell + ',' + detector('Finish') + ')'
+        + '],f=new Map;for(const e of u){if(f.has(e.id))throw new Error("Duplicate track part id "';
+    })(),
   },
 
   // ---------------------------------------------------------------- our own matchmaking server
@@ -251,7 +283,8 @@ const patches = [
   },
 ];
 
-let code = fs.readFileSync(SRC, 'utf8');
+function applyPatches(file, patches) {
+let code = fs.readFileSync(path.join(ORIGINALS, file), 'utf8');
 for (const p of patches) {
   const context = p.find || p.context || p.anchor;
   const count = code.split(context).length - 1;
@@ -260,5 +293,30 @@ for (const p of patches) {
   const at = code.indexOf(context) + (p.before ? 0 : p.anchor.length);
   code = code.slice(0, at) + p.insert + code.slice(at);
 }
-fs.writeFileSync(OUT, code);
-console.log(`Patched main.bundle.js (${patches.length} hooks), build ${BUILD_ID}, server ${SERVER_URL}`);
+fs.writeFileSync(path.join(APP, file), code);
+}
+
+// The physics runs in a worker with its own copy of the part list: it must know the Monaco parts too,
+// or it refuses the track. Same four ids, same detectors and start offset as in the game's list.
+const monacoDetector = type => '{type:to.' + type + ',center:[0,3.5,0],size:[' + MONACO.gateWidth + ',7,1]}';
+const workerPatches = [
+  {
+    name: 'Monaco part ids are valid in track files (physics worker)',
+    find: 't[t.StartWide=91]="StartWide",',
+    replace: 't[t.StartWide=91]="StartWide",' + [['MonacoRoad', MONACO.ids.road], ['MonacoStart', MONACO.ids.start], ['MonacoCheckpoint', MONACO.ids.checkpoint], ['MonacoFinish', MONACO.ids.finish]]
+      .map(([name, id]) => 't[t.' + name + '=' + id + ']="' + name + '",').join(''),
+  },
+  {
+    name: 'Monaco track parts are registered (physics worker)',
+    find: '],co=new Map;for(const t of ho){if(co.has(t.id))throw new Error("Duplicate track part id "',
+    replace: ',new lo("",Xa.Special,' + MONACO.ids.road + ',[["Monaco","MonacoRoad"]],ao,[[[-2,0,-2],[1,0,1]]])'
+      + ',new lo("",Xa.Special,' + MONACO.ids.start + ',[["Monaco","MonacoStart"]],ao,[[[-2,0,-2],[1,0,1]]],null,new R(0,.35,0))'
+      + ',new lo("",Xa.Special,' + MONACO.ids.checkpoint + ',[["Monaco","MonacoCheckpoint"]],ao,[[[-2,0,-2],[1,0,1]]],' + monacoDetector('Checkpoint') + ')'
+      + ',new lo("",Xa.Special,' + MONACO.ids.finish + ',[["Monaco","MonacoFinish"]],ao,[[[-2,0,-2],[1,0,1]]],' + monacoDetector('Finish') + ')'
+      + '],co=new Map;for(const t of ho){if(co.has(t.id))throw new Error("Duplicate track part id "',
+  },
+];
+
+applyPatches('main.bundle.js', patches);
+applyPatches('simulation_worker.bundle.js', workerPatches);
+console.log(`Patched main.bundle.js (${patches.length} hooks) and the physics worker (${workerPatches.length}), build ${BUILD_ID}, server ${SERVER_URL}`);

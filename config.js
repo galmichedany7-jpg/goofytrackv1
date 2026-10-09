@@ -14,7 +14,7 @@ module.exports = {
   ORIGINALS: path.join(__dirname, 'original'),                // pristine game files the build starts from (never committed)
   SUPPORTED_VERSION: '0.6.3',
   MOD_NAME: 'GoofyTrack',                                     // shown on the home screen, with the version
-  MOD_VERSION: '2.2.1',                                       // home screen badge, menu footer, build fingerprint
+  MOD_VERSION: '2.3',                                       // home screen badge, menu footer, build fingerprint
   // Our matchmaking server (server/), in place of the PolyTrack one. GOOFY_SERVER overrides it, e.g. for a local test.
   SERVER_URL: process.env.GOOFY_SERVER || 'https://goofytrack.onrender.com/',
 };

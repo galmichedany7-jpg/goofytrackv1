@@ -69,6 +69,22 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+### V2.3 : circuit de Monaco
+
+Un circuit entier au tracé libre, avec sa ville, dans la catégorie « Circuits ».
+
+**Circuit**
+- Monaco : 1,9 km, route de 15 m de large avec vibreurs et glissières, épingles, tunnel sous un immeuble et un pont, là où la route passe au-dessus d'elle-même. Départ, quatre points de contrôle et arrivée juste derrière la grille (compatible avec les courses en plusieurs tours).
+- Le tracé n'est pas fait de pièces de 20 m : c'est un ruban continu, construit à partir de la route d'un modèle 3D de la ville. Le jeu accepte n'importe quel maillage comme pièce de piste, et la physique le prend tel quel ; quatre nouvelles pièces sont déclarées (route, départ, point de contrôle, arrivée), dans le jeu et dans son moteur physique.
+- La ville autour (immeubles, port, collines) est ce même modèle, allégé et texturé. Elle est seulement affichée : on ne la percute pas, ce sont les glissières qui gardent les voitures sur la piste.
+- Les records sur Monaco restent locaux, comme pour les autres pistes du mod.
+
+**Outils**
+- [`tools/make_monaco.js`](tools/make_monaco.js) régénère le circuit à partir du modèle (un `output.obj` et sa texture, non inclus dans le dépôt) : il suit la route du modèle, l'élargit là où une glissière ne passerait pas, et produit les fichiers de [`tracks/monaco/`](tracks/monaco). Les réglages (échelle, largeur, hauteur du pont, départ) sont en tête de fichier.
+- Après une régénération, le fichier de piste, sa miniature et les empreintes des pièces (`tracks/monaco/checksums.json`) doivent être recréés dans le jeu ; sans empreintes à jour, le jeu signale ses pièces comme modifiées et n'envoie plus aucun temps au classement officiel.
+
+**Mise à jour** : `git pull` puis `node build.js`. Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.3.
+
 ### V2.2.1 : correctif des invitations
 
 **Corrections**
@@ -234,7 +250,8 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `apex-room.js` | Tableau de room, fantôme, mode course |
 | `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
 | `apex-hud.js` | Mini-carte et écart en direct |
-| `apex-scenery.js` | Décor : montagnes, forêts, rochers |
+| `apex-scenery.js` | Décor : montagnes, forêts, rochers, ville des circuits |
+| `tools/make_monaco.js`, `tracks/monaco/` | Circuit de Monaco : générateur et fichiers produits |
 | `apex-theme.css` | Thème de l'interface |
 | `goofytrack-logo.svg` | Logo du menu principal |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |

@@ -30,7 +30,7 @@ if (version !== SUPPORTED_VERSION) console.warn(`Warning: this mod targets PolyT
 // 2. Unpack the game (first install only), and keep pristine copies of the files the build transforms
 if (!fs.existsSync(APP)) console.log(`Unpacked ${asar.extractAll(ARCHIVE_BACKUP, APP)} game files into resources/app`);
 fs.mkdirSync(ORIGINALS, { recursive: true });
-for (const [inner, name] of [['models/car.glb', 'car.glb'], ['main.bundle.js', 'main.bundle.js'], ['index.html', 'index.html']])
+for (const [inner, name] of [['models/car.glb', 'car.glb'], ['main.bundle.js', 'main.bundle.js'], ['simulation_worker.bundle.js', 'simulation_worker.bundle.js'], ['index.html', 'index.html']])
   fs.writeFileSync(path.join(ORIGINALS, name), asar.readFile(ARCHIVE_BACKUP, inner));
 
 // 3. Build
@@ -47,6 +47,10 @@ for (const track of require('./tracks')) {
   fs.copyFileSync(path.join(__dirname, 'tracks', track.file), path.join(APP, 'tracks', 'official', track.file));
   fs.copyFileSync(path.join(__dirname, 'tracks', track.thumbnail), path.join(APP, 'tracks', 'official', 'thumbnails', track.thumbnail));
 }
+// Monaco: its track parts go with the game's models, the town scenery next to the tracks
+fs.copyFileSync(path.join(__dirname, 'tracks', 'monaco', 'monaco.glb'), path.join(APP, 'models', 'monaco.glb'));
+fs.copyFileSync(path.join(__dirname, 'tracks', 'monaco', 'monaco_decor.bin'), path.join(APP, 'tracks', 'monaco_decor.bin'));
+fs.copyFileSync(path.join(__dirname, 'tracks', 'monaco', 'monaco_decor.jpg'), path.join(APP, 'tracks', 'monaco_decor.jpg'));
 const mainScript = '<script defer="defer" src="main.bundle.js">';
 let html = fs.readFileSync(path.join(ORIGINALS, 'index.html'), 'utf8');
 if (!html.includes(mainScript) || !html.includes('</head>')) throw new Error('index.html does not look like the supported game version');

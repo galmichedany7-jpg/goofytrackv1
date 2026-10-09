@@ -39,6 +39,66 @@
 
   let current = null;               // { mesh, physics, hex }
 
+  // Circuits that come with their own scenery: the track part that marks them, and the files to draw.
+  // The mesh is a simplified, textured model (see tools/make_monaco.js). It is only drawn, never collided with.
+  const TOWNS = { 240: { mesh: 'tracks/monaco_decor.bin', texture: 'tracks/monaco_decor.jpg' } };
+  const PART_SIZE = 5;
+  const TOWN_BRIGHTNESS = 0.85;     // material colour multiplying the texture
+  const townFiles = new Map();      // url -> Promise of { positions, index, uvs, image }
+  let town = null;                  // { owner, files, origin, data, mesh }
+
+  function loadTown(files) {
+    if (!townFiles.has(files.mesh)) {
+      const mesh = fetch(files.mesh).then(r => r.arrayBuffer()).then(buffer => {
+        const headerLength = new DataView(buffer).getUint32(0, true);
+        const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, headerLength)));
+        let at = 4 + headerLength; at += (4 - at % 4) % 4;
+        const positions = new Float32Array(buffer, at, header.vertices * 3); at += header.vertices * 12;
+        const index = new Uint32Array(buffer, at, header.triangles * 3); at += header.triangles * 12;
+        return { positions, index, uvs: new Float32Array(buffer, at, header.vertices * 2) };
+      });
+      const image = new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = () => reject(new Error('texture not found: ' + files.texture)); img.src = files.texture; });
+      townFiles.set(files.mesh, Promise.all([mesh, image]).then(([m, img]) => ({ ...m, image: img })));
+    }
+    return townFiles.get(files.mesh);
+  }
+
+  function removeTown() {
+    if (town != null && town.mesh != null) {
+      if (town.mesh.parent) town.mesh.parent.remove(town.mesh);
+      town.mesh.geometry.dispose();
+      if (town.mesh.material.map) town.mesh.material.map.dispose();
+      town.mesh.material.dispose();
+    }
+    town = null;
+  }
+
+  // The material is a copy of the mountains' one (same lighting), with the town texture instead of vertex colours.
+  function showTown() {
+    if (town == null || town.data == null || current == null || current.mesh.parent == null || !window.ApexGfx) return;
+    if (town.mesh != null) { if (town.mesh.parent !== current.mesh.parent) current.mesh.parent.add(town.mesh); return; }
+    const texture = window.ApexGfx.makeTexture(town.data.image);
+    if (texture == null) return;                                         // sky not created yet
+    texture.colorSpace = 'srgb';
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    const material = current.mesh.material.clone();
+    material.vertexColors = false;
+    material.map = texture;
+    material.color.setRGB(TOWN_BRIGHTNESS, TOWN_BRIGHTNESS, TOWN_BRIGHTNESS);
+    window.ApexGfx.registerMaterial(material);
+    const Geometry = current.physics.constructor, Attribute = current.physics.attributes.position.constructor;
+    const geometry = new Geometry();
+    geometry.setAttribute('position', new Attribute(town.data.positions, 3));
+    geometry.setAttribute('uv', new Attribute(town.data.uvs, 2));
+    geometry.setIndex(new Attribute(town.data.index, 1));
+    geometry.computeVertexNormals();
+    town.mesh = new current.mesh.constructor(geometry, material);
+    town.mesh.position.set(town.origin[0], town.origin[1], town.origin[2]);
+    town.mesh.receiveShadow = true;
+    current.mesh.parent.add(town.mesh);
+  }
+
   // ------------------------------------------------------------------ small maths
   const hash2 = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123; return s - Math.floor(s); };
   function noise(x, y) {
@@ -219,8 +279,24 @@
       }
     },
 
+    // A track is being played: does it bring its own town?
+    track(owner, track) {
+      removeTown();
+      try {
+        let found = null;
+        track.getTrackData().forEachPart((x, y, z, id) => { if (TOWNS[id] != null && found == null) found = { files: TOWNS[id], origin: [x * PART_SIZE, y * PART_SIZE, z * PART_SIZE] }; });
+        if (found == null) return;
+        const mine = town = { owner, files: found.files, origin: found.origin, data: null, mesh: null };
+        loadTown(found.files).then(data => { if (town === mine) mine.data = data; }).catch(e => console.error('Apex: town scenery unavailable', e));
+      } catch (e) { console.error('Apex: town scenery unavailable', e); }
+    },
+    trackEnd(owner) {
+      if (town != null && town.owner === owner) removeTown();
+    },
+
     // Each frame: the ground colour tells which environment is shown; recolour and replant when it changes
     frame() {
+      try { showTown(); } catch (e) { console.error('Apex: town scenery failed', e); removeTown(); }
       if (current == null) return;
       if (current.mesh.parent == null) { current = null; return; }        // mountains were cleared
       if (current.mesh.material.color.getHex() !== current.hex) {
