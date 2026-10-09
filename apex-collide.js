@@ -67,7 +67,7 @@
     if (l > 0.2) { out.fx = fx / l; out.fz = fz / l; }
   }
 
-  const MESSAGE = 'apexObstacles';
+  const MESSAGE = 'apexObstacles', STATUS = 'apexCollideStatus';
 
   // ================================================================== physics worker
   if (typeof importScripts === 'function') {
@@ -84,10 +84,15 @@
     const SHIFT_MS = 250;            // and so does the distance it was expected to cover
     const TELEPORT = 5;              // metres in one step: a respawn
 
-    // Where the car's rigid body keeps its data, relative to the first copy of the car position
-    // (found by looking at the memory of PolyTrack 0.6.3's physics; checked again on every use).
-    const POSITION_COPIES = [0, 224, 288];
-    const LINEAR_VELOCITY = 484, ANGULAR_VELOCITY = 500, INVERSE_MASS = 516, INVERSE_INERTIA_Y = 572;
+    // Where the car's rigid body (Bullet's btRigidBody) keeps its data, found by looking at the
+    // memory of PolyTrack 0.6.3's physics and checked again on every use.
+    // The position the game reports is the one of the body's motion state, stored twice inside the
+    // body, 64 bytes apart. (The body's own transform, 224 bytes before, is NOT always equal to it:
+    // Bullet interpolates the motion state, so the two can differ in the last bits.) Offsets are
+    // relative to the first of those two copies; the body is recognised by them and by its
+    // angular factor (1, 1, 1) and inverse mass (three equal values) further on.
+    const SECOND_COPY = 64, LINEAR_VELOCITY = 260, ANGULAR_VELOCITY = 276, INVERSE_MASS = 292, INVERSE_INERTIA_Y = 348;
+    const ANGULAR_FACTOR = 492, INVERSE_MASS_VECTOR = 508;
     const RESCAN_STEPS = 250;
 
     // The car state the physics writes after each step: car id (4 bytes), frames (3), speed (4),
@@ -100,14 +105,17 @@
     const body = { carId: null, address: 0, wait: 0 };
     const own = { x: 0, z: 0, fx: 0, fz: 1 }, ownQ = { x: 0, y: 0, z: 0, w: 1 };
     let view = null, last = null, sound = null;
+    // what happened lately, sent to the page once a second (shown by ApexCollide.debug())
+    const status = { steps: 0, near: 0, unarmed: 0, contacts: 0, scans: 0, failedScans: 0, address: 0, cars: 0 };
 
     function findBody(F, x, y, z) {
       let found = 0;
-      for (let i = 0, n = F.length - 75; i < n; i++) {
+      for (let i = 0, n = F.length - 150; i < n; i++) {
         if (F[i] !== x || F[i + 1] !== y || F[i + 2] !== z) continue;
-        if (F[i + 56] !== x || F[i + 57] !== y || F[i + 58] !== z || F[i + 72] !== x || F[i + 73] !== y || F[i + 74] !== z) continue;
-        const inverseMass = F[i + INVERSE_MASS / 4];
-        if (!(inverseMass > 1e-4 && inverseMass < 0.1)) continue;
+        const copy = i + SECOND_COPY / 4, factor = i + ANGULAR_FACTOR / 4, mass = i + INVERSE_MASS_VECTOR / 4;
+        if (F[copy] !== x || F[copy + 1] !== y || F[copy + 2] !== z) continue;
+        if (F[factor] !== 1 || F[factor + 1] !== 1 || F[factor + 2] !== 1) continue;
+        if (!(F[mass] > 1e-4 && F[mass] < 0.1) || F[mass + 1] !== F[mass] || F[mass + 2] !== F[mass] || F[i + INVERSE_MASS / 4] !== F[mass]) continue;
         if (found !== 0) return 0;   // two candidates (two cars on the same spot): try again later
         found = i * 4;
       }
@@ -157,6 +165,11 @@
       afterStep(M, car, ptr) {
         if (car.userControls == null) return;      // replays and ghosts are left alone
         if (obstacles.size === 0) { last = null; return; }
+        if (++status.steps >= 1000) {
+          status.cars = obstacles.size; status.address = body.address;
+          postMessage({ messageType: STATUS, status: { ...status } });
+          status.steps = status.near = status.unarmed = status.contacts = status.scans = status.failedScans = 0;
+        }
         const u8 = M.HEAPU8, F = M.HEAPF32;
         if (view == null || view.buffer !== u8.buffer) view = new DataView(u8.buffer);
         const finished = (u8[ptr + FLAGS] & 2) !== 0;
@@ -192,15 +205,17 @@
           const dx = x - ob.x, dz = z - ob.z;
           if (dx * dx + dz * dz > 25 || Math.abs(y - ob.y) > HEIGHT) { ob.armed = true; ob.side = -1; continue; }
           if (!overlap(own, ob, ob.side)) { if (hit.gap > ARM_GAP) ob.armed = true; ob.side = -1; continue; }
-          if (!ob.armed) continue;
+          status.near++;
+          if (!ob.armed) { status.unarmed++; continue; }
 
           if (address === 0) {
             address = body.carId === car.id ? body.address : 0;
             const i = address >> 2;
-            const valid = address !== 0 && POSITION_COPIES.every(d => F[i + d / 4] === x && F[i + d / 4 + 1] === y && F[i + d / 4 + 2] === z);
+            const valid = address !== 0 && F[i] === x && F[i + 1] === y && F[i + 2] === z;
             if (!valid) {
               if (body.carId === car.id && body.wait > 0) { body.wait--; return; }
               address = findBody(F, x, y, z);
+              status.scans++; if (address === 0) status.failedScans++;
               body.carId = car.id; body.address = address; body.wait = address === 0 ? RESCAN_STEPS : 0;
               if (address === 0) return;
             }
@@ -218,6 +233,7 @@
             ob.side = hit.side;
             if (closing < -1.5) sound = { value: Math.min(4000, -closing * 400), steps: SOUND_STEPS };
           }
+          status.contacts++;
           if (push <= 0) continue;
           push *= 0.001;                            // m/s gained in this step
           const sliding = -(sx - tx) * nz + (sz - tz) * nx;  // along the other car
@@ -245,9 +261,11 @@
   const CATCH_UP = 10;               // 1/s: how fast the drawn car moves to the predicted one
   const JUMP = 12;                   // metres between two updates: a respawn
   const MAX_SPIN = 6;                // rad/s
+  const STALE_FRAMES = 1000;         // an update this much older than the last one is late, not a restart
 
   const tracks = new Map();          // player id -> what we know about that car
   const ids = new WeakMap();         // the game's record of a remote car -> player id
+  let physics = null, listening = null;   // last status of the worker, and the worker we listen to
   let active = false, sentEmpty = true, solid = new Set();   // solid: ids of the cars handed to the physics
 
   const mul = (a, b) => ({
@@ -272,7 +290,7 @@
   }
 
   window.ApexCollide = {
-    debug: () => ({ active, cars: [...tracks].map(([id, t]) => ({ id, epoch: t.epoch, v: t.v, shown: t.shown && t.shown.p, last: t.last && t.last.position })) }),
+    debug: () => ({ active, physics, cars: [...tracks].map(([id, t]) => ({ id, epoch: t.epoch, v: t.v, shown: t.shown && t.shown.p, last: t.last && t.last.position })) }),
 
     // Is this remote car (the game's record of it) one that can be hit right now?
     isSolid: entry => active && solid.has(ids.get(entry)),
@@ -283,6 +301,9 @@
       if (t == null) { t = newTrack(resetCounter); tracks.set(id, t); }
       const now = performance.now(), prev = t.last;
       const jumped = prev != null && Math.hypot(state.position.x - prev.position.x, state.position.y - prev.position.y, state.position.z - prev.position.z) > JUMP;
+      // Updates travel on an unordered channel: one that arrives after a newer one is dropped,
+      // it is not a restart.
+      if (prev != null && resetCounter === t.reset && !jumped && state.frames < prev.frames && prev.frames - state.frames < STALE_FRAMES) return;
       if (resetCounter !== t.reset || prev == null || state.frames < prev.frames || jumped) {
         t.reset = resetCounter; t.epoch++; t.snap = true; t.offset = Infinity;
         t.v = { x: 0, y: 0, z: 0 }; t.w = { x: 0, y: 0, z: 0 };
@@ -329,10 +350,15 @@
     },
 
     // Every frame, after the cars were placed. `session` is null when cars must not collide,
-    // else { remotes: Map(player id -> the game's record), solid: id => boolean }.
+    // else { remotes: Map(player id -> the game's record), solid: id => boolean, moving: boolean }
+    // (moving: only cars that have started count).
     frame(session) {
       const worker = window.ApexSimWorker;
       active = session != null && worker != null;
+      if (worker != null && listening !== worker) {
+        listening = worker;
+        worker.addEventListener('message', e => { if (e.data != null && e.data.messageType === STATUS) physics = e.data.status; });
+      }
       if (!active) {
         if (!sentEmpty && worker != null) worker.postMessage({ messageType: MESSAGE, cars: [] });
         sentEmpty = true;
@@ -346,6 +372,7 @@
         ids.set(entry, id);
         const t = tracks.get(id);
         if (t == null || t.shown == null || t.last.finishFrames != null || !session.solid(id)) continue;
+        if (session.moving && !t.last.hasStarted) continue;
         heading(t.shown.q, f);
         const moving = t.last.hasStarted;
         cars.push({ id, epoch: t.epoch, x: t.shown.p.x, y: t.shown.p.y, z: t.shown.p.z, fx: f.fx, fz: f.fz,

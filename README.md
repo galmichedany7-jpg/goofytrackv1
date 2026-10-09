@@ -27,7 +27,7 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 - Pièces de piste ombrées en lissé : virages, pentes, loopings, barrières et piliers n'ont plus de facettes visibles. Seul l'ombrage change, calculé une fois au chargement ; la géométrie, qui sert aussi aux collisions, reste identique.
 - Ambiances au choix depuis l'écran d'accueil (jour, heure dorée, crépuscule, couvert) : seules les couleurs du ciel et de la lumière changent, sans coût en performance.
 - Montagnes redessinées : relief plus fin, chaîne lointaine, roche, neige, forêts de sapins ou rochers selon l'environnement (`apex-scenery.js`).
-- Les voitures et la physique ne sont pas touchées. Les réglages sont en tête de `apex-gfx.js` et `apex-scenery.js`.
+- Ces changements ne touchent ni les voitures ni la physique. Les réglages sont en tête de `apex-gfx.js` et `apex-scenery.js`.
 
 **Aides au pilotage** (solo et multijoueur)
 - Mini-carte : le tracé de la piste, votre voiture en flèche et, dans une room, les autres joueurs en points.
@@ -38,6 +38,15 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 - Fantôme du meilleur tour vu dans la room, rejoué à côté de vous.
 - Les rooms passent par le serveur GoofyTrack (voir plus bas) : un code d'invitation reste valable tant que l'hôte est dans la room, et seuls les joueurs qui ont exactement le même build du mod peuvent la rejoindre.
 
+**Circuits**
+- Une catégorie « Circuits » s'ajoute aux pistes officielles, avec Killer Loop et **Monaco** : 1,9 km de route au tracé libre (vibreurs, glissières, tunnel, pont) au milieu de la ville en 3D.
+- Les records sur ces pistes restent locaux.
+
+**Collisions entre voitures**
+- Dans une room « Course », les voitures sont solides les unes pour les autres, en permanence : essais libres, qualifications, tour de formation et course. On se pousse, on se bloque, un choc à l'arrière propulse la voiture de devant, un choc de côté fait tourner.
+- « Collisions activées » s'affiche sous le classement de la room. Pas de collisions dans les rooms Casual et Compétitif.
+- Détails et limites dans les patch notes [V2.4](#v24--collisions-entre-voitures) et dans les [limites connues](#limites-connues).
+
 **Mode course**
 
 Sur l'écran « Héberger », un troisième mode **Course** s'ajoute à Casual et Competitive, avec ses options : nombre de tours (1 à 20), qualifications et tour de formation. L'hôte peut encore les changer dans la room, entre deux courses. Une course enchaîne :
@@ -45,7 +54,7 @@ Sur l'écran « Héberger », un troisième mode **Course** s'ajoute à Casual e
 1. **Entraînement** : chacun roule librement, le tableau affiche les 5 meilleurs temps.
 2. **Qualifications** (optionnel) : tours chronométrés libres depuis le départ, le meilleur de chacun compte. L'hôte passe à la suite quand il veut.
 3. **Tour de formation** (optionnel) : un tour non chronométré depuis la grille. La course part quand tout le monde l'a bouclé (ou quand l'hôte la lance).
-4. **Course** : grille dans l'ordre des qualifications (ou des temps de la room), cinq feux rouges, puis N tours. Le tableau donne le classement en direct (tour en cours, écarts) et un bandeau affiche votre tour et votre dernier temps au tour.
+4. **Course** : grille dans l'ordre des qualifications (ou des temps de la room), où chaque voiture part réellement de son emplacement, cinq feux rouges, puis N tours. Le tableau donne le classement en direct (tour en cours, écarts) et un bandeau affiche votre tour et votre dernier temps au tour.
 5. **Résultats** : classement final, puis retour à l'entraînement.
 
 Les courses en plusieurs tours demandent un **circuit** : une piste dont la ligne d'arrivée est posée juste derrière le départ (à moins de 50 m), avec ses checkpoints sur le tour. Sur une piste qui ne boucle pas, la course se fait en un seul tour. Le mod ajoute une catégorie **Circuits** aux pistes officielles, après Été, Hiver et Désert, avec le circuit « Killer Loop », un rectangle en route large ([`tracks/killer_loop.track`](tracks/killer_loop.track), généré par [`tracks/make_loop_track.js`](tracks/make_loop_track.js)). Les pistes du mod sont déclarées dans [`tracks/index.js`](tracks/index.js) ; leurs records restent sur votre machine et ne sont jamais envoyés au classement en ligne du jeu, qui ne les connaît pas.
@@ -85,6 +94,16 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 - Nouveau logo GoofyTrack dans le menu principal ([`goofytrack-logo.svg`](goofytrack-logo.svg)) : lettres carrées penchées, bleu lavande cerné de bleu marine, traits de vitesse. Le thème ne le passe plus en niveaux de gris.
 
 **Mise à jour** : `git pull` puis `node build.js`. L'empreinte du build change (nouvelle version et thème), donc tous les joueurs d'une room doivent passer en V2.5. Le décor de Monaco (`apex-monaco.js`) ne compte pas dans l'empreinte : il ne change que l'affichage.
+
+### V2.4.1 : correctif des collisions
+
+- **Correctif** : en V2.4 les voitures se traversaient la plupart du temps. Le mod retrouvait la voiture dans la mémoire du moteur physique grâce à trois copies de sa position, dont l'une n'est pas toujours identique aux autres au dernier chiffre près ; la recherche échouait alors et le choc n'était pas appliqué. La voiture est maintenant reconnue par les deux copies fiables et par d'autres champs du corps rigide.
+- Les collisions sont actives en permanence dans une room « Course » : essais libres avant le lancement, qualifications, tour de formation et course. En V2.4 elles ne l'étaient que pendant le tour de formation et la course, donc pas tant que l'hôte n'avait pas lancé l'épreuve, ni en qualifications.
+- Hors grille, tout le monde part du même point : une voiture à l'arrêt sur la ligne n'est pas solide, et une voiture qui démarre à l'intérieur d'une autre ne le devient qu'une fois dégagée.
+- La mention « Collisions activées » s'affiche sous le classement de la room quand elles le sont.
+- Une mise à jour de position arrivée en retard (après une plus récente) n'est plus prise pour un redémarrage de la voiture, ce qui la rendait traversable un instant.
+
+**Mise à jour** : `git pull` puis `node build.js`. Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.4.1.
 
 ### V2.4 : collisions entre voitures
 
@@ -265,7 +284,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 ## Limites connues
 
 - Collisions : chaque joueur voit les autres avec un léger retard (le temps du réseau), compensé en prolongeant leur trajectoire. Un contact n'est donc pas exactement le même sur les deux écrans, et une voiture qui change brutalement de direction peut être touchée à quelques dizaines de centimètres de l'endroit où elle est dessinée. Les voitures sont testées comme des rectangles vues de dessus : on ne monte pas sur une autre voiture, et deux voitures à plus de 90 cm de hauteur d'écart se croisent sans se toucher.
-- Les collisions s'appuient sur l'emplacement des données de la voiture dans la mémoire du moteur physique de la version 0.6.3 ; elles sont vérifiées à chaque utilisation et, si elles ne correspondent pas, les voitures se traversent simplement.
+- Les collisions s'appuient sur l'emplacement des données de la voiture dans la mémoire du moteur physique de la version 0.6.3 ; elles sont vérifiées à chaque utilisation et, si elles ne correspondent pas, les voitures se traversent simplement. Dans la console du jeu, `ApexCollide.debug().physics` indique chaque seconde le nombre de contacts traités et de recherches échouées (`failedScans`).
 - Tours multiples : la physique du jeu termine une course dès l'arrivée franchie avec tous les checkpoints. Pendant une course en plusieurs tours, elle reçoit donc la piste avec un checkpoint de plus, hors d'atteinte au-dessus du circuit, et c'est le mod qui compte les tours. Conséquence : à partir du 2e tour, le compteur de checkpoints du jeu reste plein, et « revenir au dernier checkpoint » ramène au dernier checkpoint du tour (et non à celui que vous venez de passer).
 - Recommencer pendant une course renvoie sur la grille et remet votre compteur de tours à zéro ; le chrono de course, lui, continue.
 - Les temps de course sont mesurés sur l'horloge de chaque joueur depuis l'extinction des feux, à quelques centièmes près selon la latence.
