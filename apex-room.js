@@ -22,6 +22,8 @@
   'use strict';
 
   const GHOST_FADE_DISTANCE = 5;      // metres; the ghost fades out when it overlaps your car
+  const GHOST_OPACITY = 0.5;          // the ghost is a hint, not a car in the way
+  const GHOST_TAG_OPACITY = 0.45;     // its name and time, above it
   const GHOST_LINGER_FRAMES = 1500;   // keep showing the ghost for 1.5 s after it crosses the line
   const SELF_SAMPLE_FRAMES = 50;      // sample own car at the same rate as network updates
   const MOD_MESSAGE = 255;            // message type reserved by the game for mods
@@ -186,7 +188,9 @@
     ghost.car.setCarState(k > 0 ? ctx.interpolate(a, b, k) : a, snap);
     ghost.car.setVisible(true);
     const d = ghost.car.getPosition().distanceTo(self.getPosition());
-    ghost.car.setOpacity(Math.max(0, Math.min(1, d / GHOST_FADE_DISTANCE)) * 0.75);
+    const near = Math.max(0, Math.min(1, d / GHOST_FADE_DISTANCE));
+    ghost.car.setOpacity(near * GHOST_OPACITY);
+    if (ghost.car.apexTagOpacity) ghost.car.apexTagOpacity(near * GHOST_TAG_OPACITY);
     ghost.car.update(dt);
     ghost.lastT = t;
   }
@@ -364,6 +368,13 @@
 
   const slotFor = id => (race == null || race.grid == null || (race.phase !== 'formation' && race.phase !== 'race')
     ? null : race.grid.find(s => s.id === id) || null);
+  // Cars are solid for each other while they are on the grid of a formation lap or a race
+  // (not in qualifying, where everybody starts from the same spot). See apex-collide.js.
+  const collisionSession = () => {
+    if (race == null || race.grid == null || slotFor(selfId) == null) return null;
+    const grid = race.grid;
+    return { remotes: ctx.remotes(), solid: id => grid.some(s => s.id === id) };
+  };
   const applySlot = (transform, slot) => {
     if (slot == null) return transform;
     const P = transform.position.constructor, Q = transform.quaternion.constructor;
@@ -789,11 +800,13 @@
       if (race == null) sampleSelf();
       updateRace();
       updateGhost(dt);
+      if (window.ApexCollide) window.ApexCollide.frame(collisionSession());
     },
     end(owner) {
       // A new session may already have taken over; only its owner can tear it down.
       if (owner !== undefined && ctx != null && ctx.owner !== owner) return;
       disposeGhost();
+      if (window.ApexCollide) window.ApexCollide.frame(null);
       if (board != null) { board.remove(); board = null; }
       if (lights != null) { lights.remove(); lights = null; }
       setHud('');
@@ -804,6 +817,10 @@
     // --- race hooks
     startTransform(transform) { return applySlot(transform, slotFor(selfId)); },
     remoteStart(playerId, transform) { return applySlot(transform, slotFor(playerId)); },
+    simStart() {                                   // where the physics puts the car being driven
+      const s = slotFor(selfId);
+      return s == null ? null : { position: { x: s.p[0], y: s.p[1], z: s.p[2] }, quaternion: { x: s.q[0], y: s.q[1], z: s.q[2], w: s.q[3] } };
+    },
     locked() { return race != null && race.phase === 'race' && performance.now() < race.goAt; },
     raceActive() { return race != null; },
     simTrack(track) { return simTrack(track); },

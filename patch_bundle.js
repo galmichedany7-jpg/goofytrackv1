@@ -14,7 +14,7 @@ const MONACO_SUMS = fs.existsSync(path.join(__dirname, 'tracks', 'monaco', 'chec
 
 // Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
 // so a modified game never meets an older one (their race messages or physics would not match).
-const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'),
+const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-collide.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'),
   ...MOD_TRACKS.map(t => path.join('tracks', t.file))];
 // Hashed as text with LF line endings and no BOM: git on Windows may check the same files out with
 // CRLF (and a ZIP download has LF), which must not make two copies of the same code look different.
@@ -40,7 +40,7 @@ const patches = [
     before: true,
     insert: HOOK + 'begin({owner:this,connection:k.multiplayerConnection,track:()=>(0,R.gn)(this,ra,"f"),'
       + 'makeCar:()=>new z.A(null,' + START.slice(0, -1) + ',null,null,(0,R.gn)(this,la,"f"),(0,R.gn)(this,ca,"f"),(0,R.gn)(this,aa,"f"),(0,R.gn)(this,ra,"f"),(0,R.gn)(this,Ta,"f"),(0,R.gn)(this,ua,"f"),null),'
-      + 'getSelfCar:()=>(0,R.gn)(this,Xa,"f"),interpolate:qr,'
+      + 'getSelfCar:()=>(0,R.gn)(this,Xa,"f"),remotes:()=>(0,R.gn)(this,as,"f"),interpolate:qr,'
       + 'restart:()=>{(0,R.gn)(this,ta,"m",Ts).call(this),(0,R.gn)(this,ta,"m",Ms).call(this)}});',
   },
   {
@@ -53,13 +53,13 @@ const patches = [
     name: 'remote car update',
     anchor: '((e,n,i,r)=>{if(e!=k.sessionId)return;',
     context: '((e,n,i,r)=>{if(e!=k.sessionId)return;const a=(0,R.gn)(this,as,"f").get(n);',
-    insert: HOOK + 'onRemoteState(n,i,r);window.ApexHud&&window.ApexHud.remote(n,r);',
+    insert: HOOK + 'onRemoteState(n,i,r);window.ApexHud&&window.ApexHud.remote(n,r);window.ApexCollide&&window.ApexCollide.remote(n,i,r);',
   },
   {
+    // in a race with collisions the other cars are drawn where they are now, not 150 ms ago (apex-collide.js)
     name: 'per-frame update',
-    anchor: '.frames/1e3-t}e.car.update(n)}',
-    context: '.frames/1e3-t}e.car.update(n)}(0,R.gn)(this,ta,"m",Cs).call(this)',
-    insert: HOOK + 'update(n),window.ApexHud&&window.ApexHud.update(),',
+    find: '.frames/1e3-t}e.car.update(n)}(0,R.gn)(this,ta,"m",Cs).call(this)',
+    replace: '.frames/1e3-t}window.ApexCollide&&window.ApexCollide.place(e,n),e.car.update(n)}' + HOOK + 'update(n),window.ApexHud&&window.ApexHud.update(),(0,R.gn)(this,ta,"m",Cs).call(this)',
   },
   {
     name: 'game disposed',
@@ -90,6 +90,30 @@ const patches = [
     find: 'trackData:i.toSaveString(),carId:g',
     // only the car being driven: replays (they come with a recording) must finish where they did
     replace: 'trackData:window.ApexRoom&&null==s?window.ApexRoom.simTrack(i):i.toSaveString(),carId:g',
+  },
+  {
+    // the physics always starts a car on the track's start line: tell it about the grid slot too
+    name: 'own car is simulated from its grid slot',
+    find: 'carId:g,carRecording:s?.serialize()??null}',
+    replace: 'carId:g,carRecording:s?.serialize()??null,apexStart:window.ApexRoom&&null==s?window.ApexRoom.simStart():null}',
+  },
+  {
+    name: 'the page can talk to the physics worker of the car being driven',
+    find: 'carCollisionShapeVertices:a.A.models.collisionShapeVertices,carMassOffset:a.A.massOffset};(0,r.gn)(this,h,"f").postMessage(i)',
+    replace: 'carCollisionShapeVertices:a.A.models.collisionShapeVertices,carMassOffset:a.A.massOffset};(0,r.gn)(this,h,"f").postMessage(i),e&&(window.ApexSimWorker=(0,r.gn)(this,h,"f"))',
+  },
+  {
+    // the game fades the other cars out when they are close, and hides all but one of those waiting
+    // at the start: a car that can be hit is always there, in full
+    name: 'solid cars are drawn solid',
+    find: 'for(const n of(0,R.gn)(this,as,"f").values()){const i=n.car.getPosition().distanceTo(e),r=Math.max(0,Math.min(1,i/5));n.car.hasStarted()?(',
+    replace: 'for(const n of(0,R.gn)(this,as,"f").values()){const i=n.car.getPosition().distanceTo(e),apexSolid=!!(window.ApexCollide&&window.ApexCollide.isSolid(n)),r=apexSolid?1:Math.max(0,Math.min(1,i/5));n.car.hasStarted()||apexSolid?(',
+  },
+  {
+    name: 'the name tag of a car can be faded (room ghost)',
+    anchor: 'setVisible(e){(0,l.gn)(this,me,"f").visible=e}',
+    before: true,
+    insert: 'apexTagOpacity(e){const t=(0,l.gn)(this,Ae,"f");null!=t&&(t.material.opacity=e)}',
   },
   {
     // qualifying, formation and race laps: no personal best, no room record, no ghost
@@ -300,6 +324,27 @@ fs.writeFileSync(path.join(APP, file), code);
 // or it refuses the track. Same four ids, same detectors and start offset as in the game's list.
 const monacoDetector = type => '{type:to.' + type + ',center:[0,3.5,0],size:[' + MONACO.gateWidth + ',7,1]}';
 const workerPatches = [
+  // ---- car against car (apex-collide.js)
+  {
+    name: 'collision code is loaded next to the physics',
+    find: 'importScripts("lib/polytrack_physics.js");',
+    replace: 'importScripts("lib/polytrack_physics.js","apex-collide.js");',
+  },
+  {
+    name: 'the worker receives the other cars from the page',
+    find: 'function r(i){const r=i.data;switch(r.messageType){case Ki.Init:',
+    replace: 'function r(i){const r=i.data;if(self.ApexCollide&&self.ApexCollide.message(r))return;switch(r.messageType){case Ki.Init:',
+  },
+  {
+    name: 'cars are tested against each other after every physics step',
+    find: '[e.id,r.up,r.right,r.down,r.left,r.reset,i]);return new Uint8Array(t.HEAPU8.buffer,i,227).slice().buffer}',
+    replace: '[e.id,r.up,r.right,r.down,r.left,r.reset,i]);self.ApexCollide&&self.ApexCollide.afterStep(t,e,i);return new Uint8Array(t.HEAPU8.buffer,i,227).slice().buffer}',
+  },
+  {
+    name: 'a car can start from a grid slot instead of the start line',
+    find: 'const o=i.getStartTransform();if(null==o)throw new Error("Track has no starting point");const l=t.carId;',
+    replace: 'let o=i.getStartTransform();if(null==o)throw new Error("Track has no starting point");t.apexStart&&(o=t.apexStart);const l=t.carId;',
+  },
   {
     name: 'Monaco part ids are valid in track files (physics worker)',
     find: 't[t.StartWide=91]="StartWide",',

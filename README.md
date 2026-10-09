@@ -69,6 +69,23 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+### V2.4 : collisions entre voitures
+
+En course, les voitures se percutent. Le fantôme du meilleur temps se fait plus discret.
+
+**Collisions**
+- Dans une room « Course », pendant le tour de formation et la course, les voitures sont solides les unes pour les autres : on se pousse, on se bloque, un choc à l'arrière propulse la voiture de devant et freine celle de derrière, un choc de côté fait tourner. Pas de collisions en qualifications ni dans les rooms Casual / Compétitif, où tout le monde part du même point.
+- Fonctionnement ([`apex-collide.js`](apex-collide.js)) : le moteur physique du jeu (Bullet) simule chaque voiture seule, sur la machine de son pilote. Après chaque pas de simulation (1000 par seconde), la voiture du joueur est comparée aux autres ; au contact, sa vitesse et sa rotation sont modifiées directement dans la mémoire du moteur. Chaque joueur ne déplace que sa propre voiture : les deux machines voient le contact et chacune écarte la sienne.
+- Les autres voitures sont affichées là où elles sont maintenant (position extrapolée à partir de leurs dernières mises à jour), et non plus 150 ms en arrière : ce qu'on voit est ce qu'on touche. Elles ne deviennent plus transparentes de près.
+- La grille de départ est réelle : la physique fait partir chaque voiture de son emplacement (avant, seule l'image y était, et toutes les voitures partaient en fait de la ligne).
+- Une voiture qui réapparaît (retour au checkpoint, redémarrage) dans une autre ne la percute pas : elle redevient solide une fois dégagée.
+- Un choc se voit et s'entend chez les deux joueurs (bruit de collision du jeu).
+
+**Fantôme**
+- Le fantôme du meilleur temps de la room est plus transparent, et son étiquette (nom et temps) aussi.
+
+**Mise à jour** : `git pull` puis `node build.js`. Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.4. `apex-collide.js` compte dans l'empreinte, puisqu'il change la physique.
+
 ### V2.3 : circuit de Monaco
 
 Un circuit entier au tracé libre, avec sa ville, dans la catégorie « Circuits ».
@@ -196,7 +213,7 @@ Le dossier `resources/app` est supprimé et l'archive d'origine remise en place.
 
 ## Compatibilité en ligne
 
-- **Classements officiels** : la physique n'est pas modifiée, vos temps en solo et en room restent comparables à ceux des autres joueurs. Les temps faits pendant une course (qualifications, formation, course) ne sont ni enregistrés ni envoyés.
+- **Classements officiels** : hors course, la physique n'est pas modifiée, vos temps en solo et en room restent comparables à ceux des autres joueurs. Les temps faits pendant une course (qualifications, formation, course) ne sont ni enregistrés ni envoyés.
 - **Rooms** : le mod n'utilise plus les serveurs de PolyTrack pour le multijoueur, seulement pour les classements. Les joueurs sans le mod (ou avec un autre build) ne peuvent donc pas rejoindre une room GoofyTrack, et un joueur GoofyTrack ne peut pas rejoindre une room du jeu d'origine.
 - **Jeu modifié** : le jeu d'origine refuse le multijoueur s'il détecte une physique ou des fichiers modifiés. Le mod lève ce blocage pour ses propres rooms : vous pouvez changer le jeu comme vous voulez, du moment que tous les joueurs installent le même build.
 
@@ -230,7 +247,8 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 
 ## Limites connues
 
-- Pas de collisions entre voitures : le moteur physique simule chaque voiture séparément.
+- Collisions : chaque joueur voit les autres avec un léger retard (le temps du réseau), compensé en prolongeant leur trajectoire. Un contact n'est donc pas exactement le même sur les deux écrans, et une voiture qui change brutalement de direction peut être touchée à quelques dizaines de centimètres de l'endroit où elle est dessinée. Les voitures sont testées comme des rectangles vues de dessus : on ne monte pas sur une autre voiture, et deux voitures à plus de 90 cm de hauteur d'écart se croisent sans se toucher.
+- Les collisions s'appuient sur l'emplacement des données de la voiture dans la mémoire du moteur physique de la version 0.6.3 ; elles sont vérifiées à chaque utilisation et, si elles ne correspondent pas, les voitures se traversent simplement.
 - Tours multiples : la physique du jeu termine une course dès l'arrivée franchie avec tous les checkpoints. Pendant une course en plusieurs tours, elle reçoit donc la piste avec un checkpoint de plus, hors d'atteinte au-dessus du circuit, et c'est le mod qui compte les tours. Conséquence : à partir du 2e tour, le compteur de checkpoints du jeu reste plein, et « revenir au dernier checkpoint » ramène au dernier checkpoint du tour (et non à celui que vous venez de passer).
 - Recommencer pendant une course renvoie sur la grille et remet votre compteur de tours à zéro ; le chrono de course, lui, continue.
 - Les temps de course sont mesurés sur l'horloge de chaque joueur depuis l'extinction des feux, à quelques centièmes près selon la latence.
@@ -251,6 +269,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
 | `apex-hud.js` | Mini-carte et écart en direct |
 | `apex-scenery.js` | Décor : montagnes, forêts, rochers, ville des circuits |
+| `apex-collide.js` | Collisions entre voitures en course (page du jeu et moteur physique) |
 | `tools/make_monaco.js`, `tracks/monaco/` | Circuit de Monaco : générateur et fichiers produits |
 | `apex-theme.css` | Thème de l'interface |
 | `goofytrack-logo.svg` | Logo du menu principal |
