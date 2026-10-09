@@ -4,7 +4,7 @@ Mod pour le jeu [PolyTrack](https://www.kodub.com) 0.6.3 (Windows).
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier du jeu : le script d'installation transforme votre propre copie de PolyTrack.
 
-**Version actuelle : 2.1** 
+**Version actuelle : 2.2.1** 
 Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 ![Menu principal](docs/menu.jpg)
@@ -68,6 +68,13 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
+
+### V2.2.1 : correctif des invitations
+
+**Corrections**
+- Deux joueurs avec exactement la même version pouvaient être refusés dans la room de l'autre (« votre version de GoofyTrack n'est pas celle de l'hôte »). L'empreinte du build dépendait des fins de ligne des fichiers, que git peut convertir sous Windows selon les réglages de chacun (et qui diffèrent entre un clone et un ZIP). Elle est maintenant calculée sans en tenir compte.
+
+**Mise à jour** : `git pull` (ou nouveau téléchargement du ZIP) puis `node build.js` chez **tous** les joueurs. L'empreinte change (`2.2.1-…`), et elle doit maintenant être la même pour tout le monde : comparez la ligne `build …` affichée par `node build.js`. Le serveur n'a pas besoin d'être mis à jour.
 
 ### V2.2 : décors, aides au pilotage, ambiances
 

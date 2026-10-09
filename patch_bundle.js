@@ -13,8 +13,11 @@ const MOD_TRACKS = require('./tracks');
 // so a modified game never meets an older one (their race messages or physics would not match).
 const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js',
   ...MOD_TRACKS.map(t => path.join('tracks', t.file))];
+// Hashed as text with LF line endings and no BOM: git on Windows may check the same files out with
+// CRLF (and a ZIP download has LF), which must not make two copies of the same code look different.
+const sourceText = file => fs.readFileSync(path.join(__dirname, file), 'utf8').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
 const BUILD_ID = MOD_VERSION + '-' + BUILD_SOURCES
-  .reduce((hash, file) => hash.update(fs.readFileSync(path.join(__dirname, file))), crypto.createHash('sha256'))
+  .reduce((hash, file) => hash.update(sourceText(file)), crypto.createHash('sha256'))
   .digest('hex').slice(0, 8);
 const SERVER_QUERY = '?mod=' + encodeURIComponent(BUILD_ID);
 
