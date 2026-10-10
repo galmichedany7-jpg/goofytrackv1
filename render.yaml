@@ -11,3 +11,5 @@ services:
     envVars:
       - key: ICE_SERVERS   # optional TURN servers, JSON array
         sync: false
+      - key: GITHUB_TOKEN  # keeps the mod tracks' records in a secret gist (token with the "gist" scope)
+        sync: false

@@ -6,9 +6,11 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const { APP, ORIGINALS, MOD_VERSION, SERVER_URL } = require('./config');
+const { APP, ORIGINALS, MOD_VERSION, SERVER_URL, EDITOR_CHUNK } = require('./config');
 const MOD_TRACKS = require('./tracks');
+const MOD_TRACK_IDS = JSON.stringify(MOD_TRACKS.map(t => t.id));
 const MONACO = require('./tracks/monaco/monaco.json');
+const RIVIERA_GROUND = 6318394;    // 0x60693a: the Riviera plain (apex-scenery.js recognises the environment by it)
 // SHA-256 of each Monaco part's collision mesh, as the game computes it (see tools/make_monaco.js)
 const MONACO_SUMS = fs.existsSync(path.join(__dirname, 'tracks', 'monaco', 'checksums.json')) ? require('./tracks/monaco/checksums.json') : {};
 
@@ -23,6 +25,13 @@ const BUILD_ID = MOD_VERSION + '-' + BUILD_SOURCES
   .reduce((hash, file) => hash.update(sourceText(file)), crypto.createHash('sha256'))
   .digest('hex').slice(0, 8);
 const SERVER_QUERY = '?mod=' + encodeURIComponent(BUILD_ID);
+
+// Main menu footer, one line each (the first one shows the build in its tooltip)
+const FOOTER = [
+  '"PolyTrack" Game Remastered by Julio & Shyn',
+  'All Credits to © 2026 kodub.com',
+  'Music : "Vroum Vroum" by Teknah',
+];
 
 const HOOK = 'window.ApexRoom&&window.ApexRoom.';
 const LOCKED = '(window.ApexRoom&&window.ApexRoom.locked())';
@@ -172,8 +181,8 @@ const patches = [
   },
 
   // ---------------------------------------------------------------- mod tracks in the official list
-  // A string group gets its own heading after Summer / Winter / Desert. Their records stay local:
-  // these tracks do not exist on the game's leaderboard server.
+  // A string group gets its own heading, above Summer / Winter / Desert. These tracks do not exist on
+  // the game's leaderboard server: their leaderboards are kept by the GoofyTrack server (see below).
   {
     name: 'mod tracks are listed with the official tracks',
     find: 'thumbnail:"tracks/official/thumbnails/desert5.png"}].map((e=>({id:e.id,group:e.environment,',
@@ -184,9 +193,36 @@ const patches = [
       + '].map((e=>({id:e.id,group:e.group??e.environment,',
   },
   {
-    name: 'mod track records are never uploaded to the leaderboard',
-    find: 'Jd=async function(e,t,n,i,r){if((0,R.gn)(this,jd,"f").determinismState!=Mo.Ok)return null;',
-    replace: 'Jd=async function(e,t,n,i,r){if((0,R.gn)(this,jd,"f").determinismState!=Mo.Ok)return null;if(' + JSON.stringify(MOD_TRACKS.map(t => t.id)) + '.includes(t))return null;',
+    // the mod groups come first: their heading is put at the top instead of after the others
+    name: 'mod track groups are listed first',
+    find: '"string"==typeof t){n.appendChild(e);const i=document.createElement("div");i.className="group-title"',
+    replace: '"string"==typeof t){' + JSON.stringify([...new Set(MOD_TRACKS.map(t => t.group))]) + '.includes(t)?n.prepend(e):n.appendChild(e);const i=document.createElement("div");i.className="group-title"',
+  },
+
+  // ---------------------------------------------------------------- mod track leaderboards (apex-records.js, server/records.js)
+  // Same requests, same answers, other server. Record ids from our server start at 8e15, which tells
+  // them apart when the game asks for recordings by id alone.
+  {
+    name: 'mod track leaderboards: board',
+    find: 'let a="https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"leaderboard?version=0.6.3&trackId="+t+',
+    replace: 'let a=(' + MOD_TRACK_IDS + '.includes(t)?' + JSON.stringify(SERVER_URL) + ':"https://vps.kodub.com/"+(0,R.gn)(this,Af,"f"))+"leaderboard?version=0.6.3&trackId="+t+',
+  },
+  {
+    name: 'mod track leaderboards: own entry',
+    find: 'const i="https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"leaderboardUserEntry?version=0.6.3&trackId="+t+',
+    replace: 'const i=(' + MOD_TRACK_IDS + '.includes(t)?' + JSON.stringify(SERVER_URL) + ':"https://vps.kodub.com/"+(0,R.gn)(this,Af,"f"))+"leaderboardUserEntry?version=0.6.3&trackId="+t+',
+  },
+  {
+    name: 'mod track leaderboards: recordings',
+    find: 'const t="https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"recordings?version=0.6.3&ids="+e.join(",")',
+    replace: 'const t=(e.some((e=>e>=8e15))?' + JSON.stringify(SERVER_URL) + ':"https://vps.kodub.com/"+(0,R.gn)(this,Af,"f"))+"recordings?version=0.6.3&ids="+e.join(",")',
+  },
+  {
+    // signed with a secret derived from the token, never with the PolyTrack token itself
+    name: 'mod track leaderboards: upload',
+    find: 'const o="https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"leaderboard";let d="version=0.6.3&userToken="+encodeURIComponent(e)+',
+    replace: 'const apexMod=!!window.ApexRecords&&' + MOD_TRACK_IDS + '.includes(r),o=apexMod?' + JSON.stringify(SERVER_URL + 'leaderboard') + ':"https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"leaderboard";'
+      + 'let d="version=0.6.3&userToken="+encodeURIComponent(apexMod?window.ApexRecords.secret(e):e)+(apexMod?"&userTokenHash="+window.ApexRecords.hash(e):"")+',
   },
 
   // ---------------------------------------------------------------- driving HUD (apex-hud.js), every game mode
@@ -201,7 +237,13 @@ const patches = [
     // M was the second key of the cockpit camera: it goes to the mini-map
     name: 'mini-map key: M by default',
     find: '[ge.A.VehicleCockpitCamera,["KeyC","KeyM"]]',
-    replace: '[ge.A.VehicleCockpitCamera,["KeyC",null]],[ge.A.ApexToggleMinimap,["KeyM",null]]',
+    // the key showing M on the player's keyboard (";" on QWERTY for an AZERTY keyboard)
+    replace: '[ge.A.VehicleCockpitCamera,["KeyC",null]],[ge.A.ApexToggleMinimap,[window.ApexHud?window.ApexHud.mapKey():"KeyM",null]]',
+  },
+  {
+    name: 'keys are named as on the player\'s keyboard (AZERTY: Z Q S D...)',
+    find: 'function ve(e){const t=me.get(e);return null!=t?t:e}',
+    replace: 'function ve(e){const t=window.ApexHud&&window.ApexHud.keyLabel(e)||me.get(e);return null!=t?t:e}',
   },
   {
     name: 'mini-map key: bindings saved before it existed hand M over',
@@ -223,6 +265,17 @@ const patches = [
     anchor: '(0,R.gn)(this,ta,"m",Ms).call(this),window.addEventListener("keydown",(0,R.GG)(this,ds',
     before: true,
     insert: 'window.ApexHud&&window.ApexHud.begin({owner:this,track:(0,R.gn)(this,ra,"f"),getSelfCar:()=>(0,R.gn)(this,Xa,"f")}),window.ApexScenery&&window.ApexScenery.track(this,(0,R.gn)(this,ra,"f")),',
+  },
+  // The replay viewer builds its own scene: circuits with their own town (Monaco GP) show it there too
+  {
+    name: 'replay viewer shows the circuit\'s town',
+    find: 't.loadTrackData(i),t.refreshMeshes(),a.generateMountains(t.getBounds());const f=t.getStartTransform();',
+    replace: 't.loadTrackData(i),t.refreshMeshes(),a.generateMountains(t.getBounds()),window.ApexScenery&&window.ApexScenery.track(this,{getTrackData:()=>i});const f=t.getStartTransform();',
+  },
+  {
+    name: 'replay viewer closed',
+    find: 'dispose(){(0,R.gn)(this,Qp,"f").clear(),(0,R.gn)(this,Zp,"f").clearMountains();',
+    replace: 'dispose(){window.ApexScenery&&window.ApexScenery.trackEnd(this),(0,R.gn)(this,Qp,"f").clear(),(0,R.gn)(this,Zp,"f").clearMountains();',
   },
 
   // ---------------------------------------------------------------- graphics (apex-gfx.js)
@@ -259,6 +312,62 @@ const patches = [
     name: 'the physics reads the original mountain mesh',
     find: 'const e=(0,s.gn)(this,A,"f").geometry;if(!(e.attributes.position instanceof o.THS))throw new Error("Vertices must use BufferAttribute");return Array.from(e.attributes.position.array)}getMountainOffset',
     replace: 'const e=(0,s.gn)(this,A,"f").userData.apexPhysics||(0,s.gn)(this,A,"f").geometry;if(!(e.attributes.position instanceof o.THS))throw new Error("Vertices must use BufferAttribute");return Array.from(e.attributes.position.array)}getMountainOffset',
+  },
+
+  // ---------------------------------------------------------------- Riviera: a fourth environment
+  // Track files store the environment as one byte, checked against the game's list: Riviera is added to it
+  // (value 3), so it is saved, loaded and shared like Summer, Winter and Desert. Everywhere the game picks
+  // something by environment, Riviera gets Summer's (part colours, shadows), except its plain, its thumbnail
+  // and its icon. apex-scenery.js draws its coast, sea and villages in place of the mountains.
+  {
+    name: 'Riviera is a valid environment',
+    find: 'e[e.Summer=0]="Summer",e[e.Winter=1]="Winter",e[e.Desert=2]="Desert"',
+    replace: 'e[e.Summer=0]="Summer",e[e.Winter=1]="Winter",e[e.Desert=2]="Desert",e[e.Riviera=3]="Riviera"',
+  },
+  {
+    name: 'Riviera ground colour',
+    find: 'case x.A.Desert:t=new o.Q1f(11171394)}return t}',
+    replace: 'case x.A.Desert:t=new o.Q1f(11171394);break;case x.A.Riviera:t=new o.Q1f(' + RIVIERA_GROUND + ')}return t}',
+  },
+  {
+    name: 'Riviera track parts use the summer colours',
+    find: 'case k.A.Desert:t=x.A.Desert}for(let n=0;',
+    replace: 'case k.A.Desert:t=x.A.Desert;break;case k.A.Riviera:t=x.A.Summer}for(let n=0;',
+  },
+  {
+    name: 'Riviera shadow colour',
+    find: 'case k.A.Desert:c=new y.Q1f(7958351)}',
+    replace: 'case k.A.Desert:c=new y.Q1f(7958351);break;case k.A.Riviera:c=new y.Q1f(2511171)}',
+  },
+  {
+    name: 'Riviera tracks have their own group in track lists',
+    find: 'case de.A.Desert:n.appendChild(e)}let a,o,l;',
+    replace: 'case de.A.Desert:case de.A.Riviera:n.appendChild(e)}let a,o,l;',
+  },
+  {
+    name: 'Riviera group title',
+    find: 'case de.A.Desert:a="desert",o=(0,i.gn)(this,b,"f").get("Desert"),l="images/desert_colored.svg"}',
+    replace: 'case de.A.Desert:a="desert",o=(0,i.gn)(this,b,"f").get("Desert"),l="images/desert_colored.svg";break;case de.A.Riviera:a="riviera",o="Riviera",l="images/riviera_colored.svg"}',
+  },
+  {
+    name: 'Riviera icon on track cards',
+    find: 'case de.A.Desert:f="images/desert.svg"}',
+    replace: 'case de.A.Desert:f="images/desert.svg";break;case de.A.Riviera:f="images/riviera.svg"}',
+  },
+  {
+    name: 'Riviera thumbnail colour',
+    find: 'case S.A.Desert:f=237,p=226,g=175}',
+    replace: 'case S.A.Desert:f=237,p=226,g=175;break;case S.A.Riviera:f=214,p=238,g=255}',
+  },
+  {
+    name: 'Riviera icon on the track page',
+    find: 'case Cl.A.Desert:S="images/desert.svg"}',
+    replace: 'case Cl.A.Desert:S="images/desert.svg";break;case Cl.A.Riviera:S="images/riviera.svg"}',
+  },
+  {
+    name: 'Riviera colours in the part picker',
+    find: 'case Cl.A.Desert:i=yu.A.Desert}const r=n.colors.get(i);',
+    replace: 'case Cl.A.Desert:i=yu.A.Desert;break;case Cl.A.Riviera:i=yu.A.Summer}const r=n.colors.get(i);',
   },
 
   // ---------------------------------------------------------------- Monaco: free-form circuit made of custom track parts
@@ -325,13 +434,48 @@ const patches = [
     replace: 'n=setTimeout((()=>{n=null,e.close(),setTimeout((()=>{(0,R.gn)(this,Gn,"f")||this.renewInvite(!0)}),1500)}),r)',
   },
 
+  // ---------------------------------------------------------------- settings while driving
+  // The home screen's settings menu can be opened over a game too, from the game's toolbar: same
+  // menu, same objects. While it is open the game takes it as a dialog: the car and its keys ignore input.
+  {
+    name: 'settings menu can be opened from anywhere',
+    anchor: 'const x=document.createElement("button");x.className="button button-image",x.innerHTML=\'<img src="images/settings.svg">\'',
+    before: true,
+    insert: 'window.apexOpenSettings=()=>{if(window.apexSettingsOpen)return;const apexMenu=new bo(document.getElementById("ui"),t,n,i,r,a,d,(()=>{apexMenu.dispose(),window.apexSettingsOpen=!1}));window.apexSettingsOpen=!0};',
+  },
+  {
+    name: 'settings button in the game toolbar',
+    find: 'v.addEventListener("click",(()=>{t.playUIClick(),o()})),m.appendChild(v),(0,R.gn)(this,gi,"f").push(v),null==s)',
+    replace: 'v.addEventListener("click",(()=>{t.playUIClick(),o()})),m.appendChild(v),(0,R.gn)(this,gi,"f").push(v),window.apexOpenSettings&&(()=>{const e=document.createElement("button");e.className="button",e.innerHTML=\'<img class="button-icon" src="images/settings.svg"> \',e.append(document.createTextNode(n.get("Settings"))),e.addEventListener("click",(()=>{t.playUIClick(),window.apexOpenSettings()})),m.appendChild(e),(0,R.gn)(this,gi,"f").push(e)})(),null==s)',
+  },
+  {
+    name: 'the game treats the settings menu as an open dialog',
+    find: 'bs=function(){return null!=(0,R.gn)(this,Ba,"f")',
+    replace: 'bs=function(){return!!window.apexSettingsOpen||null!=(0,R.gn)(this,Ba,"f")',
+  },
+  {
+    // Escape closes the settings menu only, not the game behind it; pause and the other keys wait too
+    name: 'game keys are ignored while the settings menu is open',
+    find: 'window.addEventListener("keydown",(0,R.GG)(this,ds,(e=>{if(!I.ip()){',
+    replace: 'window.addEventListener("keydown",(0,R.GG)(this,ds,(e=>{if(!I.ip()&&!window.apexSettingsOpen){',
+  },
+
+  // ---------------------------------------------------------------- music
+  {
+    // "Vroum Vroum" by Teknah, copied next to the game's own music by build.js
+    name: 'the mod\'s music',
+    find: 'l.load("music",["audio/music.ogg","audio/music.mp3"])',
+    replace: 'l.load("music",["audio/goofytrack_music.mp3","audio/music.ogg","audio/music.mp3"])',
+  },
+
   // ---------------------------------------------------------------- main menu footer
   {
-    // keeps the copyright and music credit, drops the Google Play / Discord / Reddit links
-    name: 'main menu shows the mod version instead of the social links',
-    find: '{const e=document.createElement("div");e.className="social-links",(0,R.gn)(this,_h,"f").appendChild(e);{const t=document.createElement("a");t.href="https://www.kodub.com/googleplay/polytrack",t.target="_blank",e.appendChild(t);const n=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(n.classList.add("loading"),n.addEventListener("load",(()=>{n.classList.remove("loading")}))),n.src="images/google_play.svg",t.appendChild(n)}const t=document.createElement("a");t.href="https://www.kodub.com/discord/polytrack",t.target="_blank",e.appendChild(t);const n=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(n.classList.add("loading"),n.addEventListener("load",(()=>{n.classList.remove("loading")}))),n.src="images/discord.svg",t.appendChild(n);const i=document.createElement("a");i.href="https://www.kodub.com/reddit/polytrack",i.target="_blank",e.appendChild(i);const r=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(r.classList.add("loading"),r.addEventListener("load",(()=>{r.classList.remove("loading")}))),r.src="images/reddit.svg",i.appendChild(r)}}',
-    replace: '{const e=document.createElement("a");e.textContent=' + JSON.stringify('Mod GoofyTrack V' + MOD_VERSION)
-      + ',e.title=' + JSON.stringify('Build ' + BUILD_ID) + ',(0,R.gn)(this,_h,"f").appendChild(e)}}',
+    // the mod's credits, the game's copyright and the music (the mod's own, see build.js); no outside links
+    name: 'main menu footer: mod credits instead of the social links',
+    find: 'const t=document.createElement("a");t.href="https://www.kodub.com",t.target="_blank",t.textContent="© 2026 kodub.com - "+e.get("Version")+" 0.6.3",(0,R.gn)(this,_h,"f").appendChild(t);'
+      + 'const n=document.createElement("a");n.href="https://opengameart.org/content/sci-fi-theme-1",n.target="_blank",n.textContent=\'OpenGameArt.org "Sci-fi Theme" by Maou (CC-BY 4.0)\',(0,R.gn)(this,_h,"f").appendChild(n);'
+      + '{const e=document.createElement("div");e.className="social-links",(0,R.gn)(this,_h,"f").appendChild(e);{const t=document.createElement("a");t.href="https://www.kodub.com/googleplay/polytrack",t.target="_blank",e.appendChild(t);const n=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(n.classList.add("loading"),n.addEventListener("load",(()=>{n.classList.remove("loading")}))),n.src="images/google_play.svg",t.appendChild(n)}const t=document.createElement("a");t.href="https://www.kodub.com/discord/polytrack",t.target="_blank",e.appendChild(t);const n=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(n.classList.add("loading"),n.addEventListener("load",(()=>{n.classList.remove("loading")}))),n.src="images/discord.svg",t.appendChild(n);const i=document.createElement("a");i.href="https://www.kodub.com/reddit/polytrack",i.target="_blank",e.appendChild(i);const r=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(r.classList.add("loading"),r.addEventListener("load",(()=>{r.classList.remove("loading")}))),r.src="images/reddit.svg",i.appendChild(r)}}',
+    replace: 'for(const[t,n]of' + JSON.stringify(FOOTER.map((line, i) => [line, i === 0 ? 'GoofyTrack ' + MOD_VERSION + ' - build ' + BUILD_ID : ''])) + '){const e=document.createElement("a");e.textContent=t,e.title=n,(0,R.gn)(this,_h,"f").appendChild(e)}}',
   },
 ];
 
@@ -352,6 +496,11 @@ fs.writeFileSync(path.join(APP, file), code);
 // or it refuses the track. Same four ids, same detectors and start offset as in the game's list.
 const monacoDetector = type => '{type:to.' + type + ',center:[0,3.5,0],size:[' + MONACO.gateWidth + ',7,1]}';
 const workerPatches = [
+  {
+    name: 'Riviera is a valid environment (physics worker)',
+    find: 't[t.Summer=0]="Summer",t[t.Winter=1]="Winter",t[t.Desert=2]="Desert"',
+    replace: 't[t.Summer=0]="Summer",t[t.Winter=1]="Winter",t[t.Desert=2]="Desert",t[t.Riviera=3]="Riviera"',
+  },
   // ---- car against car (apex-collide.js)
   {
     name: 'collision code is loaded next to the physics',
@@ -390,6 +539,44 @@ const workerPatches = [
   },
 ];
 
+// The editor is a chunk of its own: its track settings get a fourth environment button
+const editorPatches = [
+  {
+    name: 'Riviera button in the track settings',
+    anchor: 'k.appendChild(A);',
+    context: 'k.appendChild(A);const M=document.createElement("div");M.className="setting"',
+    insert: 'const apexRiviera=document.createElement("button");apexRiviera.className="button environment-button",o.environment==Dt.A.Riviera&&(apexRiviera.classList.add("selected"),apexRiviera.disabled=!0),apexRiviera.innerHTML=\'<img src="images/riviera.svg"> \',apexRiviera.append(document.createTextNode("Riviera")),'
+      + 'apexRiviera.addEventListener("click",(()=>{t.playUIClick(),a(Dt.A.Riviera);for(const e of[x,y,A])e.classList.remove("selected"),e.disabled=!1;apexRiviera.classList.add("selected"),apexRiviera.disabled=!0})),k.appendChild(apexRiviera),'
+      + 'k.addEventListener("click",(e=>{const n=e.target.closest&&e.target.closest(".environment-button");n&&n!==apexRiviera&&(apexRiviera.classList.remove("selected"),apexRiviera.disabled=!1)}),!0);',
+  },
+  {
+    name: 'four environment buttons side by side',
+    find: 'width: calc(100% / 3);',
+    replace: 'width: calc(100% / 4);',
+  },
+  {
+    name: 'Riviera colours in the editor\'s part list',
+    find: 'case Dt.A.Desert:t=at.A.Desert}for(const e of(0,i.gn)(this,Gn,"f"))if(null!=e.id)',
+    replace: 'case Dt.A.Desert:t=at.A.Desert;break;case Dt.A.Riviera:t=at.A.Summer}for(const e of(0,i.gn)(this,Gn,"f"))if(null!=e.id)',
+  },
+  {
+    name: 'Riviera colours in the editor\'s part thumbnails',
+    find: 'case Dt.A.Desert:e=at.A.Desert}for(const n of(0,i.gn)(this,Gn,"f"))if(n.category==t',
+    replace: 'case Dt.A.Desert:e=at.A.Desert;break;case Dt.A.Riviera:e=at.A.Summer}for(const n of(0,i.gn)(this,Gn,"f"))if(n.category==t',
+  },
+];
+
+// The desktop app's window: the GoofyTrack icon (otherwise Windows shows the one inside PolyTrack.exe)
+const electronPatches = [
+  {
+    name: 'window icon',
+    find: 'autoHideMenuBar:!0,',
+    replace: 'autoHideMenuBar:!0,icon:path.join(__dirname,"..","images","goofytrack_icon.ico"),',
+  },
+];
+
 applyPatches('main.bundle.js', patches);
+applyPatches(path.join('electron', 'main.js'), electronPatches);
 applyPatches('simulation_worker.bundle.js', workerPatches);
-console.log(`Patched main.bundle.js (${patches.length} hooks) and the physics worker (${workerPatches.length}), build ${BUILD_ID}, server ${SERVER_URL}`);
+applyPatches(EDITOR_CHUNK, editorPatches);
+console.log(`Patched main.bundle.js (${patches.length} hooks), the physics worker (${workerPatches.length}) and the editor (${editorPatches.length}), build ${BUILD_ID}, server ${SERVER_URL}`);

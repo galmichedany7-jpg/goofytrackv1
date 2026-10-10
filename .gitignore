@@ -1,3 +1,4 @@
 ﻿# Pristine game files extracted from your own install by build.js (never commit these)
 original/
 node_modules/
+server/records.json

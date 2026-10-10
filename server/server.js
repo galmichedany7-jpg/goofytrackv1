@@ -12,11 +12,17 @@
 //   WS   /multiplayer/join     player: sends the code and its offer, receives acceptJoin / declineJoin / iceCandidate
 //   GET  /health               wakes the server up (free hosts put it to sleep when idle)
 //
+// It also keeps the leaderboards of the mod's own tracks (records.js): /leaderboard, /leaderboardUserEntry, /recordings.
+//
 //   PORT=8787 node server.js
 //   ICE_SERVERS='[{"urls":"turn:...","username":"...","credential":"..."}]' adds TURN servers (optional)
+//   GITHUB_TOKEN=...           keeps the records in a secret gist of that GitHub account (otherwise in records.json)
 const http = require('http');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
+const { createRecords } = require('./records');
+
+const records = createRecords();
 
 const PORT = Number(process.env.PORT) || 8787;
 const GAME_VERSION = '0.6.3';
@@ -145,8 +151,10 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/health' || url.pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    return res.end(`GoofyTrack server: ${hosts.size} room(s) open\n`);
+    const r = records.stats();
+    return res.end(`GoofyTrack server: ${hosts.size} room(s) open, records ${r.ready ? `on ${r.tracks} track(s)` : 'loading'}\n`);
   }
+  if (records.handle(req, res, url)) return;
   res.writeHead(404);
   res.end();
 });
@@ -174,3 +182,8 @@ setInterval(() => {
 }, 20000);
 
 server.listen(PORT, () => console.log(`GoofyTrack server listening on port ${PORT}`));
+// rooms work right away; the records come up as soon as they are read (from the gist, a few seconds)
+const loadRecords = () => records.load().catch(e => { console.error('records: load failed, retrying in 30 s:', e.message); setTimeout(loadRecords, 30000); });
+loadRecords();
+// a restart (new deploy) must not lose the last record waiting to be saved
+process.on('SIGTERM', () => records.flush().finally(() => process.exit(0)));

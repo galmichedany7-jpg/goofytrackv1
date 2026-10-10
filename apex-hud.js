@@ -40,6 +40,40 @@
   const ui = () => document.getElementById('ui');
   const raceActive = () => !!(window.ApexRoom && window.ApexRoom.raceActive && window.ApexRoom.raceActive());
 
+  // ================================================================== keyboard layout
+  // Key bindings are physical keys (KeyboardEvent.code, named after a QWERTY keyboard), which the
+  // game labels as on QWERTY: on AZERTY the key showing "Z" was called "W", and M was ";". The labels
+  // follow the player's own keyboard instead, as Chromium reports it; until it has answered (and if it
+  // cannot), the last layout seen, or AZERTY on a French system.
+  const LAYOUT_KEY = 'goofytrack.keyboardLayout';
+  const AZERTY = {
+    KeyQ: 'a', KeyW: 'z', KeyA: 'q', KeyZ: 'w', KeyM: ',', Semicolon: 'm', Comma: ';', Period: ':', Slash: '!',
+    Quote: 'ù', BracketLeft: '^', BracketRight: '$', Backslash: '*', Backquote: '²', Minus: ')', Equal: '=',
+    Digit1: '&', Digit2: 'é', Digit3: '"', Digit4: "'", Digit5: '(', Digit6: '-', Digit7: 'è', Digit8: '_', Digit9: 'ç', Digit0: 'à',
+  };
+  const PRINTABLE = /^(Key[A-Z]|Digit\d|Semicolon|Comma|Period|Slash|Quote|BracketLeft|BracketRight|Backslash|Backquote|Minus|Equal|IntlBackslash)$/;
+  let layout = null;                                              // code -> character, null: QWERTY
+  try { layout = JSON.parse(localStorage.getItem(LAYOUT_KEY)); } catch (e) { /* storage unavailable */ }
+  if (layout == null && /^fr(-(fr|be|lu|mc))?$/i.test(navigator.language || '')) layout = AZERTY;
+  if (navigator.keyboard && navigator.keyboard.getLayoutMap) {
+    navigator.keyboard.getLayoutMap().then(m => {
+      const seen = {};
+      m.forEach((ch, code) => { if (PRINTABLE.test(code)) seen[code] = ch; });
+      if (Object.keys(seen).length < 20) return;
+      layout = seen;
+      try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(seen)); } catch (e) { /* storage unavailable */ }
+    }).catch(() => { /* not allowed here: keep the guess */ });
+  }
+  const keyLabel = code => {
+    const ch = layout && PRINTABLE.test(code) ? layout[code] : null;
+    return typeof ch === 'string' && ch.length === 1 && ch.trim() !== '' ? ch.toUpperCase() : null;
+  };
+  // the key that types this letter on the player's keyboard
+  const letterKey = ch => {
+    if (layout) for (const code in layout) if (layout[code] === ch) return code;
+    return 'Key' + ch.toUpperCase();
+  };
+
   // ================================================================== mini-map
   function buildMap() {
     const start = ctx.track.getStartTransform();
@@ -221,11 +255,18 @@
       showMapState();
     },
     mapLabel: () => ((window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr') ? 'Mini-carte' : 'Mini-map'),
+    keyLabel,                 // name of a key on the player's keyboard, null: the game's own name
+    mapKey: () => letterKey('m'),
     // M used to be the second key of the cockpit camera. Key bindings saved before the mini-map key
     // existed give M back to the mini-map, once: afterwards the player's own choice is kept.
+    // The mini-map key of 2.5 was the QWERTY M ("KeyM", the "," key on AZERTY): left as it was then
+    // (M alone), it moves to the key showing M, unless something else already uses that key.
     migrateKeys(bindings, ids) {
-      if (bindings.some(([id]) => id === ids.ApexToggleMinimap)) return bindings;
-      return bindings.map(([id, keys]) => (id === ids.VehicleCockpitCamera ? [id, keys.map(k => (k === 'KeyM' ? null : k))] : [id, keys]));
+      if (!bindings.some(([id]) => id === ids.ApexToggleMinimap))
+        return bindings.map(([id, keys]) => (id === ids.VehicleCockpitCamera ? [id, keys.map(k => (k === 'KeyM' ? null : k))] : [id, keys]));
+      const m = letterKey('m');
+      if (m === 'KeyM' || bindings.some(([, keys]) => keys.includes(m))) return bindings;
+      return bindings.map(([id, keys]) => (id === ids.ApexToggleMinimap && keys[0] === 'KeyM' && keys[1] == null ? [id, [m, null]] : [id, keys]));
     },
     end(owner) {
       if (owner !== undefined && ctx != null && ctx.owner !== owner) return;

@@ -307,9 +307,14 @@ html body {
 	background: var(--apx-ink-950);
 }
 #ui .menu-ui > .logo {
-	/* the logo keeps its own colours (goofytrack-logo.svg), with a soft glow */
-	-webkit-filter: drop-shadow(0 10px 40px rgba(184, 194, 251, 0.25));
-	filter: drop-shadow(0 10px 40px rgba(184, 194, 251, 0.25));
+	/* the logo keeps its own colours (goofytrack-logo.svg), with a soft shadow */
+	-webkit-filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.45));
+	filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.45));
+}
+/* the settings menu opened over a game (game toolbar): the game is dimmed behind it */
+#ui > .settings-menu-ui {
+	z-index: 5;
+	outline: 100vmax solid rgba(5, 6, 9, 0.6);
 }
 #ui .menu-ui > .warning-message {
 	font-size: 18px;
@@ -956,7 +961,7 @@ html body {
 }
 #ui .game-toolbar-ui.up {
 	bottom: auto;
-	top: 86px;
+	top: 16px;
 }
 #ui .game-toolbar-ui > .info-container,
 #ui .game-toolbar-ui > .button-container,
@@ -1544,6 +1549,11 @@ html dialog.message-box-ui > div > p {
 	box-shadow: inset 0 0 0 1px var(--apx-line-strong);
 	color: var(--apx-fg);
 	font-size: 16px;
+	cursor: pointer;
+	pointer-events: auto;
+}
+#ui .apex-room-board > .race-settings .step:hover {
+	background: var(--apx-line-strong);
 }
 #ui .apex-room-board > .race-settings > .note {
 	width: 100%;
@@ -1602,34 +1612,53 @@ html dialog.message-box-ui > div > p {
 	color: var(--apx-fg-muted);
 	font-variant-numeric: tabular-nums;
 }
+/* laps: label and value on one line, the slider under them, then the two options */
 #ui .multiplayer-ui .main-box .game-mode-container > .apex-race-options {
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: center;
-	gap: 8px;
-	margin: 4px 12px 14px 12px;
+	gap: 10px;
+	margin: 16px 12px 16px 12px;
+	padding-top: 14px;
+	box-shadow: inset 0 1px 0 var(--apx-line);
 }
 #ui .multiplayer-ui .apex-race-options > .laps {
-	display: flex;
+	display: grid;
+	grid-template-columns: 1fr auto;
 	align-items: center;
-	gap: 12px;
+	row-gap: 8px;
 	width: 100%;
+	margin-bottom: 4px;
 	font-size: 18px;
 	font-weight: 600;
 }
 #ui .multiplayer-ui .apex-race-options > .laps > .label {
+	grid-area: 1 / 1;
 	letter-spacing: 0.16em;
 	text-transform: uppercase;
 	color: var(--apx-fg-muted);
 }
-#ui .multiplayer-ui .apex-race-options > .laps > .slider {
-	flex: 1;
-	accent-color: var(--apx-accent);
-}
 #ui .multiplayer-ui .apex-race-options > .laps > .value {
+	grid-area: 1 / 2;
 	min-width: 28px;
 	text-align: right;
+	font-size: 22px;
+	font-weight: 700;
+	color: var(--apx-accent);
 	font-variant-numeric: tabular-nums;
+}
+#ui .multiplayer-ui .apex-race-options > .laps > .slider {
+	grid-area: 2 / 1 / 3 / 3;
+	width: 100%;
+	height: 22px;
+	margin: 0;
+	accent-color: var(--apx-accent);
+	cursor: pointer;
+	/* the game turns pointer events off on its menus and back on for its own buttons only */
+	pointer-events: auto;
+}
+#ui .multiplayer-ui .apex-race-options > .toggle {
+	margin: 0;
 }
 
 /* ---------- 16. Home screen: centred tiles, version badge ------------------------- */

@@ -4,7 +4,7 @@ Mod pour le jeu [PolyTrack](https://www.kodub.com) 0.6.3 (Windows).
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier du jeu : le script d'installation transforme votre propre copie de PolyTrack.
 
-**Version actuelle : 2.5** 
+**Version actuelle : 2.6** 
 Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 ![Menu principal](docs/menu.jpg)
@@ -31,6 +31,8 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 **Aides au pilotage** (solo et multijoueur)
 - Mini-carte : le tracé de la piste, votre voiture en flèche et, dans une room, les autres joueurs en points. La touche M (réglable dans Paramètres > Contrôles) l'affiche ou la masque.
+- Les touches portent le nom de celles de votre clavier : en AZERTY, on accélère avec Z et on tourne avec Q et D.
+- Le bouton **Paramètres** de la barre en haut à gauche ouvre les réglages pendant une partie, en solo comme dans une room : touches, graphismes, son, sans quitter la piste.
 - Écart en direct : pendant le tour, votre avance ou votre retard sur votre meilleur tour de la session, mesuré en continu le long de la piste et pas seulement aux points de contrôle.
 
 **Multijoueur**
@@ -38,9 +40,12 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 - Fantôme du meilleur tour vu dans la room, rejoué à côté de vous.
 - Les rooms passent par le serveur GoofyTrack (voir plus bas) : un code d'invitation reste valable tant que l'hôte est dans la room, et seuls les joueurs qui ont exactement le même build du mod peuvent la rejoindre.
 
+**Environnement Riviera**
+- Un quatrième environnement, à côté d'Été, Hiver et Désert, à choisir dans l'éditeur (Réglages de la piste > Environnement) : la côte méditerranéenne de Monaco GP pour n'importe quelle piste.
+
 **Circuits**
-- Une catégorie « Circuits » s'ajoute aux pistes officielles, avec Killer Loop et **Monaco** : 1,9 km de route au tracé libre (vibreurs, glissières, tunnel, pont) au milieu de la ville en 3D.
-- Les records sur ces pistes restent locaux.
+- Une catégorie « Circuits », en tête des pistes officielles, avec Killer Loop et **Monaco GP** : le vrai tracé du Grand Prix de Monaco, à l'échelle (3,3 km, 35 m de dénivelé), au milieu de la principauté en low poly.
+- Ces pistes ont leur propre classement en ligne, partagé entre tous les joueurs du mod et tenu par le serveur GoofyTrack : records, position, fantômes et replays comme sur les pistes officielles.
 
 **Collisions entre voitures**
 - Dans une room « Course », les voitures sont solides les unes pour les autres, en permanence : essais libres, qualifications, tour de formation et course. On se pousse, on se bloque, un choc à l'arrière propulse la voiture de devant, un choc de côté fait tourner.
@@ -57,13 +62,13 @@ Sur l'écran « Héberger », un troisième mode **Course** s'ajoute à Casual e
 4. **Course** : grille dans l'ordre des qualifications (ou des temps de la room), où chaque voiture part réellement de son emplacement, cinq feux rouges, puis N tours. Le tableau donne le classement en direct (tour en cours, écarts) et un bandeau affiche votre tour et votre dernier temps au tour.
 5. **Résultats** : classement final, puis retour à l'entraînement.
 
-Les courses en plusieurs tours demandent un **circuit** : une piste dont la ligne d'arrivée est posée juste derrière le départ (à moins de 50 m), avec ses checkpoints sur le tour. Sur une piste qui ne boucle pas, la course se fait en un seul tour. Le mod ajoute une catégorie **Circuits** aux pistes officielles, après Été, Hiver et Désert, avec le circuit « Killer Loop », un rectangle en route large ([`tracks/killer_loop.track`](tracks/killer_loop.track), généré par [`tracks/make_loop_track.js`](tracks/make_loop_track.js)). Les pistes du mod sont déclarées dans [`tracks/index.js`](tracks/index.js) ; leurs records restent sur votre machine et ne sont jamais envoyés au classement en ligne du jeu, qui ne les connaît pas.
+Les courses en plusieurs tours demandent un **circuit** : une piste dont la ligne d'arrivée est posée juste derrière le départ (à moins de 50 m), avec ses checkpoints sur le tour. Sur une piste qui ne boucle pas, la course se fait en un seul tour. Le mod ajoute une catégorie **Circuits** en tête des pistes officielles, avec le circuit « Killer Loop », un rectangle en route large ([`tracks/killer_loop.track`](tracks/killer_loop.track), généré par [`tracks/make_loop_track.js`](tracks/make_loop_track.js)). Les pistes du mod sont déclarées dans [`tracks/index.js`](tracks/index.js) ; le classement en ligne du jeu ne les connaît pas, leurs records vont donc au [serveur GoofyTrack](#classements-des-circuits-du-mod).
 
 ![Départ d'une course](docs/race.jpg)
 
 ## Patch notes
 
-Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à jour `MOD_VERSION` dans [`config.js`](config.js) : c'est le numéro affiché en bas du menu principal (« Mod GoofyTrack V… »).
+Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à jour `MOD_VERSION` dans [`config.js`](config.js) : c'est le numéro affiché sous le logo du menu principal (« VERSION … »).
 
 <!-- Modèle pour une nouvelle version (à copier au-dessus de la plus récente) :
 
@@ -77,6 +82,65 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
+
+### V2.6 : Monaco GP, environnement Riviera
+
+**Circuit**
+- Monaco est remplacé par **Monaco GP**, une copie du vrai circuit : le tracé vient des coordonnées GPS du Circuit de Monaco ([`tools/monaco_gps.json`](tools/monaco_gps.json)), à l'échelle réelle. 3,3 km : la ligne droite des stands, Sainte-Dévote, la montée de Beau Rivage, Massenet et le Casino, la descente vers Mirabeau, l'épingle du Fairmont, Portier, le tunnel, la chicane, Tabac, la Piscine, la Rascasse et Anthony Noghès.
+- Le relief suit celui du circuit, un peu adouci : 35 m de montée entre Sainte-Dévote et la place du Casino (9 % au plus raide), puis la descente jusqu'au port. Il n'y a plus de pont : le vrai circuit ne se croise pas.
+- Route de 15 m avec glissières des deux côtés, élargie à l'extérieur des virages serrés (jusqu'à 19 m dans l'épingle) pour laisser la place de tourner ; vibreurs rouges et blancs dans les virages, ligne blanche ailleurs. L'épingle et les deux branches de Mirabeau ont été un peu écartées pour que les glissières passent.
+- Quatre points de contrôle (place du Casino, Portier, Tabac, Piscine), chacun sur une portion à plat, arrivée juste derrière la grille : compatible avec les courses en plusieurs tours.
+- Les virages serrés (épingle, Mirabeau, Sainte-Dévote, chicane) sont presque à plat : la montée et la descente se font sur les portions droites, à 9 % au plus. La surface de la route est découpée finement, sans les petits plis qui secouaient la voiture dans les virages en pente.
+- Les lignes peintes en travers de la route (départ, points de contrôle, arrivée) sont dessinées par le décor et ne font plus partie de la collision : la voiture ne rebondit plus dessus.
+- Nouvel identifiant de piste : les records de l'ancien Monaco ne s'appliquent pas à Monaco GP.
+
+**Décor**
+- Principauté en low poly générée par [`apex-monaco.js`](apex-monaco.js) à partir du tracé : ville sur les pentes à la hauteur de la route, tours blanches à fenêtres bleues et couronne sombre, immeubles roses et jaunes, piscines sur les toits, maisons à toits de tuiles.
+- Port Hercule entre la Piscine et le tunnel : pontons, environ 250 yachts amarrés en rangées, jetée nord et digue avec leur phare, enrochements.
+- Les stands le long de la ligne droite (voie des stands, garages à toits rouges, rangée d'arbres), la passerelle verte au-dessus de la ligne droite, des tribunes bleues (ligne droite, Sainte-Dévote, Casino, chicane, Tabac, Piscine, Rascasse) et des grillages sur les glissières.
+- La place du Casino : le Casino ocre à toit bleu, placé à l'écart de la route, ses deux tours à horloge et ses dômes, l'Hôtel de Paris, le jardin rond et sa fontaine.
+- Le Fairmont au-dessus de l'entrée du tunnel, en gradins face à la mer, puis le tunnel continue en galerie ouverte côté mer.
+- Le Rocher de Monaco-Ville au sud du port : falaises, vieille ville, palais princier et cathédrale. Collines en terrasses avec arbres ronds au nord, montagnes à l'horizon.
+- Le sol du décor reste toujours sous la route : plus de « bosses » de terrain qui traversaient l'asphalte dans certains virages.
+- Le décor apparaît aussi dans les replays.
+- Le décor est construit en arrière-plan (un worker) dès le lancement du jeu : il est prêt quand on choisit la piste, et le jeu ne gèle plus pendant sa construction. Il est gardé pour les sessions suivantes. Les arbres des collines sont plus simples (environ 330 000 triangles au lieu de 410 000).
+
+**Environnement Riviera**
+- Quatrième bouton « Riviera » dans les réglages de la piste de l'éditeur, à côté d'Été, Hiver et Désert. La piste est enregistrée, exportée et partagée avec cet environnement comme avec les trois autres.
+- Le fond de la piste devient une côte méditerranéenne ([`apex-scenery.js`](apex-scenery.js)) : collines de maquis, falaises calcaires, villages aux toits de tuiles, pins parasols et cyprès ; d'un côté de la piste, une baie avec sa plage, ses palmiers et la mer jusqu'à l'horizon, avec des yachts au mouillage. Plus de forêt de sapins ni de neige.
+- Les pièces de piste et les ombres gardent les couleurs d'Été ; le sol est vert olive, avec une icône propre dans les listes de pistes.
+- Les collines restent celles du jeu, qui servent aussi aux collisions ; du côté de la mer, elles sont dessinées plus basses, mais leur forme d'origine reste solide sous l'eau (on ne s'en approche qu'en sortant largement de la piste).
+- Une piste Riviera n'existe que dans le mod : le jeu d'origine refuse de l'ouvrir.
+
+**Outils**
+- [`tools/make_monaco.js`](tools/make_monaco.js) n'a plus besoin du modèle 3D : il part du tracé GPS, l'arrondit, laisse la place aux glissières, ajoute le relief et place les points de contrôle.
+- [`tools/monaco_track.js`](tools/monaco_track.js), à coller dans la console du jeu, produit le fichier de piste, son identifiant et sa miniature.
+
+**Classements des circuits**
+- Killer Loop et Monaco GP ont maintenant un classement en ligne, partagé entre tous les joueurs du mod. Le jeu l'affiche comme celui des pistes officielles : votre position dans la barre en haut à gauche, la liste des records sur la page de la piste, les fantômes à affronter et « Regarder » pour les replays.
+- Ils sont tenus par le serveur GoofyTrack ([`server/records.js`](server/records.js)), et non par celui de PolyTrack qui ne connaît pas ces pistes. Les records faits avant cette version (restés sur votre machine) sont envoyés automatiquement à la première ouverture de la piste.
+- Votre jeton PolyTrack n'est jamais envoyé au serveur GoofyTrack : un record est signé avec une clé tirée de ce jeton ([`apex-records.js`](apex-records.js)). Les autres pistes passent toujours par le classement officiel, sans changement.
+
+**Menu principal**
+- Nouveau logo GoofyTrack, et nouvelle icône du jeu dans la barre des tâches et Alt+Tab ([`images/goofytrack_icon.svg`](images/goofytrack_icon.svg), convertie en `.ico`).
+- Sous le logo, « VERSION 2.6 » à la place de « GoofyTrack 2.6 ».
+- Nouvelle musique : « Vroum Vroum » de Teknah.
+- En bas, trois lignes : « "PolyTrack" Game Remastered by Julio & Shyn », « All Credits to © 2026 kodub.com », « Music : "Vroum Vroum" by Teknah ».
+- Pistes officielles : la catégorie Circuits (Killer Loop, Monaco GP) passe en tête de liste, avant Été, Hiver et Désert. Auteur affiché : Julio.
+
+**Contrôles**
+- Les touches sont nommées d'après votre clavier : en AZERTY, Z / Q / S / D au lieu de W / A / S / D. Seuls les noms changent, les touches restent les mêmes.
+- La mini-carte s'ouvre avec la touche M de votre clavier. En AZERTY, elle était sur la touche « , » (le M d'un clavier QWERTY) : elle passe sur M, sauf si vous aviez déjà changé cette touche.
+
+**En jeu**
+- Bouton **Paramètres** dans la barre en haut à gauche, dans tous les modes (solo, Casual, Compétitif, Course) : on change ses touches ou ses graphismes sans quitter la partie. Pendant que le menu est ouvert, la voiture ne réagit plus au clavier, et Échap ferme le menu sans quitter la piste.
+- La barre en haut à gauche (Quitter, Regarder, nom de la piste et record) remonte dans le coin de l'écran.
+
+**Corrections**
+- Écran « Héberger », mode Course : la jauge du nombre de tours ne bougeait pas. Elle fonctionne, et les options sont espacées (nombre de tours au-dessus de la jauge, puis Qualifications et Tour de formation).
+- Dans une room Course, les boutons − et + du nombre de tours ne répondaient pas : on était bloqué à la valeur choisie en créant la room.
+
+**Mise à jour** : `git pull` puis `node build.js`. L'empreinte du build change (nouveau circuit, nouvel environnement), donc tous les joueurs d'une room doivent passer en V2.6. Le build modifie maintenant aussi l'éditeur du jeu (`112.bundle.js`). Le serveur doit être redéployé sur Render pour les classements, avec la variable `GITHUB_TOKEN` pour qu'ils survivent aux redémarrages (voir [Classements des circuits du mod](#classements-des-circuits-du-mod)).
 
 ### V2.5 : nouveau Monaco, nouveau logo
 
@@ -256,6 +320,7 @@ Le dossier `resources/app` est supprimé et l'archive d'origine remise en place.
 ## Compatibilité en ligne
 
 - **Classements officiels** : hors course, la physique n'est pas modifiée, vos temps en solo et en room restent comparables à ceux des autres joueurs. Les temps faits pendant une course (qualifications, formation, course) ne sont ni enregistrés ni envoyés.
+- **Pistes du mod** : leurs records vont au serveur GoofyTrack, jamais au classement officiel.
 - **Rooms** : le mod n'utilise plus les serveurs de PolyTrack pour le multijoueur, seulement pour les classements. Les joueurs sans le mod (ou avec un autre build) ne peuvent donc pas rejoindre une room GoofyTrack, et un joueur GoofyTrack ne peut pas rejoindre une room du jeu d'origine.
 - **Jeu modifié** : le jeu d'origine refuse le multijoueur s'il détecte une physique ou des fichiers modifiés. Le mod lève ce blocage pour ses propres rooms : vous pouvez changer le jeu comme vous voulez, du moment que tous les joueurs installent le même build.
 
@@ -264,7 +329,7 @@ Le dossier `resources/app` est supprimé et l'archive d'origine remise en place.
 La partie elle-même se joue en pair-à-pair (WebRTC entre l'hôte et chaque joueur). Un serveur ne sert qu'à distribuer les codes d'invitation et à mettre en relation l'hôte et les joueurs qui le rejoignent. Le mod utilise le sien, dans [`server/`](server/server.js) : un petit programme Node qui parle le même protocole que celui de PolyTrack.
 
 - **Codes** : six caractères (sans 0/O ni 1/I), valables tant que l'hôte reste connecté. Minuscules, espaces et tirets sont acceptés à la saisie.
-- **Build** : à chaque `node build.js`, une empreinte des fichiers du mod est calculée (affichée par le build, et dans l'infobulle de la ligne « Mod GoofyTrack » du menu). Le serveur refuse un joueur dont l'empreinte diffère de celle de l'hôte, avec un message clair dans le jeu. Après une modification, tout le monde doit donc refaire `node build.js` avec les mêmes fichiers.
+- **Build** : à chaque `node build.js`, une empreinte des fichiers du mod est calculée (affichée par le build, et dans l'infobulle de la première ligne en bas du menu). Le serveur refuse un joueur dont l'empreinte diffère de celle de l'hôte, avec un message clair dans le jeu. Après une modification, tout le monde doit donc refaire `node build.js` avec les mêmes fichiers.
 - **Adresse** : `SERVER_URL` dans [`config.js`](config.js). La variable d'environnement `GOOFY_SERVER` la remplace le temps d'un build (par exemple `http://localhost:8787/` pour un test local).
 
 ### Mettre le serveur en ligne (Render, gratuit)
@@ -274,6 +339,17 @@ La partie elle-même se joue en pair-à-pair (WebRTC entre l'hôte et chaque jou
 3. Une fois le service déployé, copiez son adresse (`https://<nom>.onrender.com/`, avec la barre oblique finale) dans `SERVER_URL` de `config.js`, puis relancez `node build.js` chez chaque joueur.
 
 Sur l'offre gratuite, le serveur s'endort après 15 minutes sans connexion et met jusqu'à une minute à se réveiller. Le jeu l'appelle dès son lancement pour qu'il soit prêt quand vous ouvrez le multijoueur. Une room déjà ouverte n'est pas concernée : la connexion de l'hôte le garde éveillé.
+
+### Classements des circuits du mod
+
+Le serveur tient aussi les classements des pistes du mod ([`server/records.js`](server/records.js)) : un record par joueur et par piste, son meilleur temps, avec le replay. Le jeu les interroge avec les mêmes requêtes que le classement officiel ; un record ne compte que s'il vient du même joueur que les précédents (signature tirée de son jeton PolyTrack).
+
+Sur l'offre gratuite de Render, le disque est effacé à chaque redémarrage. Pour garder les records, le serveur les écrit dans un **Gist secret** de votre compte GitHub :
+
+1. Sur GitHub, **Settings > Developer settings > Personal access tokens > Tokens (classic) > Generate new token**, en ne cochant que **gist**, sans date d'expiration (ou en pensant à le renouveler).
+2. Sur Render, dans le service, **Environment** : ajoutez la variable `GITHUB_TOKEN` avec ce jeton, puis redéployez.
+
+Au démarrage, le serveur retrouve son Gist (« GoofyTrack records », fichier `goofytrack-records.json`) ou le crée. Les records arrivent quelques secondes après le réveil du serveur et sont enregistrés au plus 5 secondes après chaque nouveau temps. Sans `GITHUB_TOKEN`, ils vont dans `server/records.json` (pratique en local). Le serveur ne rejoue pas les tours : comme entre amis, on fait confiance aux temps envoyés.
 
 ### Connexion entre joueurs
 
@@ -309,17 +385,24 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `patch_bundle.js` | Points d'accroche ajoutés au code du jeu |
 | `apex-room.js` | Tableau de room, fantôme, mode course |
 | `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
-| `apex-hud.js` | Mini-carte et écart en direct |
-| `apex-scenery.js` | Décor : montagnes, forêts, rochers ; affiche la ville des circuits qui en ont une |
-| `apex-monaco.js` | Décor de Monaco généré à partir du tracé : ville, port, mer, tunnel, montagnes |
+| `apex-hud.js` | Mini-carte et écart en direct ; noms des touches selon le clavier (AZERTY) |
+| `apex-records.js` | Classements des pistes du mod : signature des records envoyés au serveur GoofyTrack |
+| `apex-scenery.js` | Décor : montagnes, forêts, rochers, côte de l'environnement Riviera ; affiche la ville des circuits qui en ont une |
+| `apex-monaco.js` | Décor de Monaco GP généré à partir du tracé : ville, port et yachts, Casino, Fairmont et tunnel, stands et tribunes, Rocher, collines |
 | `apex-collide.js` | Collisions entre voitures en course (page du jeu et moteur physique) |
-| `tools/make_monaco.js`, `tracks/monaco/` | Circuit de Monaco : générateur de la route et fichiers produits |
+| `tools/make_monaco.js`, `tools/monaco_gps.json`, `tools/monaco_track.js`, `tracks/monaco/` | Circuit Monaco GP : tracé GPS réel, générateur de la route, fichier de piste, fichiers produits |
 | `apex-theme.css` | Thème de l'interface |
+| `images/` | Icône du jeu (`goofytrack_icon.svg` et sa version `.ico` pour Windows), icônes de l'environnement Riviera |
 | `goofytrack-logo.svg` | Logo du menu principal |
+| `audio/` | Musique du jeu (« Vroum Vroum », Teknah) |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |
-| `server/`, `render.yaml` | Serveur multijoueur (codes d'invitation, mise en relation) et son déploiement sur Render |
+| `server/`, `render.yaml` | Serveur multijoueur (codes d'invitation, mise en relation, classements des pistes du mod) et son déploiement sur Render |
 | `serve.js` | Développement : sert le jeu modé en http pour le tester dans un navigateur (`node serve.js "C:\chemin\vers\PolyTrack"`) |
 
 ## Licence
 
 Le code de ce dépôt est sous licence MIT (voir `LICENSE`). PolyTrack et ses contenus appartiennent à Kodub.
+
+La musique [`audio/goofytrack_music.mp3`](audio/goofytrack_music.mp3) (« Vroum Vroum ») est de Teknah.
+
+Le tracé du Circuit de Monaco ([`tools/monaco_gps.json`](tools/monaco_gps.json)) vient de [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits), sous licence MIT, Copyright (c) 2019-2025 Tomislav Bacinger.
