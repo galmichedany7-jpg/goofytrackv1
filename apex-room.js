@@ -5,7 +5,8 @@
 //   3. Race rooms    hosted with the "Race" game mode. The host runs an event made of:
 //                      qualifying   (optional) free timed laps, the best one sets the grid order
 //                      formation    (optional) one untimed lap from the grid slots
-//                      race         five lights, then N laps; live standings, results at the end
+//                      race         a look at the circuit, five lights, then N laps; live standings,
+//                                   and a podium once everybody is in (the two scenes: apex-show.js)
 //
 // 1 and 2 only use data the game already exchanges, so they work next to unmodified players.
 // 3 needs extra messages. They travel on the message type the game reserves for mods (255) and are
@@ -27,7 +28,11 @@
   const GHOST_LINGER_FRAMES = 1500;   // keep showing the ghost for 1.5 s after it crosses the line
   const SELF_SAMPLE_FRAMES = 50;      // sample own car at the same rate as network updates
   const MOD_MESSAGE = 255;            // message type reserved by the game for mods
-  const LIGHTS_MS = 6500;             // race start -> lights out (5 lights, one per second)
+  const INTRO_MS = 3000;              // race start -> the lights come up: the camera shows the circuit
+  const LIGHTS_MS = 6500;             // lights come up -> lights out (5 lights, one per second)
+  const PODIUM_AHEAD = 7;             // metres from the start line to the podium
+  const PODIUM_CARS = 9;
+  const START_HEIGHT = 0.2;           // the start transform is a car's centre, 0.2 to 0.35 m above the road: the podium's floor
   const GRID_ROW_GAP = 3.0;           // metres between two grid slots along the track
   const GRID_SIDE = 1.15;             // metres left/right of the racing line
   const LOOP_DISTANCE = 50;           // metres; a finish this close to the start makes the track a circuit
@@ -79,6 +84,8 @@
   let run = null;          // own progress in the current phase, see newRun()
   let raceCounter = 0;
   let pendingRoom = null;  // race room settings chosen on the host screen, applied when the room opens
+  let parked = null;       // own car's state while it waits for the lights: what a car at rest looks like
+  let stage = null;        // the podium: { cars: [{ car, state, placed }] }, no cars once the player has left it
 
   const isHost = () => ctx != null && typeof ctx.connection.apexPeers === 'function';
   const room = () => (ctx != null && ctx.connection.apexRoom) || { race: false };
@@ -408,13 +415,14 @@
 
   function enterPhase(phase) {          // everybody, host included
     race.phase = phase;
-    if (phase === 'race') race.goAt = performance.now() + LIGHTS_MS;
+    if (phase === 'race') race.goAt = performance.now() + INTRO_MS + LIGHTS_MS;
     if (phase !== 'results') {
       run = newRun();
       live = new Map();
       selfLastFrames = -1;
       ctx.restart();
     }
+    if (phase === 'race') showIntro();
     renderBoard();
   }
 
@@ -482,13 +490,17 @@
     race.results = msg.results;
     if (phaseChanged) {
       enterPhase(msg.phase);
-      if (msg.phase === 'race') race.goAt = performance.now() + msg.lights;
+      if (msg.phase === 'race') {
+        race.goAt = performance.now() + msg.lights;
+        if (msg.lights < LIGHTS_MS + INTRO_MS / 2 && window.ApexShow) window.ApexShow.stop();   // joined late: straight to the lights
+      }
     } else renderBoard();
   }
 
   function endRace() {
     race = null;
     run = null;
+    closeStage();
     if (lights != null) { lights.remove(); lights = null; }
     setHud('');
     live = new Map();
@@ -513,6 +525,7 @@
     renderLights(now);
     if (self == null) return;
     const state = self.getCarState();
+    if (race.phase === 'race' && now < race.goAt && state.frames === 0 && !state.hasStarted) parked = state;
     if (state.frames < selfLastFrames && race.phase !== 'results') {   // the player restarted their run
       const keepBest = run.best;
       run = newRun();
@@ -560,6 +573,69 @@
     report({ t: 'lap', lap: run.lap, ms });
   }
 
+  // ================================================================== race: intro and podium (apex-show.js)
+  const startPlace = () => {
+    const start = ctx.track().getStartTransform(), q = start.quaternion;
+    return { p: [start.position.x, start.position.y, start.position.z], q: [q.x, q.y, q.z, q.w] };
+  };
+  function showIntro() {
+    if (!window.ApexShow) return;
+    try {
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      ctx.track().getTrackData().forEachPart((x, y, z) => [x, y, z].forEach((v, k) => { min[k] = Math.min(min[k], v * PART_SIZE); max[k] = Math.max(max[k], v * PART_SIZE); }));
+      const slot = slotFor(selfId);
+      window.ApexShow.intro({ min, max }, slot != null ? { p: slot.p, q: slot.q } : startPlace(), INTRO_MS);
+    } catch (e) { console.error('Apex: no race intro', e); }
+  }
+
+  // The podium stands on the road just after the start line, facing down the road; on it, copies of
+  // the cars in finishing order (the cars themselves stay wherever their drivers left them).
+  function openStage() {
+    stage = { cars: [] };
+    if (!window.ApexShow) return;
+    try {
+      const start = startPlace(), forward = rotate({ x: start.q[0], y: start.q[1], z: start.q[2], w: start.q[3] }, [0, 0, 1]), up = rotate({ x: start.q[0], y: start.q[1], z: start.q[2], w: start.q[3] }, [0, 1, 0]);
+      const road = { p: [0, 1, 2].map(k => start.p[k] + forward[k] * PODIUM_AHEAD - up[k] * START_HEIGHT), q: start.q };
+      const finishers = race.results.map(r => ({ result: r, player: players.find(p => p.id === r.id) })).filter(f => f.player != null).slice(0, PODIUM_CARS);
+      const slots = window.ApexShow.podium(road, finishers.length);
+      const self = ctx.getSelfCar(), model = parked || (self != null ? self.getCarState() : null);
+      if (model == null) return;
+      finishers.forEach((f, i) => {
+        const car = ctx.makeCar(), s = slots[i];
+        car.setCarStyle(f.player.carStyle);
+        car.setNameTag(f.player.countryCode, (i + 1) + '. ' + f.player.nickname, f.result.ms);
+        car.audioVolume = 0;
+        const state = { ...model, frames: 0, speedKmh: 0, hasStarted: false, finishFrames: null, steering: 0, brakeLightEnabled: false, collisionImpulses: [],
+          wheelSuspensionVelocity: model.wheelSuspensionVelocity.map(() => 0), wheelDeltaRotation: model.wheelDeltaRotation.map(() => 0),
+          controls: { up: false, right: false, down: false, left: false, reset: false },
+          position: { x: s.p[0], y: s.p[1], z: s.p[2] }, quaternion: { x: s.q[0], y: s.q[1], z: s.q[2], w: s.q[3] } };
+        stage.cars.push({ car, state, placed: false });
+      });
+    } catch (e) { console.error('Apex: no podium', e); }
+  }
+  function closeStage() {
+    if (stage == null) return;
+    for (const c of stage.cars) c.car.dispose();
+    stage = null;
+    if (window.ApexShow) window.ApexShow.clear();
+  }
+  function updateStage(dt) {
+    if (race == null || race.phase !== 'results') { closeStage(); return; }
+    if (stage == null) openStage();
+    // the player has seen it: the podium goes, so that it does not stand across the road for those who drive on
+    if (stage.cars.length > 0 && !window.ApexShow.active()) { for (const c of stage.cars) c.car.dispose(); stage.cars = []; window.ApexShow.clear(); }
+    for (const c of stage.cars) {
+      c.car.setCarState(c.state, !c.placed);
+      c.placed = true;
+      c.car.setVisible(true);
+      c.car.setOpacity(1);
+      if (c.car.apexTagOpacity) c.car.apexTagOpacity(1);
+      c.car.update(dt);
+    }
+  }
+  // while the podium is on screen the camera is not on the car: it is not driven either
+  const watching = () => stage != null && stage.cars.length > 0 && window.ApexShow.active();
+
   // ================================================================== UI
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
@@ -571,7 +647,7 @@
   function renderLights(now) {
     if (race == null || race.phase !== 'race') return;
     const left = race.goAt - now;
-    if (left < -1500) { if (lights != null) { lights.remove(); lights = null; } return; }
+    if (left < -1500 || left > LIGHTS_MS) { if (lights != null) { lights.remove(); lights = null; } return; }
     if (lights == null) {
       lights = el('div', 'apex-race-lights');
       for (let i = 0; i < 5; i++) lights.appendChild(el('span'));
@@ -806,6 +882,7 @@
       if (ctx == null) return;
       if (race == null) sampleSelf();
       updateRace();
+      updateStage(dt);
       updateGhost(dt);
       if (window.ApexCollide) window.ApexCollide.frame(collisionSession());
     },
@@ -813,12 +890,14 @@
       // A new session may already have taken over; only its owner can tear it down.
       if (owner !== undefined && ctx != null && ctx.owner !== owner) return;
       disposeGhost();
+      closeStage();
+      if (window.ApexShow) window.ApexShow.clear();
       if (window.ApexCollide) window.ApexCollide.frame(null);
       if (board != null) { board.remove(); board = null; }
       if (lights != null) { lights.remove(); lights = null; }
       setHud('');
       ctx = null; players = []; live = new Map(); best = new Map(); selfId = null; selfLastFrames = -1;
-      race = null; run = null; course = null;
+      race = null; run = null; course = null; parked = null;
     },
 
     // --- race hooks
@@ -828,7 +907,7 @@
       const s = slotFor(selfId);
       return s == null ? null : { position: { x: s.p[0], y: s.p[1], z: s.p[2] }, quaternion: { x: s.q[0], y: s.q[1], z: s.q[2], w: s.q[3] } };
     },
-    locked() { return race != null && race.phase === 'race' && performance.now() < race.goAt; },
+    locked() { return (race != null && race.phase === 'race' && performance.now() < race.goAt) || watching(); },
     raceActive() { return race != null; },
     simTrack(track) { return simTrack(track); },
 

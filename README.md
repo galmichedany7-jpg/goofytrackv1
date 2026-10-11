@@ -4,7 +4,7 @@ Mod pour le jeu [PolyTrack](https://www.kodub.com) 0.6.3 (Windows).
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier du jeu : le script d'installation transforme votre propre copie de PolyTrack.
 
-**Version actuelle : 2.10** 
+**Version actuelle : 2.11** 
 Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 ![Menu principal](docs/menu.jpg)
@@ -87,6 +87,19 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
+
+### V2.11 : présentation du circuit, podium, Goofy Coaster sans secousses
+
+**Courses (mode Course)**
+- **Présentation du circuit** : au lancement de la course, la caméra survole le circuit pendant 3 secondes, puis replonge derrière la voiture ; les feux s'allument ensuite. Espace ou un clic pour passer. Le départ reste le même pour tout le monde : passer la présentation rend seulement la caméra plus tôt.
+- **Podium** : quand tous les pilotes ont fini leurs tours, une estrade se dresse sur la ligne droite de départ, avec les voitures des trois premiers sur les marches 1, 2 et 3 (les suivants à côté, sur la route), leur nom et leur temps au-dessus, et des confettis. Espace ou un clic pour reprendre la main ; l'estrade disparaît alors pour ce joueur. La voiture n'est pas pilotée pendant qu'on regarde le podium.
+- Les deux scènes ne déplacent la caméra que pour l'image affichée ([`apex-show.js`](apex-show.js)) : la caméra du jeu, la physique et le chronométrage ne changent pas.
+
+**Goofy Coaster**
+- Dans le mur, le tire-bouchon et le looping, la voiture sautillait comme sur une route bosselée. La route y était découpée trop grossièrement : un rectangle vrillé coupé en deux triangles fait une arête de près de 10 cm le long de sa diagonale. Ces passages ont maintenant jusqu'à huit fois plus de sections, sur une courbe continue, et des bandes quatre fois plus étroites. Mesuré sur le moteur physique du jeu, à 200 km/h : les secousses sont divisées par 3 environ dans les virages relevés, par 50 là où la route est presque verticale.
+- Le tracé, les points de contrôle et l'identifiant de la piste ne changent pas : les records sont conservés. Le jeu met environ une seconde de plus à démarrer.
+
+**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.11.
 
 ### V2.10 : Goofy Coaster
 
@@ -514,6 +527,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `build_patterns.js` | Génération des 16 livrées |
 | `patch_bundle.js` | Points d'accroche ajoutés au code du jeu |
 | `apex-room.js` | Tableau de room, fantôme, mode course |
+| `apex-show.js` | Présentation du circuit avant les feux et podium à la fin d'une course |
 | `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
 | `apex-hud.js` | Mini-carte et écart en direct ; noms des touches selon le clavier (AZERTY) |
 | `apex-records.js` | Classements des pistes du mod : signature des records envoyés au serveur GoofyTrack |

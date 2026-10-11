@@ -15,7 +15,7 @@ module.exports = {
   SUPPORTED_VERSION: '0.6.3',
   EDITOR_CHUNK: '112.bundle.js',                              // the game's editor, loaded on demand (patched for the Riviera environment)
   MOD_NAME: 'GoofyTrack',                                     // shown on the home screen, with the version
-  MOD_VERSION: '2.10',                                       // home screen badge, menu footer, build fingerprint
+  MOD_VERSION: '2.11',                                       // home screen badge, menu footer, build fingerprint
   // Our matchmaking server (server/), in place of the PolyTrack one. GOOFY_SERVER overrides it, e.g. for a local test.
   SERVER_URL: process.env.GOOFY_SERVER || 'https://goofytrack.onrender.com/',
 };

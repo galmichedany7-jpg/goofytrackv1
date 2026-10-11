@@ -41,7 +41,7 @@ run('build_patterns.js');
 run('patch_bundle.js');
 
 // The mod's scripts, loaded before the game in this order (the game calls into them from the hooks of patch_bundle.js)
-const MOD_SCRIPTS = ['apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-room.js'];
+const MOD_SCRIPTS = ['apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-room.js'];
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
 // The theme reads the version from a CSS variable (home screen badge)
 fs.writeFileSync(path.join(APP, 'apex-theme.css'), `html:root { --apx-version: "VERSION ${MOD_VERSION}"; }\n` + fs.readFileSync(path.join(__dirname, 'apex-theme.css'), 'utf8').replace(/^\uFEFF/, ''));

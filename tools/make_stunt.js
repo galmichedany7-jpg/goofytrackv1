@@ -215,25 +215,48 @@ const local = s => ({ ...s, p: [s.p[0], s.p[1] - START_HEIGHT, s.p[2]] });
 const S = samples.map(local), ROAD = NAME + 'Road';
 const at = (s, across, up) => add(add(s.p, s.r, across), s.u, up);
 const wallOf = s => WALL_H + 3 * Math.min(1, Math.abs(s.r[1]) * 1.3);
+// Where the road rolls or curves in height, a cross-section every STEP metres is too coarse: a twisted
+// rectangle cut in two triangles has a ridge along its diagonal (10 cm high on the way into the wall ride),
+// and the car bounces from ridge to ridge. There the road gets up to four times as many cross-sections,
+// on a curve through the sections rather than straight from one to the next, and narrower strips.
+const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const FINE_ANGLE = 0.4 * D, FINE_MAX = 8, STRIPS = 8;   // measured on the game's physics: coarser than this still shakes the car
+const LANES = [[-1, -0.94], [-0.94, 0], [0, 0.94], [0.94, 1]];
+const FINE_LANES = [[-1, -0.94], ...Array.from({ length: STRIPS }, (_, k) => [-0.94 + k * 1.88 / STRIPS, -0.94 + (k + 1) * 1.88 / STRIPS]), [0.94, 1]];
+function between(i, t) {
+  const a = S[i], b = S[(i + 1) % N], before = S[(i - 1 + N) % N], after = S[(i + 2) % N];
+  let p = lerp(a.p, b.p, t);
+  if (!before.gap && !b.gap) p = [0, 1, 2].map(k => 0.5 * (2 * a.p[k] + (b.p[k] - before.p[k]) * t + (2 * before.p[k] - 5 * a.p[k] + 4 * b.p[k] - after.p[k]) * t * t + (3 * a.p[k] - before.p[k] - 3 * b.p[k] + after.p[k]) * t ** 3));
+  return { ...a, p, u: unit(lerp(a.u, b.u, t)), r: unit(lerp(a.r, b.r, t)), f: unit(lerp(a.f, b.f, t)), half: a.half + (b.half - a.half) * t };
+}
+let fineSections = 0;
 for (let i = 0; i < N; i++) {
-  const a = S[i], b = S[(i + 1) % N];
-  if (a.gap) continue;
-  const down = [-a.u[0], -a.u[1], -a.u[2]];
-  // the asphalt in two lanes, an edge line, then the walls; stunts are painted red and white
-  const paint = a.loop || Math.abs(a.u[1]) < 0.9 ? (Math.floor(i / 3) % 2 ? 'RoadEdgeRed' : 'RoadEdgeWhite') : 'RoadEdgeWhite';
-  for (const [u0, u1, m] of [[-1, -0.94, paint], [-0.94, 0, 'Road'], [0, 0.94, 'Road'], [0.94, 1, paint]])
-    quad(ROAD, m, at(a, u0 * a.half, 0), at(a, u1 * a.half, 0), at(b, u1 * b.half, 0), at(b, u0 * b.half, 0), a.u);
-  for (const s of [-1, 1]) {
-    const out = [a.r[0] * s, a.r[1] * s, a.r[2] * s], inward = [-out[0], -out[1], -out[2]];
-    const e = q => s * q.half, w = q => s * (q.half + WALL);
-    const ha = wallOf(a), hb = wallOf(b);                             // the walls grow with the banking
-    quad(ROAD, 'RoadBarrier', at(a, e(a), 0), at(a, e(a), ha), at(b, e(b), hb), at(b, e(b), 0), inward);
-    quad(ROAD, 'RoadBarrier', at(a, e(a), ha), at(a, w(a), ha), at(b, w(b), hb), at(b, e(b), hb), a.u);
-    quad(ROAD, 'RoadBarrier', at(a, w(a), ha), at(a, w(a), -SLAB), at(b, w(b), -SLAB), at(b, w(b), hb), out);
+  const A = S[i], B = S[(i + 1) % N];
+  if (A.gap) continue;
+  const bend = Math.acos(Math.max(-1, Math.min(1, dot(A.u, B.u))));
+  const m = Math.max(1, Math.min(FINE_MAX, Math.ceil(bend / FINE_ANGLE)));
+  if (m > 1) fineSections += m;
+  // the asphalt in lanes, an edge line, then the walls; stunts are painted red and white
+  const paint = A.loop || Math.abs(A.u[1]) < 0.9 ? (Math.floor(i / 3) % 2 ? 'RoadEdgeRed' : 'RoadEdgeWhite') : 'RoadEdgeWhite';
+  for (let k = 0; k < m; k++) {
+    const a = k === 0 ? A : between(i, k / m), b = k === m - 1 ? B : between(i, (k + 1) / m);
+    const down = [-a.u[0], -a.u[1], -a.u[2]];
+    for (const [u0, u1] of m > 1 ? FINE_LANES : LANES) {
+      const material = Math.abs(u0 + u1) / 2 > 0.94 ? paint : 'Road', q = [at(a, u0 * a.half, 0), at(a, u1 * a.half, 0), at(b, u1 * b.half, 0), at(b, u0 * b.half, 0)];
+      quad(ROAD, material, q[0], q[1], q[2], q[3], a.u);
+    }
+    for (const s of [-1, 1]) {
+      const out = [a.r[0] * s, a.r[1] * s, a.r[2] * s], inward = [-out[0], -out[1], -out[2]];
+      const e = q => s * q.half, w = q => s * (q.half + WALL);
+      const ha = wallOf(a), hb = wallOf(b);                             // the walls grow with the banking
+      quad(ROAD, 'RoadBarrier', at(a, e(a), 0), at(a, e(a), ha), at(b, e(b), hb), at(b, e(b), 0), inward);
+      quad(ROAD, 'RoadBarrier', at(a, e(a), ha), at(a, w(a), ha), at(b, w(b), hb), at(b, e(b), hb), a.u);
+      quad(ROAD, 'RoadBarrier', at(a, w(a), ha), at(a, w(a), -SLAB), at(b, w(b), -SLAB), at(b, w(b), hb), out);
+    }
+    quad(ROAD, 'RoadBarrier', at(a, -a.half - WALL, -SLAB), at(a, a.half + WALL, -SLAB), at(b, b.half + WALL, -SLAB), at(b, -b.half - WALL, -SLAB), down);
   }
-  quad(ROAD, 'RoadBarrier', at(a, -a.half - WALL, -SLAB), at(a, a.half + WALL, -SLAB), at(b, b.half + WALL, -SLAB), at(b, -b.half - WALL, -SLAB), down);
   // the open ends of a jump are closed
-  const before = S[(i - 1 + N) % N];
+  const a = A, b = B, before = S[(i - 1 + N) % N];
   if (before.gap) quad(ROAD, 'RoadEdgeRed', at(a, -a.half - WALL, -SLAB), at(a, a.half + WALL, -SLAB), at(a, a.half + WALL, 0), at(a, -a.half - WALL, 0), [-a.f[0], -a.f[1], -a.f[2]]);
   if (b.gap) quad(ROAD, 'RoadEdgeRed', at(b, -b.half - WALL, -SLAB), at(b, b.half + WALL, -SLAB), at(b, b.half + WALL, 0), at(b, -b.half - WALL, 0), b.f);
 }
@@ -309,5 +332,5 @@ fs.writeFileSync(path.join(OUT, KEY + '.json'), JSON.stringify({
   fine: S.map(s => [...s.p.map(v => +v.toFixed(2)), ...s.u.map(v => +v.toFixed(3))]),
 }));
 const triangles = Object.values(parts[ROAD]).reduce((s, a) => s + a.length / 9, 0);
-console.log(`Road: ${triangles} triangles; start line at level ${LEVEL}; gates ${JSON.stringify(checkpoints)}; finish ${JSON.stringify(finish)}`);
+console.log(`Road: ${triangles} triangles (${fineSections} fine cross-sections); start line at level ${LEVEL}; gates ${JSON.stringify(checkpoints)}; finish ${JSON.stringify(finish)}`);
 console.log('Written to ' + OUT);

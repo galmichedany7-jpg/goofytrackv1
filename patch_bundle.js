@@ -25,7 +25,7 @@ const RIVIERA_GROUND = 6318394;    // 0x60693a: the Riviera plain (apex-scenery.
 
 // Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
 // so a modified game never meets an older one (their race messages or physics would not match).
-const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-collide.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), ...Object.keys(require('./tools/circuits')).flatMap(key => [path.join('tracks', key, key + '.json'), path.join('tracks', key, 'checksums.json')]),   // the checksums stand for the road meshes
+const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-show.js', 'apex-collide.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), ...Object.keys(require('./tools/circuits')).flatMap(key => [path.join('tracks', key, key + '.json'), path.join('tracks', key, 'checksums.json')]),   // the checksums stand for the road meshes
   ...MOD_TRACKS.map(t => path.join('tracks', t.file))];
 // Hashed as text with LF line endings and no BOM: git on Windows may check the same files out with
 // CRLF (and a ZIP download has LF), which must not make two copies of the same code look different.
@@ -378,9 +378,10 @@ const patches = [
     insert: ',window.ApexGfx&&window.ApexGfx.init((0,i.gn)(this,S,"f"),this)',
   },
   {
+    // apex-show.js borrows the camera for the picture only (race intro, podium)
     name: 'before each frame: shadow strength',
     find: '(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f"))}addMaterial(e){',
-    replace: 'window.ApexGfx&&window.ApexGfx.frame((0,i.gn)(this,S,"f"),(0,i.gn)(this,E,"f")),window.ApexScenery&&window.ApexScenery.frame(),(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f"))}addMaterial(e){',
+    replace: 'window.ApexGfx&&window.ApexGfx.frame((0,i.gn)(this,S,"f"),(0,i.gn)(this,E,"f")),window.ApexScenery&&window.ApexScenery.frame(),window.ApexShow&&window.ApexShow.before((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),window.ApexShow&&window.ApexShow.after((0,i.gn)(this,M,"f"))}addMaterial(e){',
   },
   {
     name: 'sky dome material',
