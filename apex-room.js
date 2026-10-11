@@ -166,7 +166,7 @@
     disposeGhost();
     const car = ctx.makeCar();
     car.setCarStyle(leader.run.carStyle);
-    car.setNameTag(leader.run.countryCode, leader.run.nickname + '  ' + formatTime(leader.run.frames));
+    car.setNameTag(leader.run.countryCode, leader.run.nickname, leader.run.frames);   // the time: see patch_bundle.js
     car.audioVolume = 0;
     car.setVisible(false);
     ghost = { car, playerId: leader.id, frames: leader.run.frames, states: leader.run.states, lastT: -1, index: 0 };

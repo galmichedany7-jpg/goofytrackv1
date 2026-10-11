@@ -23,10 +23,10 @@ html:root {
 	--apx-fg-subtle: rgba(243, 245, 248, 0.36);
 
 	/* Accent + status */
-	--apx-accent: #d7ff3e;
-	--apx-accent-ink: #141a00;
-	--apx-accent-soft: rgba(215, 255, 62, 0.13);
-	--apx-accent-ring: rgba(215, 255, 62, 0.55);
+	--apx-accent: #f20d16;
+	--apx-accent-ink: #ffffff;
+	--apx-accent-soft: rgba(242, 13, 22, 0.13);
+	--apx-accent-ring: rgba(242, 13, 22, 0.55);
 	--apx-good: #4ff0a1;
 	--apx-bad: #ff5a6e;
 	--apx-warn: #ffd24a;
@@ -40,7 +40,7 @@ html:root {
 	--apx-glass-strong: rgba(12, 14, 19, 0.9);
 	--apx-blur: blur(22px) saturate(140%);
 	--apx-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
-	--apx-glow: 0 0 0 1px var(--apx-accent-ring), 0 10px 40px rgba(215, 255, 62, 0.16);
+	--apx-glow: 0 0 0 1px var(--apx-accent-ring), 0 10px 40px rgba(242, 13, 22, 0.16);
 
 	/* Shape + motion */
 	--apx-r-sm: 8px;
@@ -212,7 +212,7 @@ html body {
 #ui .loading-ui > div > div > div {
 	border-radius: var(--apx-r-pill);
 	background-color: var(--apx-accent);
-	box-shadow: 0 0 14px rgba(215, 255, 62, 0.6);
+	box-shadow: 0 0 14px rgba(242, 13, 22, 0.6);
 }
 
 /* Dialog shells: every floating panel shares one card look */
@@ -365,18 +365,18 @@ html body {
 /* The last tile is the primary action */
 #ui .menu-ui > .main-buttons-container > .button-image:last-child {
 	background: var(--apx-accent);
-	box-shadow: 0 14px 44px rgba(215, 255, 62, 0.28);
+	box-shadow: 0 14px 44px rgba(242, 13, 22, 0.28);
 }
 #ui .menu-ui > .main-buttons-container > .button-image:last-child > img {
-	filter: brightness(0);
+	filter: brightness(0) invert(1);
 	opacity: 0.88;
 }
 #ui .menu-ui > .main-buttons-container > .button-image:last-child > p {
 	color: var(--apx-accent-ink);
 }
 #ui .menu-ui > .main-buttons-container > .button-image:last-child:hover:not(:disabled) {
-	background: #e4ff73;
-	box-shadow: 0 20px 60px rgba(215, 255, 62, 0.42);
+	background: #ff3a42;
+	box-shadow: 0 20px 60px rgba(242, 13, 22, 0.42);
 }
 #ui .menu-ui > .button-bar {
 	padding: 12px calc(16px + var(--safe-area-horizontal));
@@ -649,14 +649,14 @@ html body {
 }
 #ui .track-info-ui > .side-panel > .button.play:not(:disabled) {
 	background: var(--apx-accent);
-	box-shadow: 0 12px 36px rgba(215, 255, 62, 0.25);
+	box-shadow: 0 12px 36px rgba(242, 13, 22, 0.25);
 	color: var(--apx-accent-ink);
 }
 #ui .track-info-ui > .side-panel > .button.play:not(:disabled) > img {
-	filter: brightness(0);
+	filter: brightness(0) invert(1);
 }
 #ui .track-info-ui > .side-panel > .button.play:hover:not(:disabled) {
-	background: #e4ff73;
+	background: #ff3a42;
 }
 
 #ui .leaderboard-ui > h3 {
@@ -1008,7 +1008,7 @@ html body {
 	background-color: var(--apx-accent);
 }
 #ui .input-visualizer-ui > div.active > img {
-	filter: brightness(0);
+	filter: brightness(0) invert(1);
 }
 
 #ui .time-bar-ui {
@@ -1296,14 +1296,14 @@ html body {
 }
 #ui .settings-menu-ui .button.apply {
 	background: var(--apx-accent);
-	box-shadow: 0 8px 26px rgba(215, 255, 62, 0.22);
+	box-shadow: 0 8px 26px rgba(242, 13, 22, 0.22);
 	color: var(--apx-accent-ink);
 }
 #ui .settings-menu-ui .button.apply > img {
-	filter: brightness(0);
+	filter: brightness(0) invert(1);
 }
 #ui .settings-menu-ui .button.apply:hover {
-	background: #e4ff73;
+	background: #ff3a42;
 }
 #ui .customization-panel-ui > .tab-bar > .button > img.button-icon {
 	margin-left: 8px;
@@ -1424,7 +1424,7 @@ html dialog.message-box-ui > div > p {
 	color: var(--apx-accent-ink);
 }
 :is(#ui, dialog.message-box-ui.confirm) > div > button:last-of-type:hover:not(:disabled) {
-	background: #e4ff73;
+	background: #ff3a42;
 }
 /* ---------- 15. Race mode (apex-room.js) ----------------------------------------- */
 #ui .apex-room-board > .row.pending > .name {
@@ -1448,7 +1448,7 @@ html dialog.message-box-ui > div > p {
 	transition: background 0.16s ease, transform 0.16s var(--apx-ease);
 }
 #ui .apex-room-board > .race-button:hover {
-	background: #e4ff73;
+	background: #ff3a42;
 }
 #ui .apex-room-board > .race-button:active {
 	transform: scale(0.98);
@@ -1692,9 +1692,9 @@ html dialog.message-box-ui > div > p {
 	transform: translateX(-50%);
 	padding: 7px 16px 6px 16px;
 	border-radius: var(--apx-r-pill);
-	background-color: var(--apx-accent-soft);
-	box-shadow: inset 0 0 0 1px var(--apx-accent-ring);
-	color: var(--apx-accent);
+	background-color: var(--apx-accent);
+	box-shadow: 0 6px 20px rgba(242, 13, 22, 0.35);
+	color: var(--apx-accent-ink);
 	font-family: var(--apx-font);
 	font-size: 15px;
 	font-weight: 700;
@@ -1761,6 +1761,27 @@ html dialog.message-box-ui > div > p {
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--apx-accent, #c8f02a);
+  color: var(--apx-accent, #f20d16);
   opacity: 0.8;
+}
+
+/* Settings > Players: the other settings while the player UI is off (patch_bundle.js, apex-hud.js) */
+#ui .settings-menu-ui .setting.apex-disabled {
+	opacity: 0.4;
+}
+#ui .settings-menu-ui .setting.apex-disabled :is(button, input) {
+	cursor: default;
+	pointer-events: none;
+}
+
+/* Settings: the value of a slider, 0 to 100, on its right (patch_bundle.js) */
+#ui .settings-menu-ui .setting > .apex-range-value {
+	flex-shrink: 0;
+	min-width: 3ch;
+	margin-left: 14px;
+	font-size: 16px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+	color: var(--apx-fg-muted);
 }

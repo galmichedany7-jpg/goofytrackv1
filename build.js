@@ -47,6 +47,7 @@ for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path
 fs.writeFileSync(path.join(APP, 'apex-theme.css'), `html:root { --apx-version: "VERSION ${MOD_VERSION}"; }\n` + fs.readFileSync(path.join(__dirname, 'apex-theme.css'), 'utf8').replace(/^\uFEFF/, ''));
 fs.copyFileSync(path.join(__dirname, 'goofytrack-logo.svg'), path.join(APP, 'images', 'logo.svg'));
 fs.copyFileSync(path.join(__dirname, 'audio', 'goofytrack_music.mp3'), path.join(APP, 'audio', 'goofytrack_music.mp3'));   // "Vroum Vroum" by Teknah
+fs.copyFileSync(path.join(__dirname, 'audio', 'goofytrack_waiting.mp3'), path.join(APP, 'audio', 'goofytrack_waiting.mp3'));   // "WAITING" by Teknah (track selection menu)
 for (const icon of ['riviera.svg', 'riviera_colored.svg']) fs.copyFileSync(path.join(__dirname, 'images', icon), path.join(APP, 'images', icon));   // Riviera environment
 // App icon: the window (taskbar, Alt+Tab) uses the .ico (patched into electron/main.js), the web manifest the .svg
 fs.copyFileSync(path.join(__dirname, 'images', 'goofytrack_icon.ico'), path.join(APP, 'images', 'goofytrack_icon.ico'));
@@ -66,5 +67,5 @@ if (!html.includes(mainScript) || !html.includes('</head>')) throw new Error('in
 const wake = '<script>fetch(' + JSON.stringify(SERVER_URL + 'health') + ').catch(()=>{})</script>';
 html = html.replace(mainScript, wake + MOD_SCRIPTS.map(file => `<script defer="defer" src="${file}"></script>`).join('') + mainScript).replace('</head>', '<link rel="stylesheet" href="apex-theme.css"/></head>');
 fs.writeFileSync(path.join(APP, 'index.html'), html);
-console.log(`${MOD_NAME} ${MOD_VERSION} installed: apex-theme.css, ${MOD_SCRIPTS.join(', ')}, goofytrack-logo.svg, goofytrack_music.mp3, ` + require('./tracks').map(t => t.file).join(', '));
+console.log(`${MOD_NAME} ${MOD_VERSION} installed: apex-theme.css, ${MOD_SCRIPTS.join(', ')}, goofytrack-logo.svg, goofytrack_music.mp3, goofytrack_waiting.mp3, ` + require('./tracks').map(t => t.file).join(', '));
 console.log(`Done. Start ${path.join(GAME, 'PolyTrack.exe')}`);

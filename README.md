@@ -83,6 +83,28 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+### V2.7 : interface rouge, réglages des joueurs, mises à jour automatiques
+
+**Interface**
+- La couleur d'accent passe du vert citron au rouge GoofyTrack (`#f20d16`) : boutons principaux (Jouer, Appliquer, Lancer la course), barre de chargement, voyants des touches, flèche de la mini-carte. Le texte et les icônes sur ces boutons passent en blanc.
+- Les curseurs des paramètres affichent leur valeur, de 0 à 100, à leur droite.
+
+**Paramètres > Joueurs**
+- Nouvelle section, après le son, pour les étiquettes au-dessus des autres voitures (fantômes, adversaires, fantôme de la room) : « Afficher l'UI des joueurs », « Montrer le nom », « Montrer le temps » et « Opacité de l'UI ». Quand l'UI des joueurs est coupée, les autres réglages de la section sont grisés.
+- Les changements s'appliquent tout de suite, même en pleine partie (bouton Paramètres en jeu).
+- Les textes de la section, et le nom de la mini-carte, sont traduits dans toutes les langues du jeu.
+
+**Contre la montre**
+- Les fantômes ont maintenant une étiquette comme en multijoueur : drapeau, pseudo et temps du record (votre drapeau pour votre propre fantôme). Elle s'efface avec la voiture quand le fantôme vous chevauche.
+
+**Musique**
+- « WAITING » de Teknah dans le menu de choix des pistes et sur la page d'une piste ; « Vroum Vroum » partout ailleurs, avec un fondu entre les deux.
+
+**Mises à jour automatiques**
+- [`update.js`](update.js), `Jouer a GoofyTrack.bat` et `Mettre a jour GoofyTrack.bat` : la dernière release est téléchargée et installée dans le jeu sans rien faire à la main (voir [Mises à jour automatiques](#mises-à-jour-automatiques)).
+
+**Mise à jour** : une dernière fois à la main (`git pull` ou nouveau ZIP, puis `node build.js`), ensuite `Jouer a GoofyTrack.bat` s'en charge. L'empreinte du build change, donc tous les joueurs d'une room doivent passer en V2.7.
+
 ### V2.6 : Monaco GP, environnement Riviera
 
 **Circuit**
@@ -317,6 +339,20 @@ node uninstall.js "C:\chemin\vers\PolyTrack-v0.6.3-win32-x64"
 
 Le dossier `resources/app` est supprimé et l'archive d'origine remise en place.
 
+### Mises à jour automatiques
+
+Double-cliquez sur **`Jouer a GoofyTrack.bat`** au lieu de `PolyTrack.exe` : il regarde sur GitHub s'il y a une nouvelle release, la télécharge, la réinstalle dans le jeu si besoin, puis lance le jeu. **`Mettre a jour GoofyTrack.bat`** fait la même chose sans lancer le jeu. En ligne de commande :
+
+```bash
+node update.js [--check] [--play] [--force] ["C:\chemin\vers\PolyTrack-v0.6.3-win32-x64"]
+```
+
+- Dossier téléchargé en ZIP : le code de la dernière release est copié par-dessus le dossier. Le dépôt étant privé, le premier lancement demande un token GitHub en lecture seule (Contents > Read-only sur ce dépôt), gardé dans `update-settings.json` avec le dossier du jeu.
+- Dossier cloné avec git : `git pull` avec vos identifiants git, refusé s'il y a des modifications locales.
+- Sans connexion, le jeu se lance quand même.
+
+Pour les releases : le tag doit être `V` + `MOD_VERSION` de `config.js` (`V2.7` pour `2.7`), c'est lui qui est comparé à la version installée.
+
 ## Compatibilité en ligne
 
 - **Classements officiels** : hors course, la physique n'est pas modifiée, vos temps en solo et en room restent comparables à ceux des autres joueurs. Les temps faits pendant une course (qualifications, formation, course) ne sont ni enregistrés ni envoyés.
@@ -394,7 +430,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `apex-theme.css` | Thème de l'interface |
 | `images/` | Icône du jeu (`goofytrack_icon.svg` et sa version `.ico` pour Windows), icônes de l'environnement Riviera |
 | `goofytrack-logo.svg` | Logo du menu principal |
-| `audio/` | Musique du jeu (« Vroum Vroum », Teknah) |
+| `audio/` | Musiques du jeu (« Vroum Vroum » et, dans le menu des courses, « WAITING », Teknah) |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |
 | `server/`, `render.yaml` | Serveur multijoueur (codes d'invitation, mise en relation, classements des pistes du mod) et son déploiement sur Render |
 | `serve.js` | Développement : sert le jeu modé en http pour le tester dans un navigateur (`node serve.js "C:\chemin\vers\PolyTrack"`) |
@@ -403,6 +439,6 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 
 Le code de ce dépôt est sous licence MIT (voir `LICENSE`). PolyTrack et ses contenus appartiennent à Kodub.
 
-La musique [`audio/goofytrack_music.mp3`](audio/goofytrack_music.mp3) (« Vroum Vroum ») est de Teknah.
+La musique [`audio/goofytrack_music.mp3`](audio/goofytrack_music.mp3) (« Vroum Vroum ») et [`audio/goofytrack_waiting.mp3`](audio/goofytrack_waiting.mp3) (« WAITING ») sont de Teknah.
 
 Le tracé du Circuit de Monaco ([`tools/monaco_gps.json`](tools/monaco_gps.json)) vient de [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits), sous licence MIT, Copyright (c) 2019-2025 Tomislav Bacinger.

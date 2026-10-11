@@ -30,7 +30,7 @@ const SERVER_QUERY = '?mod=' + encodeURIComponent(BUILD_ID);
 const FOOTER = [
   '"PolyTrack" Game Remastered by Julio & Shyn',
   'All Credits to © 2026 kodub.com',
-  'Music : "Vroum Vroum" by Teknah',
+  'Music : "Vroum Vroum" & "WAITING" by Teknah',
 ];
 
 const HOOK = 'window.ApexRoom&&window.ApexRoom.';
@@ -122,7 +122,91 @@ const patches = [
     name: 'the name tag of a car can be faded (room ghost)',
     anchor: 'setVisible(e){(0,l.gn)(this,me,"f").visible=e}',
     before: true,
-    insert: 'apexTagOpacity(e){const t=(0,l.gn)(this,Ae,"f");null!=t&&(t.material.opacity=e)}',
+    insert: 'apexTagOpacity(e){this.apexTagBase=e;const t=(0,l.gn)(this,Ae,"f");null!=t&&(t.material.opacity=e)}',
+  },
+  // ---------------------------------------------------------------- name tags (settings > Players)
+  // The tags above the other cars (ghosts, opponents, room ghost): flag and name, time of the run.
+  // All of them can be hidden, or made fainter, or show the name or the time only. Settings of their own:
+  // settings saved by a game without the mod skip the unknown names.
+  {
+    name: 'name tags: new settings',
+    find: 'e[e.TouchSteeringSide=23]="TouchSteeringSide"}',
+    replace: 'e[e.TouchSteeringSide=23]="TouchSteeringSide",e[e.ApexNameTags=24]="ApexNameTags",e[e.ApexNameTagOpacity=25]="ApexNameTagOpacity",e[e.ApexNameTagName=26]="ApexNameTagName",e[e.ApexNameTagTime=27]="ApexNameTagTime"}',
+  },
+  {
+    name: 'name tags: shown in full (name and time), fully opaque by default',
+    find: '[P.A.TouchSteeringSide,"true"]])}defaultKeyBindings',
+    replace: '[P.A.TouchSteeringSide,"true"],[P.A.ApexNameTags,"true"],[P.A.ApexNameTagOpacity,"1"],[P.A.ApexNameTagName,"true"],[P.A.ApexNameTagTime,"true"]])}defaultKeyBindings',
+  },
+  {
+    name: 'name tags: the settings can be read by apex-hud.js',
+    anchor: 'const Mf=class{constructor(e){',
+    insert: 'window.ApexSettings={manager:this,ids:P.A};',
+  },
+  {
+    name: 'name tags: "Players" section of the settings menu, after the audio',
+    find: 'P.A.GhostCarSoundsEnabled),(0,R.gn)(this,qs,"m",go)',
+    // the player UI switch greys out the other settings of the section while it is off
+    replace: 'P.A.GhostCarSoundsEnabled),window.ApexHud&&(()=>{const apexBox=(0,R.gn)(this,to,"f"),apexRows=[],apexOnOff=[{title:Ks.getFromLanguage((0,R.gn)(this,so,"f"),"Off"),value:"false"},{title:Ks.getFromLanguage((0,R.gn)(this,so,"f"),"On"),value:"true"}];'
+      + '(0,R.gn)(this,qs,"m",go).call(this,window.ApexHud.tagLabel("section")),'
+      + '(0,R.gn)(this,qs,"m",vo).call(this,window.ApexHud.tagLabel("tags"),apexOnOff,P.A.ApexNameTags,(()=>window.ApexHud.syncTagRows(apexRows))),'
+      + '(0,R.gn)(this,qs,"m",vo).call(this,window.ApexHud.tagLabel("name"),apexOnOff,P.A.ApexNameTagName),apexRows.push(apexBox.lastElementChild),'
+      + '(0,R.gn)(this,qs,"m",vo).call(this,window.ApexHud.tagLabel("time"),apexOnOff,P.A.ApexNameTagTime),apexRows.push(apexBox.lastElementChild),'
+      + '(0,R.gn)(this,qs,"m",Ao).call(this,window.ApexHud.tagLabel("opacity"),P.A.ApexNameTagOpacity,.1,1),apexRows.push(apexBox.lastElementChild),'
+      + 'window.ApexHud.syncTagRows(apexRows)})(),(0,R.gn)(this,qs,"m",go)',
+  },
+  {
+    // every slider of the settings menu shows its value, 0 to 100, on its right
+    name: 'settings sliders show their value',
+    find: 'o.addEventListener("input",(()=>{const e=parseFloat(o.value)/20;(0,R.gn)(this,lo,"f").set(t,e.toString()),(0,R.gn)(this,Ys,"f").updateSettings(Array.from((0,R.gn)(this,lo,"f")))})),a.appendChild(o),(0,R.gn)(this,to,"f").appendChild(a)}',
+    replace: 'o.addEventListener("input",(()=>{const e=parseFloat(o.value)/20;apexValue.textContent=Math.round(100*e).toString(),(0,R.gn)(this,lo,"f").set(t,e.toString()),(0,R.gn)(this,Ys,"f").updateSettings(Array.from((0,R.gn)(this,lo,"f")))})),a.appendChild(o);'
+      + 'const apexValue=document.createElement("span");apexValue.className="apex-range-value",apexValue.textContent=Math.round(5*parseFloat(o.value)).toString(),a.appendChild(apexValue),(0,R.gn)(this,to,"f").appendChild(a)}',
+  },
+  {
+    // the car keeps what its tag could show; the tag shows what the settings ask for (null: no tag).
+    // The third argument, the time of the run in ms, is the mod's: the game never passes it
+    name: 'name tags: flag, name and time as set',
+    find: 'setNameTag(e,t){null!=(0,l.gn)(this,ve,"f")&&(0,l.gn)(this,ve,"f").countryCode==e&&(0,l.gn)(this,ve,"f").name==t||',
+    replace: 'setNameTag(e,t,apexTime){this.apexTagRaw={countryCode:e,name:t,time:void 0!==apexTime?apexTime:this.apexTagRaw?.time??null};'
+      + 'const apexShown=window.ApexHud?window.ApexHud.tagContent(this.apexTagRaw):{countryCode:e,name:t};'
+      + 'if(null==apexShown)return void(null!=(0,l.gn)(this,ve,"f")&&((0,l.GG)(this,ve,null,"f"),(0,l.gn)(this,D,"m",Fe).call(this)));'
+      + 'e=apexShown.countryCode,t=apexShown.name;null!=(0,l.gn)(this,ve,"f")&&(0,l.gn)(this,ve,"f").countryCode==e&&(0,l.gn)(this,ve,"f").name==t||',
+  },
+  {
+    // so a change in the settings shows at once, even over a running game
+    name: 'name tags: redrawn when their settings change',
+    find: 'update(e){if((0,l.gn)(this,D,"m",Qe).call(this),',
+    replace: 'update(e){if(null!=this.apexTagRaw&&window.ApexHud&&this.apexTagStamp!==window.ApexHud.tagStamp()&&(this.apexTagStamp=window.ApexHud.tagStamp(),this.setNameTag(this.apexTagRaw.countryCode,this.apexTagRaw.name)),(0,l.gn)(this,D,"m",Qe).call(this),',
+  },
+  {
+    // every frame, so a change in the settings shows at once, even over a running game
+    name: 'name tags: hidden or faded as set',
+    find: '(0,l.gn)(this,Ae,"f").visible=(0,l.gn)(this,te,"f").hasStarted&&i>=r*r&&i<=a*a,',
+    replace: 'const apexTag=window.ApexHud?window.ApexHud.tagOpacity():1;(0,l.gn)(this,Ae,"f").material.opacity=(this.apexTagBase??1)*apexTag,(0,l.gn)(this,Ae,"f").visible=apexTag>0&&(0,l.gn)(this,te,"f").hasStarted&&i>=r*r&&i<=a*a,',
+  },
+  {
+    // the game names only the cars of a multiplayer game: the time trial ghosts get their player's flag,
+    // name and time too (your own ghost: your flag)
+    name: 'name tags: on the time trial ghosts',
+    find: 'n.setCarStyle(e.settings.carStyle),n.audioVolume=(0,R.gn)(this,vs,"f"),(0,R.gn)(this,ta,"m",Cs).call(this),e.car=n',
+    replace: 'n.setCarStyle(e.settings.carStyle),null!=e.settings.nickname&&n.setNameTag(e.settings.countryCode??(e.settings.isSelf?(0,R.gn)(this,ha,"f").getCurrentUserProfile().countryCode:null),e.settings.nickname,e.settings.time.numberOfFrames),n.audioVolume=(0,R.gn)(this,vs,"f"),(0,R.gn)(this,ta,"m",Cs).call(this),e.car=n',
+  },
+  {
+    // the opponents picked in the leaderboard keep their country, for the flag of their ghost
+    name: 'name tags: the opponents picked keep their country',
+    find: 'concat([{nickname:t,recordingId:l,isSelf:o}])',
+    replace: 'concat([{nickname:t,countryCode:n,recordingId:l,isSelf:o}])',
+  },
+  {
+    name: 'name tags: ... up to their ghost',
+    find: 'nickname:e[n].nickname,time:t.time,isSelf:e[n].isSelf})))})));else{const e=r.getRecord(i.profileSlot,u);if(null!=e){const t=i.getCurrentUserProfile();v(',
+    replace: 'nickname:e[n].nickname,countryCode:e[n].countryCode,time:t.time,isSelf:e[n].isSelf})))})));else{const e=r.getRecord(i.profileSlot,u);if(null!=e){const t=i.getCurrentUserProfile();v(',
+  },
+  {
+    // and their name fades with them when they overlap your car
+    name: 'name tags: time trial ghost names fade with their car',
+    find: 'if(null!=t.car){const n=t.car.getPosition().distanceTo(e),i=Math.max(0,Math.min(1,n/5));t.car.setOpacity(i)}',
+    replace: 'if(null!=t.car){const n=t.car.getPosition().distanceTo(e),i=Math.max(0,Math.min(1,n/5));t.car.setOpacity(i),t.car.apexTagOpacity(i)}',
   },
   {
     // qualifying, formation and race laps: no personal best, no room record, no ghost
@@ -465,7 +549,17 @@ const patches = [
     // "Vroum Vroum" by Teknah, copied next to the game's own music by build.js
     name: 'the mod\'s music',
     find: 'l.load("music",["audio/music.ogg","audio/music.mp3"])',
-    replace: 'l.load("music",["audio/goofytrack_music.mp3","audio/music.ogg","audio/music.mp3"])',
+    replace: 'l.load("music",["audio/goofytrack_music.mp3","audio/music.ogg","audio/music.mp3"]),l.load("waiting",["audio/goofytrack_waiting.mp3"])',
+  },
+  {
+    // "WAITING" by Teknah plays in the track selection menu (after Play) and on the page of the track picked,
+    // "Vroum Vroum" everywhere else:
+    // when the wanted track changes, the playing one fades out and the other starts (and fades in) from the top
+    name: 'track selection menu music',
+    find: 'if(null==(0,R.gn)(this,y,"f")){const e=this.getBuffer("music");if(null!=e&&null!=this.context&&null!=this.destinationMaster){const t=this.context.createBufferSource();t.buffer=e,t.loop=!0;const n=this.context.createGain();n.gain.value=0,t.connect(n),n.connect(this.destinationMaster),t.start(0),(0,R.GG)(this,y,{source:t,gain:n},"f")}}',
+    replace: 'const apexMusic=null!=document.querySelector("#ui .track-selection-ui:not(.hidden), #ui .track-info-ui")&&null!=this.getBuffer("waiting")?"waiting":"music";'
+      + 'if(null!=(0,R.gn)(this,y,"f")&&(0,R.gn)(this,y,"f").key!=apexMusic){const e=(0,R.gn)(this,y,"f");e.gain.gain.cancelScheduledValues(0),e.gain.gain.setTargetAtTime(0,0,.2),e.source.stop(this.context.currentTime+1.5),(0,R.GG)(this,y,null,"f")}'
+      + 'if(null==(0,R.gn)(this,y,"f")){const e=this.getBuffer(apexMusic);if(null!=e&&null!=this.context&&null!=this.destinationMaster){const t=this.context.createBufferSource();t.buffer=e,t.loop=!0;const n=this.context.createGain();n.gain.value=0,t.connect(n),n.connect(this.destinationMaster),t.start(0),(0,R.GG)(this,y,{source:t,gain:n,key:apexMusic},"f")}}',
   },
 
   // ---------------------------------------------------------------- main menu footer
