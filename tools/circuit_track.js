@@ -1,22 +1,22 @@
-// Builds the "Montbéliard" track file from tracks/montbeliard.json (written by tools/make_montbeliard.js), in the game.
+// Builds the track file of a circuit from tracks/<circuit>.json (written by tools/make_circuit.js), in the game.
 // Run it in the game's page (node serve.js, then the developer console), after a build with the new parts:
 //
-//   paste the content of this file into the console, then: await MontbeliardTrack.make()
+//   paste the content of this file into the console, then: await CircuitTrack.make('montbeliard', 'Montbéliard', 'Shyn')
 //
-// It returns what tracks/ needs: the track code (tracks/montbeliard.track), its id (tracks/index.js) and the
-// thumbnail as a data URL (tracks/montbeliard.png). The parts' checksums (tracks/montbeliard/checksums.json) are
-// printed by the game itself when the track is played with outdated ones: "Part id ... checksum mismatch: <new> != <old>".
+// It returns what tracks/ needs: the track code (tracks/<circuit>.track), its id (tracks/index.js) and the
+// thumbnail as a data URL (tracks/<circuit>.png). The parts' checksums (tracks/<circuit>/checksums.json) are
+// printed by the game itself when it starts with outdated ones: "Part id ... checksum mismatch: <new> != <old>".
 (() => {
   let req;
-  window.webpackChunk.push([[Symbol('montbeliard-track')], {}, r => { req = r; }]);
+  window.webpackChunk.push([[Symbol('circuit-track')], {}, r => { req = r; }]);
   const TrackData = req(9117).A;
   // The track's id is a hash of its data, not of its parts' meshes: when the road changes but not the gates,
   // the id would stay the same and the records made on the old road would be checked against the new one
   // ("Invalid replay detected"). Each road revision turns the sun by one step, which gives the track a new id.
   const ROAD_REVISION = 1;
 
-  async function build() {
-    const circuit = await (await fetch('tracks/montbeliard.json')).json();
+  async function build(key) {
+    const circuit = await (await fetch('tracks/' + key + '.json')).json();
     const base = TrackData.fromExportString((await (await fetch('tracks/official/summer1.track')).text()).trim()).trackData;
     const sun = new base.sunDirection.constructor(base.sunDirection.representation + ROAD_REVISION);
     const td = new TrackData(base.environment, sun);
@@ -28,10 +28,10 @@
     return td;
   }
 
-  window.MontbeliardTrack = {
+  window.CircuitTrack = {
     build,
-    async make(name = 'Montbéliard', author = 'GoofyTrack') {
-      const td = await build();
+    async make(key, name, author = 'GoofyTrack') {
+      const td = await build(key);
       const canvas = td.createThumbnail();
       return { code: td.toExportString({ name, author }), id: td.getId(), thumbnail: canvas && canvas.toDataURL ? canvas.toDataURL('image/png') : null };
     },

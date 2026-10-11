@@ -113,6 +113,7 @@
     return lights.list;
   }
 
+  const smoothed = new Map();    // normals already worked out for the big meshes, see smooth()
   window.ApexGfx = {
     look: LOOK, // tweakable live from the console
 
@@ -164,6 +165,10 @@
       const position = geometry.attributes.position, normal = geometry.attributes.normal;
       if (position == null || normal == null || geometry.index != null) return;
       const P = position.array, N = normal.array, count = position.count;
+      // The game asks several times for the same big meshes (the circuits' roads): the answer is kept.
+      // (The game replaces Math by its own, slower, deterministic one: lengths are taken with ** 0.5 here.)
+      const key = count > 20000 ? count + ':' + P[0] + ':' + P[count] + ':' + P[2 * count] + ':' + P[3 * count - 1] : null;
+      if (key != null && smoothed.has(key)) { N.set(smoothed.get(key)); normal.needsUpdate = true; return; }
       const cosLimit = Math.cos(LOOK.smoothAngle * Math.PI / 180);
 
       // Area-weighted face normal of every triangle
@@ -188,22 +193,23 @@
       for (const group of groups.values()) {
         for (const v of group) {
           const fx = face[v * 3], fy = face[v * 3 + 1], fz = face[v * 3 + 2];
-          const fl = Math.hypot(fx, fy, fz);
+          const fl = (fx * fx + fy * fy + fz * fz) ** 0.5;
           let sx = 0, sy = 0, sz = 0;
           if (fl > 0) {
             for (const w of group) {
               const gx = face[w * 3], gy = face[w * 3 + 1], gz = face[w * 3 + 2];
-              const gl = Math.hypot(gx, gy, gz);
+              const gl = (gx * gx + gy * gy + gz * gz) ** 0.5;
               if (gl > 0 && (fx * gx + fy * gy + fz * gz) / (fl * gl) >= cosLimit) { sx += gx; sy += gy; sz += gz; }
             }
           }
-          const sl = Math.hypot(sx, sy, sz);
+          const sl = (sx * sx + sy * sy + sz * sz) ** 0.5;
           if (sl > 0) { out[v * 3] = sx / sl; out[v * 3 + 1] = sy / sl; out[v * 3 + 2] = sz / sl; }
           else { out[v * 3] = N[v * 3]; out[v * 3 + 1] = N[v * 3 + 1]; out[v * 3 + 2] = N[v * 3 + 2]; }
         }
       }
       N.set(out);
       normal.needsUpdate = true;
+      if (key != null) smoothed.set(key, out);
     },
   };
 })();

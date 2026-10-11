@@ -1,28 +1,30 @@
-// Reduces an OpenStreetMap extract of Montbéliard's centre to what the circuit and its town are built from:
-// tools/montbeliard_osm.json (the lap on real streets, building footprints, streets, water, railway, parks).
+// Reduces an OpenStreetMap extract to what a circuit and its surroundings are built from:
+// tools/<circuit>_osm.json (the lap on real streets, building footprints, streets, water, railway, parks, woods).
 //
-//   node tools/montbeliard_osm.js <map.json>
+//   node tools/town_osm.js <circuit> <map.json>
 //
-// <map.json> is the extract itself, not kept in the repository (7 MB):
-//   https://api.openstreetmap.org/api/0.6/map.json?bbox=6.7890,47.5040,6.8090,47.5160
+// <circuit> is a key of tools/circuits.js, which says where the lap goes. <map.json> is the extract itself,
+// not kept in the repository (several MB), from https://api.openstreetmap.org/api/0.6/map.json?bbox=<west,south,east,north>
+// (the API refuses more than 50,000 nodes at once: a town centre is fetched in a few tiles, merged into one file).
 // Map data © OpenStreetMap contributors, Open Database Licence (openstreetmap.org/copyright).
 //
-// Everything is in metres, x to the east and z to the south of ORIGIN.
+// Everything is in metres, x to the east and z to the south of the circuit's origin.
 const fs = require('fs');
 const path = require('path');
 
-const ORIGIN = [6.7990, 47.5100];
-// The lap: the boulevards round the old town. It goes through these points in turn (the shortest way on the
-// main streets from each to the next, never twice through the same crossing) and starts nearest to START.
-const VIA = [[58, -210], [-316, -34], [-320, 184], [239, 83]];
-const START = [150, -40];              // Avenue des Alliés, in front of the station
-const DRIVE = new Set(['primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'living_street', 'primary_link', 'secondary_link', 'tertiary_link']);
-const STREET_WIDTH = { primary: 9, secondary: 8, tertiary: 7, residential: 5.5, unclassified: 5.5, living_street: 5, pedestrian: 5, primary_link: 6, secondary_link: 6, tertiary_link: 6, busway: 6 };
-const WATER_WIDTH = { 'L\'Allan': 30, 'Canal du Rhône au Rhin - Branche Sud': 18, 'La Lizaine': 7 };
-const LANDMARKS = { 'Château des Ducs de Wurtemberg': 'chateau', 'Temple Saint-Martin': 'temple', 'Halles de Montbéliard': 'halles', 'Hôtel de Ville de Montbéliard': 'mairie', 'Église Saint-Maimbœuf': 'eglise', 'Temple Saint-Georges': 'templeGeorges', 'Montbéliard': 'gare' };
+const key = process.argv[2], file = process.argv[3];
+const cfg = require('./circuits')[key];
+if (!cfg || !file) { console.error('Usage: node tools/town_osm.js <circuit> <map.json>'); process.exit(1); }
+const ORIGIN = cfg.origin;
+// The lap goes through the points of cfg.via in turn (the shortest way on the main streets from each to the
+// next, never twice through the same crossing) and starts nearest to cfg.start. A circuit with a surveyed
+// line of its own (cfg.line) has no cfg.via: only its surroundings are taken from the map.
+const VIA = cfg.via || null, START = cfg.start;
+const DRIVE = new Set(['primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'living_street', 'primary_link', 'secondary_link', 'tertiary_link', ...(cfg.walk ? ['pedestrian', 'busway'] : [])]);
+const STREET_WIDTH = { primary: 9, secondary: 8, tertiary: 7, residential: 5.5, unclassified: 5.5, living_street: 5, pedestrian: 5, primary_link: 6, secondary_link: 6, tertiary_link: 6, busway: 6, raceway: 11 };
+const WATER_WIDTH = cfg.waterWidths || {};
+const LANDMARKS = cfg.landmarks || {};
 
-const file = process.argv[2];
-if (!file) { console.error('Usage: node tools/montbeliard_osm.js <map.json>'); process.exit(1); }
 const osm = JSON.parse(fs.readFileSync(file, 'utf8'));
 const nodes = new Map(), ways = [], relations = [];
 for (const e of osm.elements) { if (e.type === 'node') nodes.set(e.id, e); else if (e.type === 'way') ways.push(e); else if (e.type === 'relation') relations.push(e); }
@@ -58,6 +60,8 @@ function shortest(from, to, banned) {
   const steps = []; for (let v = to; v !== from; v = prev.get(v).u) steps.unshift({ id: v, w: prev.get(v).w });
   return steps;
 }
+let lap = [], names = [], lapLength = 0;
+if (VIA) {
 const via = VIA.map(nearest), lapSteps = [], used = new Set();
 for (let i = 0; i < via.length; i++) {
   // the way back to the first point may have to run along crossings the lap left by: checked below
@@ -66,7 +70,7 @@ for (let i = 0; i < via.length; i++) {
   for (const s of steps) { lapSteps.push(s); used.add(s.id); }
   used.delete(via[0]);
 }
-let lap = lapSteps.map(s => nodes.get(s.id));
+lap = lapSteps.map(s => nodes.get(s.id));
 // Where the way back meets the way out before the first point, the lap is closed there: the stretch run
 // twice (out to the first point and back) is dropped.
 for (;;) {
@@ -79,34 +83,46 @@ if (lap.length < 20) throw new Error('The lap runs twice through the same street
 let first = 0; lap.forEach((n, i) => { if (Math.hypot(n.p[0] - START[0], n.p[1] - START[1]) < Math.hypot(lap[first].p[0] - START[0], lap[first].p[1] - START[1])) first = i; });
 lap = lap.slice(first).concat(lap.slice(0, first));
 const onLap = new Set(lap.map(n => n.id));
-const names = []; for (const s of lapSteps) { const n = s.w.tags.name; if (onLap.has(s.id) && n && !names.includes(n)) names.push(n); }
-const lapLength = lap.reduce((s, n, i) => { const m = lap[(i + 1) % lap.length]; return s + Math.hypot(m.p[0] - n.p[0], m.p[1] - n.p[1]); }, 0);
+for (const s of lapSteps) { const n = s.w.tags.name; if (onLap.has(s.id) && n && !names.includes(n)) names.push(n); }
+lapLength = lap.reduce((s, n, i) => { const m = lap[(i + 1) % lap.length]; return s + Math.hypot(m.p[0] - n.p[0], m.p[1] - n.p[1]); }, 0);
+
+}
 
 // ------------------------------------------------------------------ the town
-const buildings = [], streets = [], water = [], rails = [], parks = [], landmarks = {};
+// Only what lies within cfg.reach of the lap is kept
+const lapPoints = (() => {
+  const pts = cfg.line ? JSON.parse(fs.readFileSync(path.join(__dirname, cfg.line), 'utf8')).lonLat.map(([lon, lat]) => xy({ lon, lat })) : lap.map(n => n.p), out = [];
+  pts.forEach((a, i) => { const b = pts[(i + 1) % pts.length], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 25)); for (let k = 0; k < n; k++) out.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]); });
+  return out;
+})();
+const within = p => { if (!cfg.reach) return true; const r2 = cfg.reach * cfg.reach; for (const q of p) for (const l of lapPoints) if ((q[0] - l[0]) * (q[0] - l[0]) + (q[1] - l[1]) * (q[1] - l[1]) < r2) return true; return false; };
+const buildings = [], streets = [], water = [], rails = [], parks = [], woods = [], landmarks = {};
 const multipolygonOuters = new Set();
-for (const r of relations) if ((r.tags || {}).type === 'multipolygon' && (r.tags.building || r.tags.natural === 'water' || r.tags.leisure === 'park')) {
+for (const r of relations) if ((r.tags || {}).type === 'multipolygon' && (r.tags.building || r.tags.natural === 'water' || r.tags.leisure === 'park' || r.tags.landuse === 'forest' || r.tags.natural === 'wood')) {
   for (const m of r.members) if (m.type === 'way' && m.role === 'outer' && wayById.has(m.ref)) {
-    const w = wayById.get(m.ref), p = ring(points(w)); if (p.length < 3) continue;
+    const w = wayById.get(m.ref), p = ring(points(w)); if (p.length < 3 || !within(p)) continue;
     multipolygonOuters.add(w.id);
     if (r.tags.building) { buildings.push({ p, levels: +r.tags['building:levels'] || undefined, name: r.tags.name }); if (LANDMARKS[r.tags.name]) landmarks[LANDMARKS[r.tags.name]] = p; }
     else if (r.tags.natural === 'water') water.push({ area: p });
-    else parks.push(p);
+    else if (r.tags.leisure === 'park') parks.push(p);
+    else woods.push(p);
   }
 }
 for (const w of ways) {
   const t = w.tags || {}, p = points(w);
-  if (p.length < 2 || multipolygonOuters.has(w.id)) continue;
+  if (p.length < 2 || multipolygonOuters.has(w.id) || !within(p)) continue;
   if (t.building) {
     const r = ring(p); if (r.length < 3 || area(r) < 12) continue;
-    const b = { p: r }; if (t['building:levels']) b.levels = +t['building:levels']; if (t.height) b.height = parseFloat(t.height);
+    const b = { p: r }; if (+t['building:levels'] > 0) b.levels = +t['building:levels']; if (parseFloat(t.height) > 0) b.height = parseFloat(t.height);
+    if (t.building === 'grandstand' || t.building === 'stadium') b.kind = 'stand';
     if (t.amenity === 'place_of_worship') b.kind = 'worship'; else if (t.building === 'train_station' || t.railway === 'station') b.kind = 'station';
     buildings.push(b);
     if (LANDMARKS[t.name]) landmarks[LANDMARKS[t.name]] = r;
   } else if (t.natural === 'water') water.push({ area: ring(p) });
   else if (t.waterway === 'river' || t.waterway === 'canal' || t.waterway === 'stream') { if (t.tunnel !== 'yes' && t.tunnel !== 'culvert') water.push({ line: round(p), width: WATER_WIDTH[t.name] || 6 }); }
   else if (t.railway === 'rail') rails.push(round(p));
-  else if (t.leisure === 'park' || t.leisure === 'garden' || t.landuse === 'grass' || t.landuse === 'forest' || t.natural === 'wood') parks.push(ring(p));
+  else if (t.landuse === 'forest' || t.natural === 'wood') (cfg.woods ? woods : parks).push(ring(p));
+  else if (t.leisure === 'park' || t.leisure === 'garden' || t.landuse === 'grass') parks.push(ring(p));
   else if (STREET_WIDTH[t.highway] && t.tunnel !== 'yes') {
     if (t.highway === 'pedestrian' && t.area === 'yes') streets.push({ area: ring(p) });
     else streets.push({ line: round(p), width: STREET_WIDTH[t.highway] + (+t.lanes > 2 ? 3 : 0) });
@@ -116,14 +132,14 @@ for (const w of ways) {
 for (const e of osm.elements) if (e.type === 'node' && e.tags && LANDMARKS[e.tags.name] && !landmarks[LANDMARKS[e.tags.name]]) landmarks[LANDMARKS[e.tags.name]] = { at: e.p.map(v => +v.toFixed(1)) };
 
 const out = {
-  source: 'Map data © OpenStreetMap contributors, Open Database Licence (openstreetmap.org/copyright). Reduced by tools/montbeliard_osm.js.',
+  source: 'Map data © OpenStreetMap contributors, Open Database Licence (openstreetmap.org/copyright). Reduced by tools/town_osm.js.',
   origin: ORIGIN,
   lap: lap.map(n => [+n.lon.toFixed(6), +n.lat.toFixed(6)]),
   lapStreets: names,
-  buildings, streets, water, rails, parks, landmarks,
+  buildings, streets, water, rails, parks, woods, landmarks,
 };
-const target = path.join(__dirname, 'montbeliard_osm.json');
+const target = path.join(__dirname, key + '_osm.json');
 fs.writeFileSync(target, JSON.stringify(out));
-console.log(`Lap ${Math.round(lapLength)} m through ${names.join(', ')}`);
-console.log(`${buildings.length} buildings, ${streets.length} streets, ${water.length} waters, ${rails.length} rails, ${parks.length} parks; landmarks: ${Object.keys(landmarks).join(', ')}`);
+if (VIA) console.log(`Lap ${Math.round(lapLength)} m through ${names.join(', ')}`);
+console.log(`${buildings.length} buildings, ${streets.length} streets, ${water.length} waters, ${rails.length} rails, ${parks.length} parks, ${woods.length} woods; landmarks: ${Object.keys(landmarks).join(', ')}`);
 console.log(`Written ${target} (${Math.round(fs.statSync(target).size / 1024)} KB)`);

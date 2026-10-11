@@ -41,7 +41,7 @@ run('build_patterns.js');
 run('patch_bundle.js');
 
 // The mod's scripts, loaded before the game in this order (the game calls into them from the hooks of patch_bundle.js)
-const MOD_SCRIPTS = ['apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-montbeliard.js', 'apex-scenery.js', 'apex-collide.js', 'apex-room.js'];
+const MOD_SCRIPTS = ['apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-room.js'];
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
 // The theme reads the version from a CSS variable (home screen badge)
 fs.writeFileSync(path.join(APP, 'apex-theme.css'), `html:root { --apx-version: "VERSION ${MOD_VERSION}"; }\n` + fs.readFileSync(path.join(__dirname, 'apex-theme.css'), 'utf8').replace(/^\uFEFF/, ''));
@@ -59,9 +59,12 @@ for (const track of require('./tracks')) {
 // Monaco: its track parts go with the game's models; its centreline, from which apex-monaco.js builds the town
 fs.copyFileSync(path.join(__dirname, 'tracks', 'monaco', 'monaco.glb'), path.join(APP, 'models', 'monaco.glb'));
 fs.copyFileSync(path.join(__dirname, 'tracks', 'monaco', 'monaco.json'), path.join(APP, 'tracks', 'monaco.json'));
-// Montbéliard: the same, with the real map of the town centre in its json (apex-montbeliard.js draws it)
-fs.copyFileSync(path.join(__dirname, 'tracks', 'montbeliard', 'montbeliard.glb'), path.join(APP, 'models', 'montbeliard.glb'));
-fs.copyFileSync(path.join(__dirname, 'tracks', 'montbeliard', 'montbeliard.json'), path.join(APP, 'tracks', 'montbeliard.json'));
+// The circuits built from real maps (tools/circuits.js): the same, with the map of the place in their json (apex-town.js draws it)
+for (const key of Object.keys(require('./tools/circuits'))) {
+  fs.copyFileSync(path.join(__dirname, 'tracks', key, key + '.glb'), path.join(APP, 'models', key + '.glb'));
+  fs.copyFileSync(path.join(__dirname, 'tracks', key, key + '.json'), path.join(APP, 'tracks', key + '.json'));
+}
+fs.rmSync(path.join(APP, 'apex-montbeliard.js'), { force: true });   // scenery script of 2.8
 for (const old of ['monaco_decor.bin', 'monaco_decor.jpg']) fs.rmSync(path.join(APP, 'tracks', old), { force: true });   // scenery of 2.3 and 2.4
 const mainScript = '<script defer="defer" src="main.bundle.js">';
 let html = fs.readFileSync(path.join(ORIGINALS, 'index.html'), 'utf8');

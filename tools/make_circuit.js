@@ -1,28 +1,30 @@
-// Builds the Montbéliard circuit from the real streets of the town centre (tools/montbeliard_osm.json, made
-// from OpenStreetMap by tools/montbeliard_osm.js):
+// Builds a circuit of tools/circuits.js from its real line:
 //
-//   tracks/montbeliard/montbeliard.glb    the drivable circuit as custom track parts (road ribbon with kerbs
-//                                         and barriers, start line, checkpoint and finish gates)
-//   tracks/montbeliard/montbeliard.json   where everything goes (tiles, gates, the centreline) and the town
-//                                         itself in the circuit's frame (building footprints, streets, the
-//                                         Allan and the canal, the railway, parks, landmarks);
-//                                         apex-montbeliard.js draws the town from it
+//   tracks/<circuit>/<circuit>.glb    the drivable circuit as custom track parts (road ribbon with kerbs and
+//                                     barriers, start line, checkpoint and finish gates)
+//   tracks/<circuit>/<circuit>.json   where everything goes (tiles, gates, the centreline with its heights)
+//                                     and the surroundings in the circuit's frame (building footprints,
+//                                     streets, water, railway, parks, woods, landmarks, the relief),
+//                                     from which apex-town.js draws them
 //
-// The lap is the ring of boulevards round the old town, at full scale (1.9 km): Avenue des Alliés in front
-// of the station, Rue de l'Étuve, Avenue de Lattre de Tassigny, Rue Contejean, Avenue Wilson along the Allan,
-// Avenue d'Helvétie and Avenue Briand at the foot of the castle. The streets' line is rounded, then relaxed
-// just enough for a 15 m road with a barrier on each side. The town is flat there: so is the road.
+// The line is either a lap on real streets (tools/<circuit>_osm.json, made from OpenStreetMap by
+// tools/town_osm.js) or a surveyed racing line (cfg.line, longitudes and latitudes). It is rounded, then
+// relaxed just enough for a 15 m road with a barrier on each side. Heights come from
+// tools/<circuit>_heights.json when the circuit has one (tools/heights.js), else the road is level.
 //
 // The road builder is the one of tools/make_monaco.js (this file started as a copy of it).
 //
-//   node tools/make_montbeliard.js
+//   node tools/make_circuit.js <circuit>
 //
 // Then, in the game: the track file, its id and thumbnail (tracks/index.js), and the parts' checksums
-// (tracks/montbeliard/checksums.json) must be made again, see tools/montbeliard_track.js.
+// (tracks/<circuit>/checksums.json) must be made again, see tools/circuit_track.js.
 const fs = require('fs');
 const path = require('path');
 
-const OUT = path.join(__dirname, '..', 'tracks', 'montbeliard');
+const KEY = process.argv[2], cfg = require('./circuits')[KEY];
+if (!cfg) { console.error('Usage: node tools/make_circuit.js <circuit>   (' + Object.keys(require('./circuits')).join(', ') + ')'); process.exit(1); }
+const NAME = cfg.mesh;       // prefix of the model's meshes: <NAME>Road, <NAME>Start...
+const OUT = path.join(__dirname, '..', 'tracks', KEY);
 fs.mkdirSync(OUT, { recursive: true });
 
 const ROAD_HALF = 7.5;        // half width of the asphalt
@@ -31,26 +33,46 @@ const WALL = 0.6, WALL_H = 1.3;
 const SPACING = 3;            // metres between two cross-sections of the ribbon
 const WIDEN = 4;              // in the tight corners the road is up to this much wider, on the outside (the hairpin is 19 m wide)
 const GAP = 3.2;              // room between the outer faces of the barriers of two stretches that run side by side
-const MIN_RADIUS = 18;        // tightest corner allowed at the centreline (after the smoothing below, the tightest one is 21 m)
-const MAX_GRADE = 0.09;       // steepest slope of the road
-const HEIGHT_SCALE = 1;
-const START_GPS = 0;          // the start line: the first point of the lap (Avenue des Alliés, in front of the station)
-const IDS = { road: 244, start: 245, checkpoint: 246, finish: 247 };
+const MIN_RADIUS = cfg.minRadius || 18;   // tightest corner allowed at the centreline
+const MAX_GRADE = cfg.maxGrade || 0.09;   // steepest slope of the road
+const HEIGHT_SCALE = cfg.heightScale || 1;
+const START_GPS = 0;          // the start line: the first point of the lap
+const IDS = cfg.ids;
+// The asphalt between two cross-sections is cut into LANES across and STEPS along (see the road ribbon below).
+// Every triangle costs loading time in the game: a level road needs none of them, a hilly one fewer than Monaco's 8 x 3.
+const [LANES, STEPS] = cfg.facets || [8, 3];
 const GRID = 5;               // track parts sit on a 5 m grid, heights too
 const LEVEL = 1;              // grid height of the start line: 5 m above the game's plain
 
-const town = JSON.parse(fs.readFileSync(path.join(__dirname, 'montbeliard_osm.json'), 'utf8'));
-const ORIGIN = town.origin;
+const osmFile = path.join(__dirname, KEY + '_osm.json');
+const town = fs.existsSync(osmFile) ? JSON.parse(fs.readFileSync(osmFile, 'utf8')) : { buildings: [], streets: [], water: [], rails: [], parks: [], woods: [], landmarks: {}, lap: [] };
+const ORIGIN = cfg.origin;
+// the lap as longitudes and latitudes, starting at the start line: a surveyed line (turned so that it starts
+// nearest to cfg.startLonLat, and reversed if cfg.reverse) or the lap found on the streets
+const rawLap = (() => {
+  if (!cfg.line) return town.lap;
+  let pts = JSON.parse(fs.readFileSync(path.join(__dirname, cfg.line), 'utf8')).lonLat.slice();
+  const d = (a, b) => Math.hypot((a[0] - b[0]) * Math.cos(b[1] * Math.PI / 180), a[1] - b[1]);
+  if (d(pts[0], pts[pts.length - 1]) < 1e-6) pts.pop();
+  if (cfg.reverse) pts.reverse();
+  let first = 0; pts.forEach((p, i) => { if (d(p, cfg.startLonLat) < d(pts[first], cfg.startLonLat)) first = i; });
+  return pts.slice(first).concat(pts.slice(0, first));
+})();
 // The streets' line has a point at every crossing and bend, at any distance: one every 15 m first, so that
 // positions along the lap (below, as indices of that line) mean distances
 const lonLat = (() => {
   const out = [];
-  town.lap.forEach((a, i) => { const b = town.lap[(i + 1) % town.lap.length]; const d = Math.hypot((b[0] - a[0]) * 75300, (b[1] - a[1]) * 111200), n = Math.max(1, Math.round(d / 15)); for (let k = 0; k < n; k++) out.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]); });
+  rawLap.forEach((a, i) => { const b = rawLap[(i + 1) % rawLap.length]; const d = Math.hypot((b[0] - a[0]) * (cfg.lonMetres || 111200 * Math.cos(ORIGIN[1] * Math.PI / 180)), (b[1] - a[1]) * 111200), n = Math.max(1, Math.round(d / 15)); for (let k = 0; k < n; k++) out.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]); });
   return out;
 })();
-const PROFILE = [[0, 0], [lonLat.length, 0]];   // level
+// Height of the road at each of these points, above the lowest one (tools/heights.js); level without the file
+const heightsFile = path.join(__dirname, KEY + '_heights.json');
+const surveyed = fs.existsSync(heightsFile) ? JSON.parse(fs.readFileSync(heightsFile, 'utf8')) : null;
+if (surveyed && surveyed.lap.length !== lonLat.length) throw new Error(KEY + '_heights.json was made for another line: run tools/heights.js again');
+const PROFILE = surveyed ? [...surveyed.lap.map((h, i) => [i, h]), [lonLat.length, surveyed.lap[0]]] : [[0, 0], [lonLat.length, 0]];
+if (process.argv[3] === '--points') { fs.writeFileSync(path.join(__dirname, KEY + '_points.json'), JSON.stringify({ origin: ORIGIN, lap: lonLat })); console.log(lonLat.length + ' points written for tools/heights.js'); process.exit(0); }
 // Where the checkpoints may go (ranges of that line), in lap order: one on each side of the ring
-const GATE_RANGES = [[0.14, 0.30], [0.36, 0.52], [0.56, 0.72], [0.78, 0.92]].map(r => r.map(f => f * lonLat.length));
+const GATE_RANGES = (cfg.gates || [[0.14, 0.30], [0.36, 0.52], [0.56, 0.72], [0.78, 0.92]]).map(r => r.map(f => f * lonLat.length));
 
 // ------------------------------------------------------------------ the GPS line, in metres
 const gps = lonLat;
@@ -89,7 +111,7 @@ function chaikin(pts) {
 }
 // The points are 15 m apart: their corners are rounded first, then the line is resampled finely
 for (let k = 0; k < 3; k++) line = chaikin(line);
-line = smooth(resample(line, SPACING), 80);   // street corners are right angles: opened up into bends that can be raced
+line = smooth(resample(line, SPACING), cfg.smoothing == null ? 80 : cfg.smoothing);   // street corners are right angles: opened up into bends that can be raced
 
 // ------------------------------------------------------------------ room for the road
 // The line is relaxed until the barriers of any two stretches are GAP apart and every corner is at least
@@ -315,6 +337,11 @@ let steepest = 0;
 for (let i = 0; i < line.length; i++) steepest = Math.max(steepest, Math.abs(height[(i + 1) % line.length] - height[i]) / SPACING);
 console.log(`Heights ${Math.min(...height).toFixed(1)} to ${Math.max(...height).toFixed(1)} m, steepest ${(steepest * 100).toFixed(1)} %`);
 
+// The parts are placed at the start line's own height: the road's heights are counted from there, and the
+// start line stands that many grid steps above the game's plain (a circuit's lowest point is 5 m above it).
+const startHeight = height[0], START_LEVEL = LEVEL + Math.round(startHeight / GRID);
+height = height.map(h => h - startHeight);
+
 // ------------------------------------------------------------------ mesh helpers
 const parts = {};                         // mesh name -> material name -> [positions]
 const tri = (mesh, material, a, b, c) => { ((parts[mesh] ??= {})[material] ??= []).push(...a, ...b, ...c); };
@@ -365,14 +392,14 @@ const corner = line.map((_, i) => { let r = Infinity; for (let o = -4; o <= 4; o
 for (let i = 0; i < line.length; i++) {
   const a = section[i], b = section[(i + 1) % line.length];
   // a strip between two offsets, each end at its own section's offset (the road is wider in the corners)
-  const strip = (material, u0, y0, u1, y1, towards) => quad('MontbeliardRoad', material, a.at(u0(a), y0), a.at(u1(a), y1), b.at(u1(b), y1), b.at(u0(b), y0), towards);
+  const strip = (material, u0, y0, u1, y1, towards) => quad(NAME + 'Road', material, a.at(u0(a), y0), a.at(u1(a), y1), b.at(u1(b), y1), b.at(u0(b), y0), towards);
   const kerb = corner[i] ? (Math.floor(i / 2) % 2 === 0 ? 'RoadEdgeRed' : 'RoadEdgeWhite') : 'RoadEdgeWhite';
   // the asphalt in 8 lanes and 3 steps along: where the road turns and climbs at once its surface twists,
   // and small facets spread the twist instead of folding it on a few long creases
-  for (let k = 0; k < 3; k++) for (let m = 0; m < 8; m++) {
+  for (let k = 0; k < STEPS; k++) for (let m = 0; m < LANES; m++) {
     const P = (c, f) => c.at(-c.e(-1) + f * (c.e(-1) + c.e(1)), 0);
     const along = (f, t) => { const p = P(a, f), q = P(b, f); return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t]; };
-    quad('MontbeliardRoad', 'Road', along(m / 8, k / 3), along((m + 1) / 8, k / 3), along((m + 1) / 8, (k + 1) / 3), along(m / 8, (k + 1) / 3), [0, 1, 0]);
+    quad(NAME + 'Road', 'Road', along(m / LANES, k / STEPS), along((m + 1) / LANES, k / STEPS), along((m + 1) / LANES, (k + 1) / STEPS), along(m / LANES, (k + 1) / STEPS), [0, 1, 0]);
   }
   for (const s of [-1, 1]) {
     const out = [a.n[0] * s, 0, a.n[2] * s], inward = [-out[0], 0, -out[2]];
@@ -384,7 +411,7 @@ for (let i = 0; i < line.length; i++) {
 }
 
 // ------------------------------------------------------------------ start line, checkpoint and finish gates (road along z)
-// The lines painted across the road are drawn by apex-montbeliard.js, which follows the road exactly. The parts keep
+// The lines painted across the road are drawn by apex-town.js, which follows the road exactly. The parts keep
 // their own copy under the asphalt, out of reach of the wheels: a line standing even 3 cm proud of a sloping
 // road made the cars bounce on it.
 const LINE_Y = -0.4;
@@ -394,21 +421,21 @@ function gate(mesh, banner) {
   for (const s of [-1, 1]) box(mesh, 'RoadBarrier', s * post - 0.3, 0, -0.3, s * post + 0.3, 6.4, 0.3);
   box(mesh, banner, -post, 5.4, -0.2, post, 6.4, 0.2);
 }
-lineAcross('MontbeliardStart', 'StartLine', 0.6);
-lineAcross('MontbeliardCheckpoint', 'Checkpoint', 1.0); gate('MontbeliardCheckpoint', 'Checkpoint');
+lineAcross(NAME + 'Start', 'StartLine', 0.6);
+lineAcross(NAME + 'Checkpoint', 'Checkpoint', 1.0); gate(NAME + 'Checkpoint', 'Checkpoint');
 for (let k = 0; k < 10; k++) for (let r = 0; r < 2; r++)                 // chequered line
-  quad('MontbeliardFinish', (k + r) % 2 ? 'FinishWhite' : 'FinishBlack', [-E + k * 1.5, LINE_Y, r * 0.9 - 0.9], [-E + (k + 1) * 1.5, LINE_Y, r * 0.9 - 0.9], [-E + (k + 1) * 1.5, LINE_Y, r * 0.9], [-E + k * 1.5, LINE_Y, r * 0.9], [0, 1, 0]);
-gate('MontbeliardFinish', 'Finish');
+  quad(NAME + 'Finish', (k + r) % 2 ? 'FinishWhite' : 'FinishBlack', [-E + k * 1.5, LINE_Y, r * 0.9 - 0.9], [-E + (k + 1) * 1.5, LINE_Y, r * 0.9 - 0.9], [-E + (k + 1) * 1.5, LINE_Y, r * 0.9], [-E + k * 1.5, LINE_Y, r * 0.9], [0, 1, 0]);
+gate(NAME + 'Finish', 'Finish');
 
 // ------------------------------------------------------------------ tiles (20 m cells the road covers): mini-map, thumbnail, bounds
 const cells = new Set();
 for (const s of section) for (const u of [-s.e(-1), 0, s.e(1)]) { const [x, , z] = s.at(u, 0); cells.add(Math.round(x / 20) + ',' + Math.round(z / 20)); }
 const gateCells = new Set([[0, 0], [finish.gx, finish.gz], ...checkpoints.map(c => [c.gx, c.gz])].map(([gx, gz]) => Math.round(gx * GRID / 20) + ',' + Math.round(gz * GRID / 20)));
 
-// ------------------------------------------------------------------ montbeliard.glb
+// ------------------------------------------------------------------ <circuit>.glb
 // linear RGB; road, kerb and line colours are the ones of the game's own road parts, the barrier is a lighter steel
 const MATERIALS = { Road: [0.2957, 0.2957, 0.2957], RoadEdgeRed: [0.8, 0.0323, 0.0127], RoadEdgeWhite: [0.8, 0.8, 0.8], RoadBarrier: [0.33, 0.35, 0.38], StartLine: [0.8, 0.8, 0.8], Checkpoint: [0.76, 0.52, 0.02], FinishWhite: [0.8, 0.8, 0.8], FinishBlack: [0.01, 0.01, 0.012], Finish: [0.64, 0.02, 0.02] };
-const gltf = { asset: { version: '2.0', generator: 'GoofyTrack make_montbeliard.js' }, scene: 0, scenes: [{ name: 'Montbeliard', nodes: [] }], nodes: [], meshes: [], materials: Object.entries(MATERIALS).map(([name, rgb]) => ({ name, pbrMetallicRoughness: { baseColorFactor: [...rgb, 1], metallicFactor: 0, roughnessFactor: 0.8 } })), accessors: [], bufferViews: [], buffers: [{ byteLength: 0 }] };
+const gltf = { asset: { version: '2.0', generator: 'GoofyTrack make_circuit.js' }, scene: 0, scenes: [{ name: NAME, nodes: [] }], nodes: [], meshes: [], materials: Object.entries(MATERIALS).map(([name, rgb]) => ({ name, pbrMetallicRoughness: { baseColorFactor: [...rgb, 1], metallicFactor: 0, roughnessFactor: 0.8 } })), accessors: [], bufferViews: [], buffers: [{ byteLength: 0 }] };
 const chunks = []; let offset = 0;
 for (const [name, byMaterial] of Object.entries(parts)) {
   const primitives = [];
@@ -430,10 +457,10 @@ let json = Buffer.from(JSON.stringify(gltf)); json = Buffer.concat([json, Buffer
 const bin = Buffer.concat(chunks), head = Buffer.alloc(12), jh = Buffer.alloc(8), bh = Buffer.alloc(8);
 head.writeUInt32LE(0x46546C67, 0); head.writeUInt32LE(2, 4); head.writeUInt32LE(28 + json.length + bin.length, 8);
 jh.writeUInt32LE(json.length, 0); jh.writeUInt32LE(0x4E4F534A, 4); bh.writeUInt32LE(bin.length, 0); bh.writeUInt32LE(0x004E4942, 4);
-fs.writeFileSync(path.join(OUT, 'montbeliard.glb'), Buffer.concat([head, jh, json, bh, bin]));
-const roadTriangles = Object.values(parts.MontbeliardRoad).reduce((s, a) => s + a.length / 9, 0);
+fs.writeFileSync(path.join(OUT, KEY + '.glb'), Buffer.concat([head, jh, json, bh, bin]));
+const roadTriangles = Object.values(parts[NAME + 'Road']).reduce((s, a) => s + a.length / 9, 0);
 
-// ------------------------------------------------------------------ montbeliard.json
+// ------------------------------------------------------------------ <circuit>.json
 const STEP = 4;                                                           // one waypoint every 12 m
 const round1 = v => +v.toFixed(1);
 const game = list => list.map(p => toGame(p[0], p[1]).map(round1));
@@ -450,9 +477,11 @@ for (const b of town.buildings) {
 }
 const landmarks = {};
 for (const [name, v] of Object.entries(town.landmarks)) landmarks[name] = Array.isArray(v) ? game(v) : { at: toGame(...v.at).map(round1) };
-fs.writeFileSync(path.join(OUT, 'montbeliard.json'), JSON.stringify({
+const relief = fs.existsSync(heightsFile) && surveyed.grid ? surveyed.grid : null;
+fs.writeFileSync(path.join(OUT, KEY + '.json'), JSON.stringify({
+  town: KEY,
   ids: IDS, lapLength: Math.round(lapLength), roadHalfWidth: ROAD_HALF, gateWidth: 2 * W + 6,
-  level: LEVEL,                                                           // grid height of the start line: 5 m above the plain
+  level: START_LEVEL,                                                     // grid height of the start line (the lowest point of the lap is 5 m above the plain)
   finish: { gx: finish.gx, gy: finish.y, gz: finish.gz, rotation: finish.rotation },
   checkpoints: checkpoints.map(({ gx, y, gz, rotation }) => ({ gx, gy: y, gz, rotation })),
   roadCells: [...cells].filter(c => !gateCells.has(c)).map(c => c.split(',').map(Number)),
@@ -470,7 +499,11 @@ fs.writeFileSync(path.join(OUT, 'montbeliard.json'), JSON.stringify({
   water: town.water.map(w => (w.area ? { area: game(w.area) } : { line: game(w.line), width: w.width })),
   rails: town.rails.map(game),
   parks: town.parks.map(game),
+  woods: (town.woods || []).map(game),
   landmarks,
+  // the relief around the circuit (tools/heights.js): heights above the road's lowest point on a square grid,
+  // given in the map's frame (x east, z south of the origin); `frame` turns a point of the circuit's frame into it
+  relief: relief && { ...relief, frame: { origin: origin.map(round1), cos: +cosA.toFixed(6), sin: +sinA.toFixed(6) }, scale: HEIGHT_SCALE, startHeight: +startHeight.toFixed(2) },
 }));
 console.log(`Town: ${buildings.length} buildings (${removed} in the road's way left out), ${town.streets.length} streets.`);
 console.log(`Road: ${roadTriangles} triangles.`);

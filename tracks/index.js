@@ -27,13 +27,43 @@ module.exports = [
     group: 'Circuits',
   },
   {
-    // the boulevards round Montbéliard's old town, on the real map: tools/make_montbeliard.js, track file by tools/montbeliard_track.js
+    // the boulevards round Montbéliard's old town, on the real map: tools/make_circuit.js, track file by tools/circuit_track.js
     file: 'montbeliard.track',
     thumbnail: 'montbeliard.png',
     id: '5f3f1ddf7c32af2473c88a27b4cb6beae2c359d0c4ecb859d72e78a25b99aea4',
     name: 'Montbéliard',
     author: 'Shyn',
     lastModified: '2026-10-11T12:00:00.000Z',
+    group: 'Circuits',
+  },
+  {
+    // the Grand Prix circuit, from its surveyed line and the real relief of the Ardennes (tools/make_circuit.js)
+    file: 'spa.track',
+    thumbnail: 'spa.png',
+    id: '09126ab4ef902c5c8d3d3449f5129129c6b51d8946f630f5f876407781f18a4b',
+    name: 'Spa-Francorchamps',
+    author: 'Shyn',
+    lastModified: '2026-10-11T18:00:00.000Z',
+    group: 'Circuits',
+  },
+  {
+    // the quays round the Grande Île, on the real map
+    file: 'strasbourg.track',
+    thumbnail: 'strasbourg.png',
+    id: '4fde45a313188e998567244241cee164c7bd7b0f2fe130006c8d831eac9e4c18',
+    name: 'Strasbourg',
+    author: 'Shyn',
+    lastModified: '2026-10-11T18:00:00.000Z',
+    group: 'Circuits',
+  },
+  {
+    // the boulevards round the old town, on the real map
+    file: 'dijon.track',
+    thumbnail: 'dijon.png',
+    id: '4dc7f1c12726ce23fe8a4d1f6faa61424af357b6c2f06a5e883a3fa37333b892',
+    name: 'Dijon',
+    author: 'Shyn',
+    lastModified: '2026-10-11T18:00:00.000Z',
     group: 'Circuits',
   },
 ];

@@ -4,7 +4,7 @@ Mod pour le jeu [PolyTrack](https://www.kodub.com) 0.6.3 (Windows).
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier du jeu : le script d'installation transforme votre propre copie de PolyTrack.
 
-**Version actuelle : 2.8** 
+**Version actuelle : 2.9** 
 Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 ![Menu principal](docs/menu.jpg)
@@ -46,6 +46,9 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 **Circuits**
 - Une catégorie « Circuits », en tête des pistes officielles, avec Killer Loop et **Monaco GP** : le vrai tracé du Grand Prix de Monaco, à l'échelle (3,3 km, 35 m de dénivelé), au milieu de la principauté en low poly.
 - **Montbéliard** : la boucle des boulevards autour de la vieille ville (1,8 km), sur le vrai plan du centre : chaque bâtiment est à sa place, avec le château des ducs de Wurtemberg sur son rocher, le temple Saint-Martin, les halles, la gare, l'Allan et le canal.
+- **Spa-Francorchamps** : le circuit du Grand Prix de Belgique à l'échelle (7 km), avec son vrai relief : la descente vers l'Eau Rouge, le Raidillon, la montée de Kemmel jusqu'aux Combes, 100 m plus haut que Stavelot. Forêts des Ardennes, stands et tribunes à leur place.
+- **Strasbourg** : le tour des quais de la Grande Île (4 km), l'Ill tout autour, la cathédrale et sa flèche de 142 m au milieu, les Ponts Couverts et leurs tours, la place de la République.
+- **Dijon** : le tour des boulevards de la vieille ville (4,4 km) : place Darcy et la porte Guillaume, la République, le boulevard Carnot ; au centre, le palais des Ducs et la tour Philippe le Bon, Saint-Bénigne et son toit de tuiles vernissées.
 - Ces pistes ont leur propre classement en ligne, partagé entre tous les joueurs du mod et tenu par le serveur GoofyTrack : records, position, fantômes et replays comme sur les pistes officielles.
 
 **Collisions entre voitures**
@@ -84,6 +87,44 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+### V2.9 : Spa-Francorchamps, Strasbourg, Dijon
+
+Trois circuits de plus dans la catégorie « Circuits », construits comme Montbéliard à partir de données réelles, et des outils communs pour en ajouter d'autres.
+
+**Spa-Francorchamps**
+- Le tracé du Grand Prix, à l'échelle : 7,00 km dans le jeu pour 7,004 km en vrai. La ligne vient du même relevé que Monaco GP ([`tools/spa_gps.json`](tools/spa_gps.json), projet f1-circuits, licence MIT). Départ sur la ligne de départ du Grand Prix, avant la Source ; sens horaire.
+- Le relief est le vrai : les altitudes du tour et du terrain autour viennent du modèle européen EU-DEM (Copernicus), récupérées par [`tools/heights.js`](tools/heights.js). Le tour va de 368 m à 470 m d'altitude, soit 102 m de dénivelé : descente de la Source vers l'Eau Rouge, montée du Raidillon et de Kemmel jusqu'aux Combes, longue descente vers Stavelot, remontée par Blanchimont.
+- Les pentes sont plafonnées à 9 % comme à Monaco GP (le Raidillon réel monte à 17 %) et les virages serrés sont remis presque à plat : sur une pente forte, la voiture perd son adhérence dans le jeu. Le dénivelé total, lui, est conservé.
+- Décor : le terrain suit le relief réel et rejoint la route sur ses bords ; forêts plantées là où la carte en a (30 000 sapins), prairies ailleurs ; les stands F1 et Endurance, les tribunes, l'hôtel de la Source et les bâtiments du circuit sur leur emprise réelle, la voie des stands et les routes de service.
+- La route garde ses glissières des deux côtés : les dégagements et les bacs à gravier ne sont pas reproduits.
+
+**Strasbourg**
+- Le tour de la Grande Île par les quais extérieurs, 4,0 km : quai Kléber, quai Sturm, place de la République, avenue de la Liberté, quai Koch, pont Royal, quai des Pêcheurs, quai des Bateliers, quai Saint-Nicolas, quai Finkwiller, Ponts Couverts, quai Turckheim, quai Saint-Jean. Le tracé emprunte aussi des quais aujourd'hui piétons ou réservés au tram.
+- Ville : 4 600 bâtiments sur leur emprise réelle, l'Ill, le fossé du Faux-Rempart et les canaux de la Petite France. Façades blanches, crème et ocre sous des toits bruns très pentus.
+- Monuments : la cathédrale Notre-Dame en grès rose avec sa flèche unique (142 m), les quatre tours des Ponts Couverts, Saint-Thomas, Saint-Paul et ses deux flèches, le palais Rohan, le palais du Rhin et son dôme, la Bibliothèque nationale universitaire, l'Opéra, l'Aubette, l'ancienne douane.
+- Un bâtiment sur cinq a son nombre d'étages dans OpenStreetMap ; les autres sont estimés.
+
+**Dijon**
+- Le tour des boulevards de la vieille ville, 4,4 km : boulevard de la Trémouille, place de la République, boulevard Thiers, place du 30 Octobre, boulevard Carnot, rue de Tivoli, rempart de la Miséricorde, boulevard de Sévigné, place Darcy, boulevard de Brosses.
+- Ville : 4 000 bâtiments sur leur emprise réelle, en pierre de Bourgogne.
+- Monuments : le palais des Ducs et la tour Philippe le Bon (46 m), la cathédrale Saint-Bénigne avec son toit de tuiles vernissées et sa flèche de 93 m, Notre-Dame, Saint-Michel, Saint-Philibert, les halles, le théâtre, la porte Guillaume.
+- Le circuit est à plat : le centre de Dijon ne varie que de quelques mètres.
+
+**Outils**
+- Les outils de Montbéliard deviennent communs et sont pilotés par [`tools/circuits.js`](tools/circuits.js), qui décrit chaque circuit (origine de la carte, points de passage ou relevé GPS, monuments, numéros de pièces) :
+  - [`tools/town_osm.js`](tools/town_osm.js) réduit un extrait OpenStreetMap et trouve le tour sur les rues ;
+  - [`tools/heights.js`](tools/heights.js) récupère les altitudes du tour et du terrain ;
+  - [`tools/make_circuit.js`](tools/make_circuit.js) construit la route et le fichier du décor ;
+  - [`tools/circuit_track.js`](tools/circuit_track.js) refait le fichier de piste dans le jeu.
+- [`apex-town.js`](apex-town.js) remplace `apex-montbeliard.js` et dessine les quatre décors ; ce qui fait le style de chaque lieu (couleurs, pente des toits, monuments) est décrit en tête de fichier.
+- Montbéliard est reconstruit par les outils communs à l'identique : même route, mêmes empreintes, même identifiant de piste, donc mêmes records.
+- Chaque triangle de route coûte du temps au démarrage du jeu : les routes à plat (Strasbourg, Dijon) sont faites de grandes facettes, celle de Spa de facettes deux fois plus grandes que celles de Monaco GP (réglage `facets`). `apex-gfx.js` ne recalcule plus trois fois le lissage des mêmes routes.
+- Un numéro de pièce de piste tient sur un octet : il reste de la place pour une vingtaine de circuits (numéros 149 à 235).
+
+**Données** : plans © les contributeurs d'OpenStreetMap (ODbL) ; altitudes EU-DEM v1.1, produites avec des données Copernicus financées par l'Union européenne ; tracé de Spa du projet f1-circuits de Tomislav Bacinger (MIT).
+
+**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.9. Le dépôt grossit d'environ 10 Mo (routes et plans des trois circuits). Le jeu met quelques secondes de plus à démarrer : il prépare la route de chaque circuit au lancement.
+
 ### V2.8 : circuit de Montbéliard
 
 Un deuxième circuit de ville dans la catégorie « Circuits », construit sur le vrai plan du centre de Montbéliard.
@@ -93,7 +134,7 @@ Un deuxième circuit de ville dans la catégorie « Circuits », construit sur l
 - Le tracé suit les vraies rues ; leurs angles droits sont arrondis en virages (rayon le plus serré : 21 m) et la route est plus large que les boulevards qu'elle emprunte. La ville étant plate à cet endroit, le circuit l'est aussi.
 - Comme Monaco GP, le circuit a son classement en ligne sur le serveur GoofyTrack et fonctionne en room, collisions comprises.
 
-**Ville** ([`apex-montbeliard.js`](apex-montbeliard.js))
+**Ville** (`apex-montbeliard.js`, devenu [`apex-town.js`](apex-town.js) en V2.9)
 - La ville n'est pas inventée : le plan vient d'[OpenStreetMap](https://www.openstreetmap.org/copyright). 1 900 bâtiments sont posés sur leur emprise réelle, avec les rues, les places, les parcs, l'Allan, le canal du Rhône au Rhin et les voies de la gare. Les 78 bâtiments qui se trouvaient sur la route élargie sont retirés.
 - Façades aux couleurs de la vieille ville (ocre, rose, vert et bleu pâles) sous des toits de tuiles ; fenêtres sur les bâtiments proches de la route.
 - Monuments : le château des ducs de Wurtemberg sur son rocher, avec ses deux tours rondes, le temple Saint-Martin, l'hôtel de ville, les halles, l'église Saint-Maimbœuf et ses deux clochers.
@@ -102,8 +143,8 @@ Un deuxième circuit de ville dans la catégorie « Circuits », construit sur l
 - Le décor est seulement affiché, comme à Monaco : ce sont les glissières qui gardent les voitures sur la piste. Il compte environ 210 000 triangles, moitié moins que Monaco GP.
 
 **Outils**
-- [`tools/montbeliard_osm.js`](tools/montbeliard_osm.js) réduit un extrait OpenStreetMap du centre à ce qui sert ([`tools/montbeliard_osm.json`](tools/montbeliard_osm.json)) et calcule le tour sur les rues ; les points de passage et le départ sont en tête de fichier.
-- [`tools/make_montbeliard.js`](tools/make_montbeliard.js) en tire la route et les fichiers de [`tracks/montbeliard/`](tracks/montbeliard) ; il reprend le générateur de route de `tools/make_monaco.js`. [`tools/montbeliard_track.js`](tools/montbeliard_track.js) refait le fichier de piste dans le jeu.
+- `tools/montbeliard_osm.js` réduit un extrait OpenStreetMap du centre à ce qui sert ([`tools/montbeliard_osm.json`](tools/montbeliard_osm.json)) et calcule le tour sur les rues (depuis la V2.9 : `tools/town_osm.js`, réglages dans `tools/circuits.js`).
+- `tools/make_montbeliard.js` en tire la route et les fichiers de [`tracks/montbeliard/`](tracks/montbeliard) ; il reprend le générateur de route de `tools/make_monaco.js`. `tools/montbeliard_track.js` refait le fichier de piste dans le jeu (depuis la V2.9 : `tools/make_circuit.js` et `tools/circuit_track.js`).
 - Dans `patch_bundle.js`, les pièces de piste de Monaco et de Montbéliard sont déclarées par une même liste de circuits : en ajouter un troisième ne demande plus de nouveau patch.
 
 **Données** : plan de la ville © les contributeurs d'OpenStreetMap, sous licence ODbL.
@@ -452,10 +493,11 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `apex-records.js` | Classements des pistes du mod : signature des records envoyés au serveur GoofyTrack |
 | `apex-scenery.js` | Décor : montagnes, forêts, rochers, côte de l'environnement Riviera ; affiche la ville des circuits qui en ont une |
 | `apex-monaco.js` | Décor de Monaco GP généré à partir du tracé : ville, port et yachts, Casino, Fairmont et tunnel, stands et tribunes, Rocher, collines |
-| `apex-montbeliard.js` | Décor de Montbéliard, dessiné à partir du plan réel du centre : bâtiments, rues, château, Allan, canal, voies ferrées |
+| `apex-town.js` | Décors des circuits construits sur des cartes réelles (Spa-Francorchamps, Montbéliard, Strasbourg, Dijon) : bâtiments, rues, cours d'eau, forêts, relief, monuments |
 | `apex-collide.js` | Collisions entre voitures en course (page du jeu et moteur physique) |
 | `tools/make_monaco.js`, `tools/monaco_gps.json`, `tools/monaco_track.js`, `tracks/monaco/` | Circuit Monaco GP : tracé GPS réel, générateur de la route, fichier de piste, fichiers produits |
-| `tools/montbeliard_osm.js`, `tools/montbeliard_osm.json`, `tools/make_montbeliard.js`, `tools/montbeliard_track.js`, `tracks/montbeliard/` | Circuit de Montbéliard : extrait OpenStreetMap réduit, générateur de la route, fichier de piste, fichiers produits |
+| `tools/circuits.js`, `tools/town_osm.js`, `tools/heights.js`, `tools/make_circuit.js`, `tools/circuit_track.js` | Circuits sur cartes réelles : description de chaque circuit, extrait OpenStreetMap réduit, altitudes, générateur de la route, fichier de piste |
+| `tools/*_osm.json`, `tools/spa_gps.json`, `tools/spa_heights.json`, `tracks/<circuit>/` | Leurs données (plans réduits, relevé et altitudes de Spa) et les fichiers produits |
 | `apex-theme.css` | Thème de l'interface |
 | `images/` | Icône du jeu (`goofytrack_icon.svg` et sa version `.ico` pour Windows), icônes de l'environnement Riviera |
 | `goofytrack-logo.svg` | Logo du menu principal |

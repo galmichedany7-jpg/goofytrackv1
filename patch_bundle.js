@@ -14,16 +14,18 @@ const MONACO = require('./tracks/monaco/monaco.json');
 // its meshes, where they are (written by tools/make_<name>.js) and the SHA-256 of each part's collision mesh,
 // as the game computes it (tracks/<name>/checksums.json).
 const sumsOf = name => (fs.existsSync(path.join(__dirname, 'tracks', name, 'checksums.json')) ? JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', name, 'checksums.json'), 'utf8')) : {});
+// Monaco GP has tools of its own; the others are the circuits of tools/circuits.js (tools/make_circuit.js)
+const MAP_CIRCUITS = require('./tools/circuits');
 const CIRCUITS = [
   { name: 'Monaco', model: 'monaco', data: MONACO, sums: sumsOf('monaco') },
-  { name: 'Montbeliard', model: 'montbeliard', data: require('./tracks/montbeliard/montbeliard.json'), sums: sumsOf('montbeliard') },
+  ...Object.entries(MAP_CIRCUITS).map(([key, c]) => ({ name: c.mesh, model: key, data: JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', key, key + '.json'), 'utf8')), sums: sumsOf(key) })),
 ];
 const circuitParts = c => [['Road', c.data.ids.road], ['Start', c.data.ids.start], ['Checkpoint', c.data.ids.checkpoint], ['Finish', c.data.ids.finish]].map(([part, id]) => [c.name + part, id]);
 const RIVIERA_GROUND = 6318394;    // 0x60693a: the Riviera plain (apex-scenery.js recognises the environment by it)
 
 // Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
 // so a modified game never meets an older one (their race messages or physics would not match).
-const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-collide.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), path.join('tracks', 'montbeliard', 'montbeliard.json'),
+const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-collide.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), ...Object.keys(require('./tools/circuits')).flatMap(key => [path.join('tracks', key, key + '.json'), path.join('tracks', key, 'checksums.json')]),   // the checksums stand for the road meshes
   ...MOD_TRACKS.map(t => path.join('tracks', t.file))];
 // Hashed as text with LF line endings and no BOM: git on Windows may check the same files out with
 // CRLF (and a ZIP download has LF), which must not make two copies of the same code look different.
