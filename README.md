@@ -4,7 +4,7 @@ Mod pour le jeu [PolyTrack](https://www.kodub.com) 0.6.3 (Windows).
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier du jeu : le script d'installation transforme votre propre copie de PolyTrack.
 
-**Version actuelle : 2.9** 
+**Version actuelle : 2.10** 
 Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 ![Menu principal](docs/menu.jpg)
@@ -49,6 +49,7 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 - **Spa-Francorchamps** : le circuit du Grand Prix de Belgique à l'échelle (7 km), avec son vrai relief : la descente vers l'Eau Rouge, le Raidillon, la montée de Kemmel jusqu'aux Combes, 100 m plus haut que Stavelot. Forêts des Ardennes, stands et tribunes à leur place.
 - **Strasbourg** : le tour des quais de la Grande Île (4 km), l'Ill tout autour, la cathédrale et sa flèche de 142 m au milieu, les Ponts Couverts et leurs tours, la place de la République.
 - **Dijon** : le tour des boulevards de la vieille ville (4,4 km) : place Darcy et la porte Guillaume, la République, le boulevard Carnot ; au centre, le palais des Ducs et la tour Philippe le Bon, Saint-Bénigne et son toit de tuiles vernissées.
+- **Goofy Coaster** : un grand huit de 3,7 km dessiné dans le vide, pour s'amuser : grande descente, looping, sauts, virage relevé à 72°, tire-bouchon, vagues et dos de chameau.
 - Ces pistes ont leur propre classement en ligne, partagé entre tous les joueurs du mod et tenu par le serveur GoofyTrack : records, position, fantômes et replays comme sur les pistes officielles.
 
 **Collisions entre voitures**
@@ -86,6 +87,31 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
+
+### V2.10 : Goofy Coaster
+
+Une piste pour s'amuser, dans la catégorie « Circuits » : un grand huit en boucle de 3,7 km, 60 m de dénivelé.
+
+**Le tour**
+- Départ en haut d'une tour, puis la grande descente : 45 m plus bas, la voiture dépasse 240 km/h.
+- Le looping, 48 m de haut. La route fait un léger coude juste avant et juste après : une voiture qui suit la route traverse le looping sans toucher au volant.
+- Une bosse, puis le premier saut : la route s'arrête net et reprend 3 m plus bas, sur une réception large.
+- Le mur : un demi-tour de 65 m de rayon sur une route relevée à 72°.
+- Le tire-bouchon : un tour et quart en montée, relevé à 68°, qui regagne 50 m.
+- Trois vagues où les roues décollent, puis le saut du canyon : 26 m de vide, 5 m de chute.
+- Le dos de chameau (20 m de creux puis une bosse) et un S relevé pour revenir au départ.
+- Quatre points de contrôle, arrivée juste derrière la grille : la piste se joue aussi en course à plusieurs tours, avec collisions, et a son classement en ligne.
+
+**Comment c'est fait**
+- La piste n'est pas un assemblage de pièces : [`tools/make_stunt.js`](tools/make_stunt.js) la décrit comme une suite de mouvements (tout droit, virage, pente, dévers, looping, saut) suivis par un crayon dans l'espace, et en tire une route en dalle, sans rien dessous, qui peut passer au-dessus d'elle-même, se relever à la verticale et se retourner. Elle est posée sur des piliers.
+- Elle a été mise au point hors du jeu, sur le moteur physique du jeu lui-même, avec un pilote automatique : il boucle le tour entre 140 et 240 km/h de vitesse maximale (1 min 05 à 1 min 40), et aussi pied au plancher, à près de 300 km/h, avec quelques touchettes.
+- Ce que ces essais ont appris : une route relevée doit se remettre à plat lentement (sinon elle se dérobe sous les roues plus vite que la voiture ne peut pivoter), le virage doit se resserrer en même temps que la route se relève, et la largeur ne doit jamais changer d'un coup.
+
+**À savoir en piste**
+- Le mur et le tire-bouchon demandent de la vitesse : en dessous de 140 km/h environ, la voiture glisse vers le bas de la pente.
+- Toucher un mur à grande vitesse peut arrêter net la voiture (le moteur physique accroche parfois sur les joints entre deux facettes).
+
+**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.10.
 
 ### V2.9 : Spa-Francorchamps, Strasbourg, Dijon
 
@@ -497,6 +523,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `apex-collide.js` | Collisions entre voitures en course (page du jeu et moteur physique) |
 | `tools/make_monaco.js`, `tools/monaco_gps.json`, `tools/monaco_track.js`, `tracks/monaco/` | Circuit Monaco GP : tracé GPS réel, générateur de la route, fichier de piste, fichiers produits |
 | `tools/circuits.js`, `tools/town_osm.js`, `tools/heights.js`, `tools/make_circuit.js`, `tools/circuit_track.js` | Circuits sur cartes réelles : description de chaque circuit, extrait OpenStreetMap réduit, altitudes, générateur de la route, fichier de piste |
+| `tools/make_stunt.js`, `tracks/coaster/` | Goofy Coaster : la piste décrite mouvement par mouvement, et les fichiers produits |
 | `tools/*_osm.json`, `tools/spa_gps.json`, `tools/spa_heights.json`, `tracks/<circuit>/` | Leurs données (plans réduits, relevé et altitudes de Spa) et les fichiers produits |
 | `apex-theme.css` | Thème de l'interface |
 | `images/` | Icône du jeu (`goofytrack_icon.svg` et sa version `.ico` pour Windows), icônes de l'environnement Riviera |

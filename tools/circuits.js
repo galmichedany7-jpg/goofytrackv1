@@ -48,4 +48,7 @@ module.exports = {
     smoothing: 6, minRadius: 19, reach: 900, facets: [4, 2],
     landmarks: { 'Stand F1': 'pitsF1', 'Stand Endurance': 'pitsEndurance', 'Hôtel de la Source': 'hotelSource' },
   },
+  // not a place on a map: a stunt track drawn by tools/make_stunt.js (loop, jumps, wall ride, corkscrew).
+  // It is listed here for its part ids and mesh names; the map tools do not apply to it.
+  coaster: { mesh: 'Coaster', ids: { road: 232, start: 233, checkpoint: 234, finish: 235 }, stunt: true },
 };

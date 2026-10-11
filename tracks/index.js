@@ -66,4 +66,14 @@ module.exports = [
     lastModified: '2026-10-11T18:00:00.000Z',
     group: 'Circuits',
   },
+  {
+    // a stunt track drawn in space: drop, loop, jumps, wall ride, corkscrew (tools/make_stunt.js)
+    file: 'coaster.track',
+    thumbnail: 'coaster.png',
+    id: '88589f0152bf10a5822db52936fcf286c246c08828709a49f0061bf3e2fdb6df',
+    name: 'Goofy Coaster',
+    author: 'Shyn',
+    lastModified: '2026-10-11T20:00:00.000Z',
+    group: 'Circuits',
+  },
 ];
