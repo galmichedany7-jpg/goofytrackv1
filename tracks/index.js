@@ -26,4 +26,14 @@ module.exports = [
     lastModified: '2026-10-10T12:00:00.000Z',
     group: 'Circuits',
   },
+  {
+    // the boulevards round Montbéliard's old town, on the real map: tools/make_montbeliard.js, track file by tools/montbeliard_track.js
+    file: 'montbeliard.track',
+    thumbnail: 'montbeliard.png',
+    id: '5f3f1ddf7c32af2473c88a27b4cb6beae2c359d0c4ecb859d72e78a25b99aea4',
+    name: 'Montbéliard',
+    author: 'Shyn',
+    lastModified: '2026-10-11T12:00:00.000Z',
+    group: 'Circuits',
+  },
 ];

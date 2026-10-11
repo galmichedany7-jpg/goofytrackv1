@@ -10,13 +10,20 @@ const { APP, ORIGINALS, MOD_VERSION, SERVER_URL, EDITOR_CHUNK } = require('./con
 const MOD_TRACKS = require('./tracks');
 const MOD_TRACK_IDS = JSON.stringify(MOD_TRACKS.map(t => t.id));
 const MONACO = require('./tracks/monaco/monaco.json');
+// Circuits made of free-form track parts (see the "circuits" patches below): the name of their model and of
+// its meshes, where they are (written by tools/make_<name>.js) and the SHA-256 of each part's collision mesh,
+// as the game computes it (tracks/<name>/checksums.json).
+const sumsOf = name => (fs.existsSync(path.join(__dirname, 'tracks', name, 'checksums.json')) ? JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', name, 'checksums.json'), 'utf8')) : {});
+const CIRCUITS = [
+  { name: 'Monaco', model: 'monaco', data: MONACO, sums: sumsOf('monaco') },
+  { name: 'Montbeliard', model: 'montbeliard', data: require('./tracks/montbeliard/montbeliard.json'), sums: sumsOf('montbeliard') },
+];
+const circuitParts = c => [['Road', c.data.ids.road], ['Start', c.data.ids.start], ['Checkpoint', c.data.ids.checkpoint], ['Finish', c.data.ids.finish]].map(([part, id]) => [c.name + part, id]);
 const RIVIERA_GROUND = 6318394;    // 0x60693a: the Riviera plain (apex-scenery.js recognises the environment by it)
-// SHA-256 of each Monaco part's collision mesh, as the game computes it (see tools/make_monaco.js)
-const MONACO_SUMS = fs.existsSync(path.join(__dirname, 'tracks', 'monaco', 'checksums.json')) ? require('./tracks/monaco/checksums.json') : {};
 
 // Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
 // so a modified game never meets an older one (their race messages or physics would not match).
-const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-collide.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'),
+const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-collide.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), path.join('tracks', 'montbeliard', 'montbeliard.json'),
   ...MOD_TRACKS.map(t => path.join('tracks', t.file))];
 // Hashed as text with LF line endings and no BOM: git on Windows may check the same files out with
 // CRLF (and a ZIP download has LF), which must not make two copies of the same code look different.
@@ -454,35 +461,32 @@ const patches = [
     replace: 'case Cl.A.Desert:i=yu.A.Desert;break;case Cl.A.Riviera:i=yu.A.Summer}const r=n.colors.get(i);',
   },
 
-  // ---------------------------------------------------------------- Monaco: free-form circuit made of custom track parts
-  // A track part is any mesh: the game draws it and the physics collides with it as it is. The circuit
+  // ---------------------------------------------------------------- circuits: free-form tracks made of custom track parts (Monaco GP, Montbéliard)
+  // A track part is any mesh: the game draws it and the physics collides with it as it is. A circuit
   // is one big part (the road), plus a start line and checkpoint / finish gates carrying the detectors.
-  // Track files only accept ids from the game's part list, so the four ids are added to it; the game then
-  // checks their collision meshes like any stock part, against the checksums in tracks/monaco/checksums.json.
+  // Track files only accept ids from the game's part list, so each circuit's four ids are added to it; the game
+  // then checks their collision meshes like any stock part, against the checksums in tracks/<circuit>/checksums.json.
   {
-    name: 'Monaco part ids are valid in track files',
+    name: 'circuit part ids are valid in track files',
     find: 'e[e.StartWide=91]="StartWide",',
-    replace: 'e[e.StartWide=91]="StartWide",' + [['MonacoRoad', MONACO.ids.road], ['MonacoStart', MONACO.ids.start], ['MonacoCheckpoint', MONACO.ids.checkpoint], ['MonacoFinish', MONACO.ids.finish]]
-      .map(([name, id]) => 'e[e.' + name + '=' + id + ']="' + name + '",').join(''),
+    replace: 'e[e.StartWide=91]="StartWide",' + CIRCUITS.flatMap(circuitParts).map(([name, id]) => 'e[e.' + name + '=' + id + ']="' + name + '",').join(''),
   },
   {
-    name: 'Monaco models are loaded with the other track parts',
+    name: 'circuit models are loaded with the other track parts',
     find: '"models/road_wide.glb","models/signs.glb","models/wall_track.glb"]',
-    replace: '"models/road_wide.glb","models/signs.glb","models/wall_track.glb","models/monaco.glb"]',
+    replace: '"models/road_wide.glb","models/signs.glb","models/wall_track.glb",' + CIRCUITS.map(c => '"models/' + c.model + '.glb"').join(',') + ']',
   },
   {
-    name: 'Monaco track parts are registered',
+    name: 'circuit track parts are registered',
     find: '],f=new Map;for(const e of u){if(f.has(e.id))throw new Error("Duplicate track part id "',
-    replace: (() => {
+    replace: CIRCUITS.map(({ name, data, sums }) => {
       const cell = '[[[-2,0,-2],[1,0,1]]]';
-      const detector = type => '{type:o.A.' + type + ',center:[0,3.5,0],size:[' + MONACO.gateWidth + ',7,1]}';
-      const roadTiles = JSON.stringify(MONACO.roadCells.map(([i, j]) => [[4 * i - 2, 0, 4 * j - 2], [4 * i + 1, 0, 4 * j + 1]]));
-      return ',new d(' + JSON.stringify(MONACO_SUMS[MONACO.ids.road] || '') + ',r.A.Special,' + MONACO.ids.road + ',[["Monaco","MonacoRoad"]],c,' + roadTiles + ')'
-        + ',new d(' + JSON.stringify(MONACO_SUMS[MONACO.ids.start] || '') + ',r.A.Special,' + MONACO.ids.start + ',[["Monaco","MonacoStart"]],c,' + cell + ',null,new i.Pq0(0,.35,0))'
-        + ',new d(' + JSON.stringify(MONACO_SUMS[MONACO.ids.checkpoint] || '') + ',r.A.Special,' + MONACO.ids.checkpoint + ',[["Monaco","MonacoCheckpoint"]],c,' + cell + ',' + detector('Checkpoint') + ')'
-        + ',new d(' + JSON.stringify(MONACO_SUMS[MONACO.ids.finish] || '') + ',r.A.Special,' + MONACO.ids.finish + ',[["Monaco","MonacoFinish"]],c,' + cell + ',' + detector('Finish') + ')'
-        + '],f=new Map;for(const e of u){if(f.has(e.id))throw new Error("Duplicate track part id "';
-    })(),
+      const detector = type => '{type:o.A.' + type + ',center:[0,3.5,0],size:[' + data.gateWidth + ',7,1]}';
+      const roadTiles = JSON.stringify(data.roadCells.map(([i, j]) => [[4 * i - 2, 0, 4 * j - 2], [4 * i + 1, 0, 4 * j + 1]]));
+      const part = (kind, id, rest) => ',new d(' + JSON.stringify(sums[id] || '') + ',r.A.Special,' + id + ',[["' + name + '","' + name + kind + '"]],c,' + rest + ')';
+      return part('Road', data.ids.road, roadTiles) + part('Start', data.ids.start, cell + ',null,new i.Pq0(0,.35,0)')
+        + part('Checkpoint', data.ids.checkpoint, cell + ',' + detector('Checkpoint')) + part('Finish', data.ids.finish, cell + ',' + detector('Finish'));
+    }).join('') + '],f=new Map;for(const e of u){if(f.has(e.id))throw new Error("Duplicate track part id "',
   },
 
   // ---------------------------------------------------------------- our own matchmaking server
@@ -586,9 +590,8 @@ for (const p of patches) {
 fs.writeFileSync(path.join(APP, file), code);
 }
 
-// The physics runs in a worker with its own copy of the part list: it must know the Monaco parts too,
-// or it refuses the track. Same four ids, same detectors and start offset as in the game's list.
-const monacoDetector = type => '{type:to.' + type + ',center:[0,3.5,0],size:[' + MONACO.gateWidth + ',7,1]}';
+// The physics runs in a worker with its own copy of the part list: it must know the circuits' parts too,
+// or it refuses their tracks. Same four ids, same detectors and start offset as in the game's list.
 const workerPatches = [
   {
     name: 'Riviera is a valid environment (physics worker)',
@@ -617,19 +620,20 @@ const workerPatches = [
     replace: 'let o=i.getStartTransform();if(null==o)throw new Error("Track has no starting point");t.apexStart&&(o=t.apexStart);const l=t.carId;',
   },
   {
-    name: 'Monaco part ids are valid in track files (physics worker)',
+    name: 'circuit part ids are valid in track files (physics worker)',
     find: 't[t.StartWide=91]="StartWide",',
-    replace: 't[t.StartWide=91]="StartWide",' + [['MonacoRoad', MONACO.ids.road], ['MonacoStart', MONACO.ids.start], ['MonacoCheckpoint', MONACO.ids.checkpoint], ['MonacoFinish', MONACO.ids.finish]]
-      .map(([name, id]) => 't[t.' + name + '=' + id + ']="' + name + '",').join(''),
+    replace: 't[t.StartWide=91]="StartWide",' + CIRCUITS.flatMap(circuitParts).map(([name, id]) => 't[t.' + name + '=' + id + ']="' + name + '",').join(''),
   },
   {
-    name: 'Monaco track parts are registered (physics worker)',
+    name: 'circuit track parts are registered (physics worker)',
     find: '],co=new Map;for(const t of ho){if(co.has(t.id))throw new Error("Duplicate track part id "',
-    replace: ',new lo("",Xa.Special,' + MONACO.ids.road + ',[["Monaco","MonacoRoad"]],ao,[[[-2,0,-2],[1,0,1]]])'
-      + ',new lo("",Xa.Special,' + MONACO.ids.start + ',[["Monaco","MonacoStart"]],ao,[[[-2,0,-2],[1,0,1]]],null,new R(0,.35,0))'
-      + ',new lo("",Xa.Special,' + MONACO.ids.checkpoint + ',[["Monaco","MonacoCheckpoint"]],ao,[[[-2,0,-2],[1,0,1]]],' + monacoDetector('Checkpoint') + ')'
-      + ',new lo("",Xa.Special,' + MONACO.ids.finish + ',[["Monaco","MonacoFinish"]],ao,[[[-2,0,-2],[1,0,1]]],' + monacoDetector('Finish') + ')'
-      + '],co=new Map;for(const t of ho){if(co.has(t.id))throw new Error("Duplicate track part id "',
+    replace: CIRCUITS.map(({ name, data }) => {
+      const cell = '[[[-2,0,-2],[1,0,1]]]';
+      const detector = type => '{type:to.' + type + ',center:[0,3.5,0],size:[' + data.gateWidth + ',7,1]}';
+      const part = (kind, id, rest) => ',new lo("",Xa.Special,' + id + ',[["' + name + '","' + name + kind + '"]],ao,' + cell + rest + ')';
+      return part('Road', data.ids.road, '') + part('Start', data.ids.start, ',null,new R(0,.35,0)')
+        + part('Checkpoint', data.ids.checkpoint, ',' + detector('Checkpoint')) + part('Finish', data.ids.finish, ',' + detector('Finish'));
+    }).join('') + '],co=new Map;for(const t of ho){if(co.has(t.id))throw new Error("Duplicate track part id "',
   },
 ];
 

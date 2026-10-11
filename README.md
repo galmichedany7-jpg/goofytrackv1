@@ -4,7 +4,7 @@ Mod pour le jeu [PolyTrack](https://www.kodub.com) 0.6.3 (Windows).
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier du jeu : le script d'installation transforme votre propre copie de PolyTrack.
 
-**Version actuelle : 2.6** 
+**Version actuelle : 2.8** 
 Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 ![Menu principal](docs/menu.jpg)
@@ -45,6 +45,7 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 
 **Circuits**
 - Une catégorie « Circuits », en tête des pistes officielles, avec Killer Loop et **Monaco GP** : le vrai tracé du Grand Prix de Monaco, à l'échelle (3,3 km, 35 m de dénivelé), au milieu de la principauté en low poly.
+- **Montbéliard** : la boucle des boulevards autour de la vieille ville (1,8 km), sur le vrai plan du centre : chaque bâtiment est à sa place, avec le château des ducs de Wurtemberg sur son rocher, le temple Saint-Martin, les halles, la gare, l'Allan et le canal.
 - Ces pistes ont leur propre classement en ligne, partagé entre tous les joueurs du mod et tenu par le serveur GoofyTrack : records, position, fantômes et replays comme sur les pistes officielles.
 
 **Collisions entre voitures**
@@ -82,6 +83,32 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à j
 
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
+
+### V2.8 : circuit de Montbéliard
+
+Un deuxième circuit de ville dans la catégorie « Circuits », construit sur le vrai plan du centre de Montbéliard.
+
+**Circuit**
+- **Montbéliard**, 1,8 km, à l'échelle réelle : départ avenue des Alliés devant la gare, rue de l'Étuve, avenue du Maréchal de Lattre de Tassigny, rue Charles Contejean, avenue du Président Wilson le long de l'Allan, avenue d'Helvétie, puis avenue Aristide Briand au pied du château. Route de 15 m avec vibreurs et glissières, quatre points de contrôle, arrivée juste derrière la grille (courses en plusieurs tours possibles).
+- Le tracé suit les vraies rues ; leurs angles droits sont arrondis en virages (rayon le plus serré : 21 m) et la route est plus large que les boulevards qu'elle emprunte. La ville étant plate à cet endroit, le circuit l'est aussi.
+- Comme Monaco GP, le circuit a son classement en ligne sur le serveur GoofyTrack et fonctionne en room, collisions comprises.
+
+**Ville** ([`apex-montbeliard.js`](apex-montbeliard.js))
+- La ville n'est pas inventée : le plan vient d'[OpenStreetMap](https://www.openstreetmap.org/copyright). 1 900 bâtiments sont posés sur leur emprise réelle, avec les rues, les places, les parcs, l'Allan, le canal du Rhône au Rhin et les voies de la gare. Les 78 bâtiments qui se trouvaient sur la route élargie sont retirés.
+- Façades aux couleurs de la vieille ville (ocre, rose, vert et bleu pâles) sous des toits de tuiles ; fenêtres sur les bâtiments proches de la route.
+- Monuments : le château des ducs de Wurtemberg sur son rocher, avec ses deux tours rondes, le temple Saint-Martin, l'hôtel de ville, les halles, l'église Saint-Maimbœuf et ses deux clochers.
+- Arbres dans les parcs et le long de l'Allan, tribunes là où la ville laisse de la place, collines boisées à l'horizon.
+- OpenStreetMap donne les emprises mais presque jamais les hauteurs : le nombre d'étages est estimé d'après la taille de chaque bâtiment, et le rocher du château est modelé à la main.
+- Le décor est seulement affiché, comme à Monaco : ce sont les glissières qui gardent les voitures sur la piste. Il compte environ 210 000 triangles, moitié moins que Monaco GP.
+
+**Outils**
+- [`tools/montbeliard_osm.js`](tools/montbeliard_osm.js) réduit un extrait OpenStreetMap du centre à ce qui sert ([`tools/montbeliard_osm.json`](tools/montbeliard_osm.json)) et calcule le tour sur les rues ; les points de passage et le départ sont en tête de fichier.
+- [`tools/make_montbeliard.js`](tools/make_montbeliard.js) en tire la route et les fichiers de [`tracks/montbeliard/`](tracks/montbeliard) ; il reprend le générateur de route de `tools/make_monaco.js`. [`tools/montbeliard_track.js`](tools/montbeliard_track.js) refait le fichier de piste dans le jeu.
+- Dans `patch_bundle.js`, les pièces de piste de Monaco et de Montbéliard sont déclarées par une même liste de circuits : en ajouter un troisième ne demande plus de nouveau patch.
+
+**Données** : plan de la ville © les contributeurs d'OpenStreetMap, sous licence ODbL.
+
+**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.8.
 
 ### V2.7 : interface rouge, réglages des joueurs, mises à jour automatiques
 
@@ -425,8 +452,10 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `apex-records.js` | Classements des pistes du mod : signature des records envoyés au serveur GoofyTrack |
 | `apex-scenery.js` | Décor : montagnes, forêts, rochers, côte de l'environnement Riviera ; affiche la ville des circuits qui en ont une |
 | `apex-monaco.js` | Décor de Monaco GP généré à partir du tracé : ville, port et yachts, Casino, Fairmont et tunnel, stands et tribunes, Rocher, collines |
+| `apex-montbeliard.js` | Décor de Montbéliard, dessiné à partir du plan réel du centre : bâtiments, rues, château, Allan, canal, voies ferrées |
 | `apex-collide.js` | Collisions entre voitures en course (page du jeu et moteur physique) |
 | `tools/make_monaco.js`, `tools/monaco_gps.json`, `tools/monaco_track.js`, `tracks/monaco/` | Circuit Monaco GP : tracé GPS réel, générateur de la route, fichier de piste, fichiers produits |
+| `tools/montbeliard_osm.js`, `tools/montbeliard_osm.json`, `tools/make_montbeliard.js`, `tools/montbeliard_track.js`, `tracks/montbeliard/` | Circuit de Montbéliard : extrait OpenStreetMap réduit, générateur de la route, fichier de piste, fichiers produits |
 | `apex-theme.css` | Thème de l'interface |
 | `images/` | Icône du jeu (`goofytrack_icon.svg` et sa version `.ico` pour Windows), icônes de l'environnement Riviera |
 | `goofytrack-logo.svg` | Logo du menu principal |
