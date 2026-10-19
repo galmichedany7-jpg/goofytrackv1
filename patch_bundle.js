@@ -218,10 +218,10 @@ const patches = [
     replace: 'if(null!=t.car){const n=t.car.getPosition().distanceTo(e),i=Math.max(0,Math.min(1,n/5));t.car.setOpacity(i),t.car.apexTagOpacity(i)}',
   },
   {
-    // qualifying, formation and race laps: no personal best, no room record, no ghost
-    name: 'event runs are never saved or uploaded as records',
+    // formation and race laps: no personal best, no room record, no ghost (qualifying laps count: ApexRoom.countsAsRecord)
+    name: 'formation and race laps are never saved or uploaded as records',
     find: 's.addFinishCallback((e=>{const t=e.getTime(),i=e.getRecording(),r=e.getCarStyle();',
-    replace: 's.addFinishCallback((e=>{if(window.ApexRoom&&window.ApexRoom.raceActive())return;const t=e.getTime(),i=e.getRecording(),r=e.getCarStyle();',
+    replace: 's.addFinishCallback((e=>{if(window.ApexRoom&&!window.ApexRoom.countsAsRecord())return;const t=e.getTime(),i=e.getRecording(),r=e.getCarStyle();',
   },
 
   {

@@ -1,11 +1,11 @@
 # GoofyTrack
 
-Mod pour le jeu [PolyTrack](https://www.kodub.com) 0.6.3 (Windows).
+Jeu de course pour Windows, construit sur [PolyTrack](https://www.kodub.com) 0.6.3. Tout tient dans ce dossier : le jeu (`GoofyTrack.exe`) et sa mise à jour.
 
-> Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier du jeu : le script d'installation transforme votre propre copie de PolyTrack.
+> Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation copie votre propre PolyTrack dans ce dossier et le transforme en GoofyTrack.
 
-**Version actuelle : 2.11** 
-Le détail de chaque version est dans les [patch notes](#patch-notes).
+**Version actuelle : 2.12** 
+Le détail de chaque version est dans les [patch notes](PATCHNOTES.md).
 
 ![Menu principal](docs/menu.jpg)
 
@@ -55,7 +55,7 @@ Le détail de chaque version est dans les [patch notes](#patch-notes).
 **Collisions entre voitures**
 - Dans une room « Course », les voitures sont solides les unes pour les autres, en permanence : essais libres, qualifications, tour de formation et course. On se pousse, on se bloque, un choc à l'arrière propulse la voiture de devant, un choc de côté fait tourner.
 - « Collisions activées » s'affiche sous le classement de la room. Pas de collisions dans les rooms Casual et Compétitif.
-- Détails et limites dans les patch notes [V2.4](#v24--collisions-entre-voitures) et dans les [limites connues](#limites-connues).
+- Détails et limites dans les patch notes [V2.4](PATCHNOTES.md#v24--collisions-entre-voitures) et dans les [limites connues](#limites-connues).
 
 **Mode course**
 
@@ -73,390 +73,38 @@ Les courses en plusieurs tours demandent un **circuit** : une piste dont la lign
 
 ## Patch notes
 
-Chaque nouvelle version ajoute son paragraphe en haut de cette liste et met à jour `MOD_VERSION` dans [`config.js`](config.js) : c'est le numéro affiché sous le logo du menu principal (« VERSION … »).
-
-<!-- Modèle pour une nouvelle version (à copier au-dessus de la plus récente) :
-
-### V2.x : titre court
-
-**Nouveautés**
-- …
-
-**Corrections**
-- …
-
-**Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
--->
-
-### V2.11 : présentation du circuit, podium, Goofy Coaster sans secousses
-
-**Courses (mode Course)**
-- **Présentation du circuit** : au lancement de la course, la caméra survole le circuit pendant 3 secondes, puis replonge derrière la voiture ; les feux s'allument ensuite. Espace ou un clic pour passer. Le départ reste le même pour tout le monde : passer la présentation rend seulement la caméra plus tôt.
-- **Podium** : quand tous les pilotes ont fini leurs tours, une estrade se dresse sur la ligne droite de départ, avec les voitures des trois premiers sur les marches 1, 2 et 3 (les suivants à côté, sur la route), leur nom et leur temps au-dessus, et des confettis. Espace ou un clic pour reprendre la main ; l'estrade disparaît alors pour ce joueur. La voiture n'est pas pilotée pendant qu'on regarde le podium.
-- Les deux scènes ne déplacent la caméra que pour l'image affichée ([`apex-show.js`](apex-show.js)) : la caméra du jeu, la physique et le chronométrage ne changent pas.
-
-**Goofy Coaster**
-- Dans le mur, le tire-bouchon et le looping, la voiture sautillait comme sur une route bosselée. La route y était découpée trop grossièrement : un rectangle vrillé coupé en deux triangles fait une arête de près de 10 cm le long de sa diagonale. Ces passages ont maintenant jusqu'à huit fois plus de sections, sur une courbe continue, et des bandes quatre fois plus étroites. Mesuré sur le moteur physique du jeu, à 200 km/h : les secousses sont divisées par 3 environ dans les virages relevés, par 50 là où la route est presque verticale.
-- Le tracé, les points de contrôle et l'identifiant de la piste ne changent pas : les records sont conservés. Le jeu met environ une seconde de plus à démarrer.
-
-**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.11.
-
-### V2.10 : Goofy Coaster
-
-Une piste pour s'amuser, dans la catégorie « Circuits » : un grand huit en boucle de 3,7 km, 60 m de dénivelé.
-
-**Le tour**
-- Départ en haut d'une tour, puis la grande descente : 45 m plus bas, la voiture dépasse 240 km/h.
-- Le looping, 48 m de haut. La route fait un léger coude juste avant et juste après : une voiture qui suit la route traverse le looping sans toucher au volant.
-- Une bosse, puis le premier saut : la route s'arrête net et reprend 3 m plus bas, sur une réception large.
-- Le mur : un demi-tour de 65 m de rayon sur une route relevée à 72°.
-- Le tire-bouchon : un tour et quart en montée, relevé à 68°, qui regagne 50 m.
-- Trois vagues où les roues décollent, puis le saut du canyon : 26 m de vide, 5 m de chute.
-- Le dos de chameau (20 m de creux puis une bosse) et un S relevé pour revenir au départ.
-- Quatre points de contrôle, arrivée juste derrière la grille : la piste se joue aussi en course à plusieurs tours, avec collisions, et a son classement en ligne.
-
-**Comment c'est fait**
-- La piste n'est pas un assemblage de pièces : [`tools/make_stunt.js`](tools/make_stunt.js) la décrit comme une suite de mouvements (tout droit, virage, pente, dévers, looping, saut) suivis par un crayon dans l'espace, et en tire une route en dalle, sans rien dessous, qui peut passer au-dessus d'elle-même, se relever à la verticale et se retourner. Elle est posée sur des piliers.
-- Elle a été mise au point hors du jeu, sur le moteur physique du jeu lui-même, avec un pilote automatique : il boucle le tour entre 140 et 240 km/h de vitesse maximale (1 min 05 à 1 min 40), et aussi pied au plancher, à près de 300 km/h, avec quelques touchettes.
-- Ce que ces essais ont appris : une route relevée doit se remettre à plat lentement (sinon elle se dérobe sous les roues plus vite que la voiture ne peut pivoter), le virage doit se resserrer en même temps que la route se relève, et la largeur ne doit jamais changer d'un coup.
-
-**À savoir en piste**
-- Le mur et le tire-bouchon demandent de la vitesse : en dessous de 140 km/h environ, la voiture glisse vers le bas de la pente.
-- Toucher un mur à grande vitesse peut arrêter net la voiture (le moteur physique accroche parfois sur les joints entre deux facettes).
-
-**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.10.
-
-### V2.9 : Spa-Francorchamps, Strasbourg, Dijon
-
-Trois circuits de plus dans la catégorie « Circuits », construits comme Montbéliard à partir de données réelles, et des outils communs pour en ajouter d'autres.
-
-**Spa-Francorchamps**
-- Le tracé du Grand Prix, à l'échelle : 7,00 km dans le jeu pour 7,004 km en vrai. La ligne vient du même relevé que Monaco GP ([`tools/spa_gps.json`](tools/spa_gps.json), projet f1-circuits, licence MIT). Départ sur la ligne de départ du Grand Prix, avant la Source ; sens horaire.
-- Le relief est le vrai : les altitudes du tour et du terrain autour viennent du modèle européen EU-DEM (Copernicus), récupérées par [`tools/heights.js`](tools/heights.js). Le tour va de 368 m à 470 m d'altitude, soit 102 m de dénivelé : descente de la Source vers l'Eau Rouge, montée du Raidillon et de Kemmel jusqu'aux Combes, longue descente vers Stavelot, remontée par Blanchimont.
-- Les pentes sont plafonnées à 9 % comme à Monaco GP (le Raidillon réel monte à 17 %) et les virages serrés sont remis presque à plat : sur une pente forte, la voiture perd son adhérence dans le jeu. Le dénivelé total, lui, est conservé.
-- Décor : le terrain suit le relief réel et rejoint la route sur ses bords ; forêts plantées là où la carte en a (30 000 sapins), prairies ailleurs ; les stands F1 et Endurance, les tribunes, l'hôtel de la Source et les bâtiments du circuit sur leur emprise réelle, la voie des stands et les routes de service.
-- La route garde ses glissières des deux côtés : les dégagements et les bacs à gravier ne sont pas reproduits.
-
-**Strasbourg**
-- Le tour de la Grande Île par les quais extérieurs, 4,0 km : quai Kléber, quai Sturm, place de la République, avenue de la Liberté, quai Koch, pont Royal, quai des Pêcheurs, quai des Bateliers, quai Saint-Nicolas, quai Finkwiller, Ponts Couverts, quai Turckheim, quai Saint-Jean. Le tracé emprunte aussi des quais aujourd'hui piétons ou réservés au tram.
-- Ville : 4 600 bâtiments sur leur emprise réelle, l'Ill, le fossé du Faux-Rempart et les canaux de la Petite France. Façades blanches, crème et ocre sous des toits bruns très pentus.
-- Monuments : la cathédrale Notre-Dame en grès rose avec sa flèche unique (142 m), les quatre tours des Ponts Couverts, Saint-Thomas, Saint-Paul et ses deux flèches, le palais Rohan, le palais du Rhin et son dôme, la Bibliothèque nationale universitaire, l'Opéra, l'Aubette, l'ancienne douane.
-- Un bâtiment sur cinq a son nombre d'étages dans OpenStreetMap ; les autres sont estimés.
-
-**Dijon**
-- Le tour des boulevards de la vieille ville, 4,4 km : boulevard de la Trémouille, place de la République, boulevard Thiers, place du 30 Octobre, boulevard Carnot, rue de Tivoli, rempart de la Miséricorde, boulevard de Sévigné, place Darcy, boulevard de Brosses.
-- Ville : 4 000 bâtiments sur leur emprise réelle, en pierre de Bourgogne.
-- Monuments : le palais des Ducs et la tour Philippe le Bon (46 m), la cathédrale Saint-Bénigne avec son toit de tuiles vernissées et sa flèche de 93 m, Notre-Dame, Saint-Michel, Saint-Philibert, les halles, le théâtre, la porte Guillaume.
-- Le circuit est à plat : le centre de Dijon ne varie que de quelques mètres.
-
-**Outils**
-- Les outils de Montbéliard deviennent communs et sont pilotés par [`tools/circuits.js`](tools/circuits.js), qui décrit chaque circuit (origine de la carte, points de passage ou relevé GPS, monuments, numéros de pièces) :
-  - [`tools/town_osm.js`](tools/town_osm.js) réduit un extrait OpenStreetMap et trouve le tour sur les rues ;
-  - [`tools/heights.js`](tools/heights.js) récupère les altitudes du tour et du terrain ;
-  - [`tools/make_circuit.js`](tools/make_circuit.js) construit la route et le fichier du décor ;
-  - [`tools/circuit_track.js`](tools/circuit_track.js) refait le fichier de piste dans le jeu.
-- [`apex-town.js`](apex-town.js) remplace `apex-montbeliard.js` et dessine les quatre décors ; ce qui fait le style de chaque lieu (couleurs, pente des toits, monuments) est décrit en tête de fichier.
-- Montbéliard est reconstruit par les outils communs à l'identique : même route, mêmes empreintes, même identifiant de piste, donc mêmes records.
-- Chaque triangle de route coûte du temps au démarrage du jeu : les routes à plat (Strasbourg, Dijon) sont faites de grandes facettes, celle de Spa de facettes deux fois plus grandes que celles de Monaco GP (réglage `facets`). `apex-gfx.js` ne recalcule plus trois fois le lissage des mêmes routes.
-- Un numéro de pièce de piste tient sur un octet : il reste de la place pour une vingtaine de circuits (numéros 149 à 235).
-
-**Données** : plans © les contributeurs d'OpenStreetMap (ODbL) ; altitudes EU-DEM v1.1, produites avec des données Copernicus financées par l'Union européenne ; tracé de Spa du projet f1-circuits de Tomislav Bacinger (MIT).
-
-**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.9. Le dépôt grossit d'environ 10 Mo (routes et plans des trois circuits). Le jeu met quelques secondes de plus à démarrer : il prépare la route de chaque circuit au lancement.
-
-### V2.8 : circuit de Montbéliard
-
-Un deuxième circuit de ville dans la catégorie « Circuits », construit sur le vrai plan du centre de Montbéliard.
-
-**Circuit**
-- **Montbéliard**, 1,8 km, à l'échelle réelle : départ avenue des Alliés devant la gare, rue de l'Étuve, avenue du Maréchal de Lattre de Tassigny, rue Charles Contejean, avenue du Président Wilson le long de l'Allan, avenue d'Helvétie, puis avenue Aristide Briand au pied du château. Route de 15 m avec vibreurs et glissières, quatre points de contrôle, arrivée juste derrière la grille (courses en plusieurs tours possibles).
-- Le tracé suit les vraies rues ; leurs angles droits sont arrondis en virages (rayon le plus serré : 21 m) et la route est plus large que les boulevards qu'elle emprunte. La ville étant plate à cet endroit, le circuit l'est aussi.
-- Comme Monaco GP, le circuit a son classement en ligne sur le serveur GoofyTrack et fonctionne en room, collisions comprises.
-
-**Ville** (`apex-montbeliard.js`, devenu [`apex-town.js`](apex-town.js) en V2.9)
-- La ville n'est pas inventée : le plan vient d'[OpenStreetMap](https://www.openstreetmap.org/copyright). 1 900 bâtiments sont posés sur leur emprise réelle, avec les rues, les places, les parcs, l'Allan, le canal du Rhône au Rhin et les voies de la gare. Les 78 bâtiments qui se trouvaient sur la route élargie sont retirés.
-- Façades aux couleurs de la vieille ville (ocre, rose, vert et bleu pâles) sous des toits de tuiles ; fenêtres sur les bâtiments proches de la route.
-- Monuments : le château des ducs de Wurtemberg sur son rocher, avec ses deux tours rondes, le temple Saint-Martin, l'hôtel de ville, les halles, l'église Saint-Maimbœuf et ses deux clochers.
-- Arbres dans les parcs et le long de l'Allan, tribunes là où la ville laisse de la place, collines boisées à l'horizon.
-- OpenStreetMap donne les emprises mais presque jamais les hauteurs : le nombre d'étages est estimé d'après la taille de chaque bâtiment, et le rocher du château est modelé à la main.
-- Le décor est seulement affiché, comme à Monaco : ce sont les glissières qui gardent les voitures sur la piste. Il compte environ 210 000 triangles, moitié moins que Monaco GP.
-
-**Outils**
-- `tools/montbeliard_osm.js` réduit un extrait OpenStreetMap du centre à ce qui sert ([`tools/montbeliard_osm.json`](tools/montbeliard_osm.json)) et calcule le tour sur les rues (depuis la V2.9 : `tools/town_osm.js`, réglages dans `tools/circuits.js`).
-- `tools/make_montbeliard.js` en tire la route et les fichiers de [`tracks/montbeliard/`](tracks/montbeliard) ; il reprend le générateur de route de `tools/make_monaco.js`. `tools/montbeliard_track.js` refait le fichier de piste dans le jeu (depuis la V2.9 : `tools/make_circuit.js` et `tools/circuit_track.js`).
-- Dans `patch_bundle.js`, les pièces de piste de Monaco et de Montbéliard sont déclarées par une même liste de circuits : en ajouter un troisième ne demande plus de nouveau patch.
-
-**Données** : plan de la ville © les contributeurs d'OpenStreetMap, sous licence ODbL.
-
-**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.8.
-
-### V2.7 : interface rouge, réglages des joueurs, mises à jour automatiques
-
-**Interface**
-- La couleur d'accent passe du vert citron au rouge GoofyTrack (`#f20d16`) : boutons principaux (Jouer, Appliquer, Lancer la course), barre de chargement, voyants des touches, flèche de la mini-carte. Le texte et les icônes sur ces boutons passent en blanc.
-- Les curseurs des paramètres affichent leur valeur, de 0 à 100, à leur droite.
-
-**Paramètres > Joueurs**
-- Nouvelle section, après le son, pour les étiquettes au-dessus des autres voitures (fantômes, adversaires, fantôme de la room) : « Afficher l'UI des joueurs », « Montrer le nom », « Montrer le temps » et « Opacité de l'UI ». Quand l'UI des joueurs est coupée, les autres réglages de la section sont grisés.
-- Les changements s'appliquent tout de suite, même en pleine partie (bouton Paramètres en jeu).
-- Les textes de la section, et le nom de la mini-carte, sont traduits dans toutes les langues du jeu.
-
-**Contre la montre**
-- Les fantômes ont maintenant une étiquette comme en multijoueur : drapeau, pseudo et temps du record (votre drapeau pour votre propre fantôme). Elle s'efface avec la voiture quand le fantôme vous chevauche.
-
-**Musique**
-- « WAITING » de Teknah dans le menu de choix des pistes et sur la page d'une piste ; « Vroum Vroum » partout ailleurs, avec un fondu entre les deux.
-
-**Mises à jour automatiques**
-- [`update.js`](update.js), `Jouer a GoofyTrack.bat` et `Mettre a jour GoofyTrack.bat` : la dernière release est téléchargée et installée dans le jeu sans rien faire à la main (voir [Mises à jour automatiques](#mises-à-jour-automatiques)).
-
-**Mise à jour** : une dernière fois à la main (`git pull` ou nouveau ZIP, puis `node build.js`), ensuite `Jouer a GoofyTrack.bat` s'en charge. L'empreinte du build change, donc tous les joueurs d'une room doivent passer en V2.7.
-
-### V2.6 : Monaco GP, environnement Riviera
-
-**Circuit**
-- Monaco est remplacé par **Monaco GP**, une copie du vrai circuit : le tracé vient des coordonnées GPS du Circuit de Monaco ([`tools/monaco_gps.json`](tools/monaco_gps.json)), à l'échelle réelle. 3,3 km : la ligne droite des stands, Sainte-Dévote, la montée de Beau Rivage, Massenet et le Casino, la descente vers Mirabeau, l'épingle du Fairmont, Portier, le tunnel, la chicane, Tabac, la Piscine, la Rascasse et Anthony Noghès.
-- Le relief suit celui du circuit, un peu adouci : 35 m de montée entre Sainte-Dévote et la place du Casino (9 % au plus raide), puis la descente jusqu'au port. Il n'y a plus de pont : le vrai circuit ne se croise pas.
-- Route de 15 m avec glissières des deux côtés, élargie à l'extérieur des virages serrés (jusqu'à 19 m dans l'épingle) pour laisser la place de tourner ; vibreurs rouges et blancs dans les virages, ligne blanche ailleurs. L'épingle et les deux branches de Mirabeau ont été un peu écartées pour que les glissières passent.
-- Quatre points de contrôle (place du Casino, Portier, Tabac, Piscine), chacun sur une portion à plat, arrivée juste derrière la grille : compatible avec les courses en plusieurs tours.
-- Les virages serrés (épingle, Mirabeau, Sainte-Dévote, chicane) sont presque à plat : la montée et la descente se font sur les portions droites, à 9 % au plus. La surface de la route est découpée finement, sans les petits plis qui secouaient la voiture dans les virages en pente.
-- Les lignes peintes en travers de la route (départ, points de contrôle, arrivée) sont dessinées par le décor et ne font plus partie de la collision : la voiture ne rebondit plus dessus.
-- Nouvel identifiant de piste : les records de l'ancien Monaco ne s'appliquent pas à Monaco GP.
-
-**Décor**
-- Principauté en low poly générée par [`apex-monaco.js`](apex-monaco.js) à partir du tracé : ville sur les pentes à la hauteur de la route, tours blanches à fenêtres bleues et couronne sombre, immeubles roses et jaunes, piscines sur les toits, maisons à toits de tuiles.
-- Port Hercule entre la Piscine et le tunnel : pontons, environ 250 yachts amarrés en rangées, jetée nord et digue avec leur phare, enrochements.
-- Les stands le long de la ligne droite (voie des stands, garages à toits rouges, rangée d'arbres), la passerelle verte au-dessus de la ligne droite, des tribunes bleues (ligne droite, Sainte-Dévote, Casino, chicane, Tabac, Piscine, Rascasse) et des grillages sur les glissières.
-- La place du Casino : le Casino ocre à toit bleu, placé à l'écart de la route, ses deux tours à horloge et ses dômes, l'Hôtel de Paris, le jardin rond et sa fontaine.
-- Le Fairmont au-dessus de l'entrée du tunnel, en gradins face à la mer, puis le tunnel continue en galerie ouverte côté mer.
-- Le Rocher de Monaco-Ville au sud du port : falaises, vieille ville, palais princier et cathédrale. Collines en terrasses avec arbres ronds au nord, montagnes à l'horizon.
-- Le sol du décor reste toujours sous la route : plus de « bosses » de terrain qui traversaient l'asphalte dans certains virages.
-- Le décor apparaît aussi dans les replays.
-- Le décor est construit en arrière-plan (un worker) dès le lancement du jeu : il est prêt quand on choisit la piste, et le jeu ne gèle plus pendant sa construction. Il est gardé pour les sessions suivantes. Les arbres des collines sont plus simples (environ 330 000 triangles au lieu de 410 000).
-
-**Environnement Riviera**
-- Quatrième bouton « Riviera » dans les réglages de la piste de l'éditeur, à côté d'Été, Hiver et Désert. La piste est enregistrée, exportée et partagée avec cet environnement comme avec les trois autres.
-- Le fond de la piste devient une côte méditerranéenne ([`apex-scenery.js`](apex-scenery.js)) : collines de maquis, falaises calcaires, villages aux toits de tuiles, pins parasols et cyprès ; d'un côté de la piste, une baie avec sa plage, ses palmiers et la mer jusqu'à l'horizon, avec des yachts au mouillage. Plus de forêt de sapins ni de neige.
-- Les pièces de piste et les ombres gardent les couleurs d'Été ; le sol est vert olive, avec une icône propre dans les listes de pistes.
-- Les collines restent celles du jeu, qui servent aussi aux collisions ; du côté de la mer, elles sont dessinées plus basses, mais leur forme d'origine reste solide sous l'eau (on ne s'en approche qu'en sortant largement de la piste).
-- Une piste Riviera n'existe que dans le mod : le jeu d'origine refuse de l'ouvrir.
-
-**Outils**
-- [`tools/make_monaco.js`](tools/make_monaco.js) n'a plus besoin du modèle 3D : il part du tracé GPS, l'arrondit, laisse la place aux glissières, ajoute le relief et place les points de contrôle.
-- [`tools/monaco_track.js`](tools/monaco_track.js), à coller dans la console du jeu, produit le fichier de piste, son identifiant et sa miniature.
-
-**Classements des circuits**
-- Killer Loop et Monaco GP ont maintenant un classement en ligne, partagé entre tous les joueurs du mod. Le jeu l'affiche comme celui des pistes officielles : votre position dans la barre en haut à gauche, la liste des records sur la page de la piste, les fantômes à affronter et « Regarder » pour les replays.
-- Ils sont tenus par le serveur GoofyTrack ([`server/records.js`](server/records.js)), et non par celui de PolyTrack qui ne connaît pas ces pistes. Les records faits avant cette version (restés sur votre machine) sont envoyés automatiquement à la première ouverture de la piste.
-- Votre jeton PolyTrack n'est jamais envoyé au serveur GoofyTrack : un record est signé avec une clé tirée de ce jeton ([`apex-records.js`](apex-records.js)). Les autres pistes passent toujours par le classement officiel, sans changement.
-
-**Menu principal**
-- Nouveau logo GoofyTrack, et nouvelle icône du jeu dans la barre des tâches et Alt+Tab ([`images/goofytrack_icon.svg`](images/goofytrack_icon.svg), convertie en `.ico`).
-- Sous le logo, « VERSION 2.6 » à la place de « GoofyTrack 2.6 ».
-- Nouvelle musique : « Vroum Vroum » de Teknah.
-- En bas, trois lignes : « "PolyTrack" Game Remastered by Julio & Shyn », « All Credits to © 2026 kodub.com », « Music : "Vroum Vroum" by Teknah ».
-- Pistes officielles : la catégorie Circuits (Killer Loop, Monaco GP) passe en tête de liste, avant Été, Hiver et Désert. Auteur affiché : Julio.
-
-**Contrôles**
-- Les touches sont nommées d'après votre clavier : en AZERTY, Z / Q / S / D au lieu de W / A / S / D. Seuls les noms changent, les touches restent les mêmes.
-- La mini-carte s'ouvre avec la touche M de votre clavier. En AZERTY, elle était sur la touche « , » (le M d'un clavier QWERTY) : elle passe sur M, sauf si vous aviez déjà changé cette touche.
-
-**En jeu**
-- Bouton **Paramètres** dans la barre en haut à gauche, dans tous les modes (solo, Casual, Compétitif, Course) : on change ses touches ou ses graphismes sans quitter la partie. Pendant que le menu est ouvert, la voiture ne réagit plus au clavier, et Échap ferme le menu sans quitter la piste.
-- La barre en haut à gauche (Quitter, Regarder, nom de la piste et record) remonte dans le coin de l'écran.
-
-**Corrections**
-- Écran « Héberger », mode Course : la jauge du nombre de tours ne bougeait pas. Elle fonctionne, et les options sont espacées (nombre de tours au-dessus de la jauge, puis Qualifications et Tour de formation).
-- Dans une room Course, les boutons − et + du nombre de tours ne répondaient pas : on était bloqué à la valeur choisie en créant la room.
-
-**Mise à jour** : `git pull` puis `node build.js`. L'empreinte du build change (nouveau circuit, nouvel environnement), donc tous les joueurs d'une room doivent passer en V2.6. Le build modifie maintenant aussi l'éditeur du jeu (`112.bundle.js`). Le serveur doit être redéployé sur Render pour les classements, avec la variable `GITHUB_TOKEN` pour qu'ils survivent aux redémarrages (voir [Classements des circuits du mod](#classements-des-circuits-du-mod)).
-
-### V2.5 : nouveau Monaco, nouveau logo
-
-**Monaco**
-- Nouveau décor, entièrement généré par le mod ([`apex-monaco.js`](apex-monaco.js)) à partir du tracé du circuit : plus aucun modèle 3D ni texture extérieurs. La même ville est construite chez tous les joueurs, au chargement de la piste (environ une seconde).
-- La mer au sud, avec un port : quais, pontons, yachts amarrés, une digue et son phare, quelques grands yachts au large.
-- Une ville dense le long de la route : immeubles aux façades pastel, volets, commerces et auvents au rez-de-chaussée, tours plus haut sur la pente, villas sur les collines.
-- Une place de casino avec jardins, fontaine, dôme et tourelles ; des tribunes le long de la ligne droite et face au port ; des palmiers en bord de mer et sur les boulevards.
-- Un tunnel sous un hôtel, le long de la mer, à la place du tunnel de l'ancien décor. Les bâtiments, le tunnel et les tribunes projettent leur ombre sur la route.
-- Les montagnes boisées sont remplacées, sur Monaco seulement, par des collines de maquis et des sommets de calcaire.
-- Le circuit lui-même (route, vibreurs, glissières, points de contrôle) ne change pas : les temps restent comparables.
-- L'ancien décor (`tracks/monaco/monaco_decor.bin` et `.jpg`, 4,8 Mo) est supprimé du dépôt et de l'installation.
-
-**Mini-carte**
-- Nouvelle touche « Mini-carte » pour l'afficher ou la masquer en pleine course : M par défaut, réglable dans Paramètres > Contrôles > Véhicule, sous « Caméra cockpit ». Le choix est gardé d'une partie à l'autre.
-- M était aussi la deuxième touche de la caméra cockpit : la caméra garde C. Les touches enregistrées avant cette version sont reprises une fois de cette façon, ensuite vos réglages sont respectés.
-
-**Interface**
-- Nouveau logo GoofyTrack dans le menu principal ([`goofytrack-logo.svg`](goofytrack-logo.svg)) : lettres carrées penchées, bleu lavande cerné de bleu marine, traits de vitesse. Le thème ne le passe plus en niveaux de gris.
-
-La V2.5 contient aussi le correctif des collisions de la V2.4.1.
-
-**Mise à jour** : `git pull` puis `node build.js`. L'empreinte du build change (nouvelle version), donc tous les joueurs d'une room doivent passer en V2.5. Le décor de Monaco (`apex-monaco.js`) ne compte pas dans l'empreinte : il ne change que l'affichage.
-
-### V2.4.1 : correctif des collisions
-
-- **Correctif** : en V2.4 les voitures se traversaient la plupart du temps. Le mod retrouvait la voiture dans la mémoire du moteur physique grâce à trois copies de sa position, dont l'une n'est pas toujours identique aux autres au dernier chiffre près ; la recherche échouait alors et le choc n'était pas appliqué. La voiture est maintenant reconnue par les deux copies fiables et par d'autres champs du corps rigide.
-- Les collisions sont actives en permanence dans une room « Course » : essais libres avant le lancement, qualifications, tour de formation et course. En V2.4 elles ne l'étaient que pendant le tour de formation et la course, donc pas tant que l'hôte n'avait pas lancé l'épreuve, ni en qualifications.
-- Hors grille, tout le monde part du même point : une voiture à l'arrêt sur la ligne n'est pas solide, et une voiture qui démarre à l'intérieur d'une autre ne le devient qu'une fois dégagée.
-- La mention « Collisions activées » s'affiche sous le classement de la room quand elles le sont.
-- Une mise à jour de position arrivée en retard (après une plus récente) n'est plus prise pour un redémarrage de la voiture, ce qui la rendait traversable un instant.
-
-**Mise à jour** : `git pull` puis `node build.js`. Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.4.1.
-
-### V2.4 : collisions entre voitures
-
-En course, les voitures se percutent. Le fantôme du meilleur temps se fait plus discret.
-
-**Collisions**
-- Dans une room « Course », pendant le tour de formation et la course, les voitures sont solides les unes pour les autres : on se pousse, on se bloque, un choc à l'arrière propulse la voiture de devant et freine celle de derrière, un choc de côté fait tourner. Pas de collisions en qualifications ni dans les rooms Casual / Compétitif, où tout le monde part du même point.
-- Fonctionnement ([`apex-collide.js`](apex-collide.js)) : le moteur physique du jeu (Bullet) simule chaque voiture seule, sur la machine de son pilote. Après chaque pas de simulation (1000 par seconde), la voiture du joueur est comparée aux autres ; au contact, sa vitesse et sa rotation sont modifiées directement dans la mémoire du moteur. Chaque joueur ne déplace que sa propre voiture : les deux machines voient le contact et chacune écarte la sienne.
-- Les autres voitures sont affichées là où elles sont maintenant (position extrapolée à partir de leurs dernières mises à jour), et non plus 150 ms en arrière : ce qu'on voit est ce qu'on touche. Elles ne deviennent plus transparentes de près.
-- La grille de départ est réelle : la physique fait partir chaque voiture de son emplacement (avant, seule l'image y était, et toutes les voitures partaient en fait de la ligne).
-- Une voiture qui réapparaît (retour au checkpoint, redémarrage) dans une autre ne la percute pas : elle redevient solide une fois dégagée.
-- Un choc se voit et s'entend chez les deux joueurs (bruit de collision du jeu).
-
-**Fantôme**
-- Le fantôme du meilleur temps de la room est plus transparent, et son étiquette (nom et temps) aussi.
-
-**Mise à jour** : `git pull` puis `node build.js`. Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.4. `apex-collide.js` compte dans l'empreinte, puisqu'il change la physique.
-
-### V2.3 : circuit de Monaco
-
-Un circuit entier au tracé libre, avec sa ville, dans la catégorie « Circuits ».
-
-**Circuit**
-- Monaco : 1,9 km, route de 15 m de large avec vibreurs et glissières, épingles, tunnel sous un immeuble et un pont, là où la route passe au-dessus d'elle-même. Départ, quatre points de contrôle et arrivée juste derrière la grille (compatible avec les courses en plusieurs tours).
-- Le tracé n'est pas fait de pièces de 20 m : c'est un ruban continu, construit à partir de la route d'un modèle 3D de la ville. Le jeu accepte n'importe quel maillage comme pièce de piste, et la physique le prend tel quel ; quatre nouvelles pièces sont déclarées (route, départ, point de contrôle, arrivée), dans le jeu et dans son moteur physique.
-- La ville autour (immeubles, port, collines) est ce même modèle, allégé et texturé. Elle est seulement affichée : on ne la percute pas, ce sont les glissières qui gardent les voitures sur la piste.
-- Les records sur Monaco restent locaux, comme pour les autres pistes du mod.
-
-**Outils**
-- [`tools/make_monaco.js`](tools/make_monaco.js) régénère le circuit à partir du modèle (un `output.obj` et sa texture, non inclus dans le dépôt) : il suit la route du modèle, l'élargit là où une glissière ne passerait pas, et produit les fichiers de [`tracks/monaco/`](tracks/monaco). Les réglages (échelle, largeur, hauteur du pont, départ) sont en tête de fichier.
-- Après une régénération, le fichier de piste, sa miniature et les empreintes des pièces (`tracks/monaco/checksums.json`) doivent être recréés dans le jeu ; sans empreintes à jour, le jeu signale ses pièces comme modifiées et n'envoie plus aucun temps au classement officiel.
-
-**Mise à jour** : `git pull` puis `node build.js`. Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.3.
-
-### V2.2.1 : correctif des invitations
-
-**Corrections**
-- Deux joueurs avec exactement la même version pouvaient être refusés dans la room de l'autre (« votre version de GoofyTrack n'est pas celle de l'hôte »). L'empreinte du build dépendait des fins de ligne des fichiers, que git peut convertir sous Windows selon les réglages de chacun (et qui diffèrent entre un clone et un ZIP). Elle est maintenant calculée sans en tenir compte.
-
-**Mise à jour** : `git pull` (ou nouveau téléchargement du ZIP) puis `node build.js` chez **tous** les joueurs. L'empreinte change (`2.2.1-…`), et elle doit maintenant être la même pour tout le monde : comparez la ligne `build …` affichée par `node build.js`. Le serveur n'a pas besoin d'être mis à jour.
-
-### V2.2 : décors, aides au pilotage, ambiances
-
-Le jeu est plus beau et donne plus d'informations au pilote, sans toucher à la physique ni au protocole multijoueur.
-
-**Décors**
-- Montagnes redessinées dans [`apex-scenery.js`](apex-scenery.js) : relief plus fin, seconde chaîne plus haute à l'horizon, faces colorées selon la pente et l'altitude (herbe, roche et neige en été ; neige, roche nue et glace en hiver ; sable et roche rouge stratifiée dans le désert).
-- Forêts de sapins sur les contreforts (été, hiver), rochers dans le désert.
-- Le maillage d'origine des montagnes est conservé tel quel pour les collisions : seul ce qui est affiché change.
-
-**Graphismes**
-- Ombres plus douces et un peu plus marquées, ciel plus profond avec un halo autour du soleil.
-- Pièces de piste ombrées en lissé : virages, pentes, loopings, barrières et piliers n'ont plus de facettes visibles. La géométrie, qui sert aux collisions, est identique.
-- Ambiances au choix (jour, heure dorée, crépuscule, couvert) avec le bouton « Ambiance » de l'écran d'accueil. Le choix est propre à chaque joueur.
-
-**Aides au pilotage** (solo et multijoueur, dans [`apex-hud.js`](apex-hud.js))
-- Mini-carte : tracé de la piste, votre voiture en flèche, les autres joueurs de la room en points.
-- Écart en direct sur votre meilleur tour de la session, mesuré en continu le long de la piste.
-
-**Interface**
-- Écran d'accueil : pastille « GoofyTrack 2.2 » sous le logo, icônes et libellés des tuiles recentrés.
-- Les liens du bas du menu ne sont plus cliquables (plus aucune redirection vers l'extérieur).
-
-**Corrections**
-- Le fichier du thème contenait une marque d'encodage invisible (BOM) qui pouvait casser toute l'interface ; elle est retirée des sources et tolérée par `build.js`.
-
-**Mise à jour** : `git pull` puis `node build.js`. L'empreinte du build change (nouvelle version), donc tous les joueurs d'une room doivent passer en V2.2. Les fichiers `apex-gfx.js`, `apex-hud.js` et `apex-scenery.js` ne comptent pas dans l'empreinte : ils ne changent que l'affichage.
-
-### V2.1 : mise à jour des serveurs
-
-Le multijoueur ne dépend plus des serveurs de PolyTrack.
-
-**Serveur multijoueur GoofyTrack**
-- Nouveau serveur de mise en relation dans [`server/`](server/server.js), qui remplace celui de PolyTrack pour héberger et rejoindre une room. La partie reste en pair-à-pair entre les joueurs ; les classements officiels passent toujours par les serveurs de PolyTrack.
-- Codes d'invitation à 6 caractères (sans 0/O ni 1/I), valables tant que l'hôte est dans la room : plus d'expiration ni de renouvellement. Minuscules, espaces et tirets sont acceptés à la saisie.
-- Déploiement gratuit sur Render avec [`render.yaml`](render.yaml) ; l'adresse du serveur se règle dans `SERVER_URL` de [`config.js`](config.js) (voir [Serveur multijoueur](#serveur-multijoueur)).
-- Le jeu réveille le serveur dès son lancement, pour qu'il soit prêt quand on ouvre le multijoueur.
-- Serveurs TURN optionnels (variable `ICE_SERVERS`) pour les réseaux qui bloquent le pair-à-pair direct.
-
-**Jeu modifiable**
-- Le jeu d'origine bloque le multijoueur quand il détecte une physique ou des fichiers modifiés. Ce blocage est levé pour les rooms GoofyTrack : on peut modifier le jeu comme on veut, du moment que tout le monde a le même build.
-- Chaque build calcule une empreinte des fichiers du mod (affichée dans le terminal après `node build.js`, et dans l'infobulle de la ligne « Mod GoofyTrack » du menu). Le serveur ne réunit dans une room que des joueurs qui ont la même empreinte.
-
-**Corrections**
-- Mode course visible seulement chez l'hôte : l'hôte n'envoyait la course qu'aux joueurs ayant le même mod que lui et laissait les autres rouler librement, sans aucun message. Un joueur avec un autre build est maintenant refusé dès l'entrée dans la room, avec le message « votre version de GoofyTrack n'est pas celle de l'hôte ».
-- L'outil de développement `ApexRoom.debugLap()` (console) compte de nouveau un tour.
-
-**Interface**
-- Bas du menu principal : les boutons Google Play, Discord et r/PolyTrack sont retirés. Le copyright Kodub et le crédit de la musique restent, et une ligne « Mod GoofyTrack V2.1 » indique la version installée.
-
-**Mise à jour** : mettre le serveur en ligne (une seule fois), renseigner son adresse dans `config.js`, puis relancer `node build.js` chez **tous** les joueurs avec les mêmes fichiers. Un joueur resté en V2.0 ne peut plus rejoindre une room V2.1.
-
-### V2.0 : mode course
-
-**Mode course**
-- Troisième mode **Course** sur l'écran « Héberger », à côté de Casual et Competitive.
-- Options : nombre de tours (1 à 20), qualifications et tour de formation, modifiables aussi dans la room entre deux courses.
-- Déroulé : entraînement → qualifications (tours chronométrés libres, le meilleur fixe la grille) → tour de formation depuis la grille → départ arrêté aux cinq feux rouges → course en N tours → résultats.
-- Classement en direct (tour en cours, écarts) et bandeau avec votre tour et votre dernier temps au tour.
-- Les tours faits pendant une course (qualifications, formation, course) ne sont jamais enregistrés comme records.
-
-**Courses en plusieurs tours**
-- Sur un circuit dont l'arrivée est juste derrière le départ, la course se fait en plusieurs tours ; sur une piste classique, en un seul.
-
-**Nouvelle catégorie « Circuits »**
-- Ajoutée aux pistes officielles, après Été, Hiver et Désert.
-- Premier circuit : **Killer Loop**, un rectangle en route large.
-- Les records des pistes du mod restent sur votre machine et ne sont pas envoyés au classement en ligne.
-
-**Divers**
-- Nouveau logo « GoofyTrack » dans le menu principal.
-- Les textes du mod suivent la langue choisie dans le jeu.
-
-### V1.0 : première version
-
-- Voiture de F1 : carrosserie complète, suspension animée, 16 livrées ; physique et forme de collision d'origine.
-- Interface « Apex » : surfaces sombres translucides, coins arrondis, police Bahnschrift.
-- Multijoueur : tableau des 5 meilleurs temps de la room et fantôme du meilleur tour.
-- Code d'invitation renouvelé automatiquement à son expiration (remplacé en V2.1 par des codes sans expiration).
-
+Le détail de chaque version est dans [PATCHNOTES.md](PATCHNOTES.md), et dans le jeu avec le bouton **Patch notes** du menu principal.
 
 ## Installation
 
 Il faut [Node.js](https://nodejs.org) 18 ou plus récent et PolyTrack 0.6.3 pour Windows.
 
 ```bash
-git clone https://github.com/galmichedany7-jpg/goofytrackv1.git
-cd goofytrackv1
+git clone https://github.com/galmichedany7-jpg/goofytrackv1.git GoofyTrack
+cd GoofyTrack
 node build.js "C:\chemin\vers\PolyTrack-v0.6.3-win32-x64"
 ```
 
-Fermez le jeu avant de lancer la commande, puis démarrez `PolyTrack.exe` comme d'habitude.
+Ensuite, lancez **`GoofyTrack.exe`**, dans ce même dossier.
 
-À la première installation, l'archive d'origine du jeu (`resources/app.asar`) est mise de côté sous le nom `app.asar.original` et décompressée dans `resources/app`, que le jeu charge à la place. Relancer `node build.js` reconstruit tout à partir de l'archive d'origine : c'est aussi la commande à utiliser après avoir modifié le mod.
+La première fois, PolyTrack est copié dans ce dossier (fichiers ignorés par git) : `PolyTrack.exe` devient `GoofyTrack.exe`, avec l'icône et le nom de GoofyTrack ([`setup.js`](setup.js)). Le dossier de PolyTrack n'est plus utilisé ensuite, vous pouvez le supprimer. S'il est à côté de ce dossier, il est trouvé tout seul et `node build.js` suffit. Vos sauvegardes (temps, pistes, réglages) restent celles de PolyTrack.
 
-### Désinstallation
+L'archive d'origine du jeu est gardée sous le nom `resources/app.asar.original` et décompressée dans `resources/app`, que le jeu charge à la place. Relancer `node build.js` reconstruit tout à partir de l'archive d'origine : c'est aussi la commande à utiliser après avoir modifié le code (jeu fermé).
 
-```bash
-node uninstall.js "C:\chemin\vers\PolyTrack-v0.6.3-win32-x64"
-```
-
-Le dossier `resources/app` est supprimé et l'archive d'origine remise en place.
+Pour désinstaller, supprimez le dossier.
 
 ### Mises à jour automatiques
 
-Double-cliquez sur **`Jouer a GoofyTrack.bat`** au lieu de `PolyTrack.exe` : il regarde sur GitHub s'il y a une nouvelle release, la télécharge, la réinstalle dans le jeu si besoin, puis lance le jeu. **`Mettre a jour GoofyTrack.bat`** fait la même chose sans lancer le jeu. En ligne de commande :
+Double-cliquez sur **`Jouer a GoofyTrack.bat`** au lieu de `GoofyTrack.exe` : il récupère la nouvelle version s'il y en a une, reconstruit le jeu si besoin, puis le lance. **`Mettre a jour GoofyTrack.bat`** fait la même chose sans lancer le jeu. En ligne de commande :
 
 ```bash
-node update.js [--check] [--play] [--force] ["C:\chemin\vers\PolyTrack-v0.6.3-win32-x64"]
+node update.js [--check] [--play] [--force]
 ```
 
-- Dossier téléchargé en ZIP : le code de la dernière release est copié par-dessus le dossier. Le dépôt étant privé, le premier lancement demande un token GitHub en lecture seule (Contents > Read-only sur ce dépôt), gardé dans `update-settings.json` avec le dossier du jeu.
-- Dossier cloné avec git : `git pull` avec vos identifiants git, refusé s'il y a des modifications locales.
+- Dossier cloné avec git : `git pull` (les derniers commits) avec vos identifiants git, refusé s'il y a des modifications locales.
+- Dossier téléchargé en ZIP : le code de la dernière release est copié par-dessus le dossier. Le dépôt étant privé, le premier lancement demande un token GitHub en lecture seule (Contents > Read-only sur ce dépôt), gardé dans `update-settings.json`.
 - Sans connexion, le jeu se lance quand même.
+- Venant d'une version où le mod était installé dans le dossier de PolyTrack : la mise à jour copie le jeu dans ce dossier la première fois (le dossier de PolyTrack est retrouvé ou demandé).
 
 Pour les releases : le tag doit être `V` + `MOD_VERSION` de `config.js` (`V2.7` pour `2.7`), c'est lui qui est comparé à la version installée.
 
@@ -504,7 +152,7 @@ Le serveur fournit des serveurs STUN publics (Google, Cloudflare), qui suffisent
 cd server && npm install && node server.js
 ```
 
-Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`GOOFY_SERVER=http://localhost:8787/ node build.js "C:\chemin\vers\copie"`), servez-la avec `node serve.js "C:\chemin\vers\copie"`, et ouvrez-la deux fois : `http://localhost:8765` et `http://127.0.0.1:8765` (deux adresses différentes donnent deux profils de joueur différents).
+Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`GOOFYTRACK_DIR="C:\chemin\vers\copie" GOOFY_SERVER=http://localhost:8787/ node build.js`, le premier build y copie PolyTrack), servez-la avec `node serve.js "C:\chemin\vers\copie"`, et ouvrez-la deux fois : `http://localhost:8765` et `http://127.0.0.1:8765` (deux adresses différentes donnent deux profils de joueur différents).
 
 ## Limites connues
 
@@ -521,13 +169,16 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 
 | Fichier | Rôle |
 |---|---|
-| `build.js`, `uninstall.js` | Installation et désinstallation |
+| `build.js` | Construction du jeu |
+| `setup.js`, `tools/rebrand_exe.ps1` | Première installation : copie de PolyTrack dans ce dossier, `GoofyTrack.exe` avec son icône et son nom |
+| `update.js`, `Jouer a GoofyTrack.bat`, `Mettre a jour GoofyTrack.bat` | Mises à jour automatiques |
 | `config.js`, `asar.js` | Emplacement du jeu, lecture de l'archive |
 | `build_car.js`, `meshlib.js` | Génération procédurale du modèle 3D de la voiture |
 | `build_patterns.js` | Génération des 16 livrées |
 | `patch_bundle.js` | Points d'accroche ajoutés au code du jeu |
 | `apex-room.js` | Tableau de room, fantôme, mode course |
 | `apex-show.js` | Présentation du circuit avant les feux et podium à la fin d'une course |
+| `PATCHNOTES.md`, `apex-notes.js` | Notes de version, et le bouton « Patch notes » du menu principal qui les affiche (sans les paragraphes « Mise à jour » ni les sections « Outils ») |
 | `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
 | `apex-hud.js` | Mini-carte et écart en direct ; noms des touches selon le clavier (AZERTY) |
 | `apex-records.js` | Classements des pistes du mod : signature des records envoyés au serveur GoofyTrack |
@@ -545,7 +196,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `audio/` | Musiques du jeu (« Vroum Vroum » et, dans le menu des courses, « WAITING », Teknah) |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |
 | `server/`, `render.yaml` | Serveur multijoueur (codes d'invitation, mise en relation, classements des pistes du mod) et son déploiement sur Render |
-| `serve.js` | Développement : sert le jeu modé en http pour le tester dans un navigateur (`node serve.js "C:\chemin\vers\PolyTrack"`) |
+| `serve.js` | Développement : sert le jeu modé en http pour le tester dans un navigateur (`node serve.js`, ou `node serve.js "C:\chemin\vers\copie"`) |
 
 ## Licence
 

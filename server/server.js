@@ -152,7 +152,8 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/health' || url.pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     const r = records.stats();
-    return res.end(`GoofyTrack server: ${hosts.size} room(s) open, records ${r.ready ? `on ${r.tracks} track(s)` : 'loading'}\n`);
+    const kept = r.storage === 'gist' ? 'kept in a gist' : 'in a local file, lost on restart unless the disk is persistent';
+    return res.end(`GoofyTrack server: ${hosts.size} room(s) open, records ${r.ready ? `on ${r.tracks} track(s)` : 'loading'} (${kept})\n`);
   }
   if (records.handle(req, res, url)) return;
   res.writeHead(404);

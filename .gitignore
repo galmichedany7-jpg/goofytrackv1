@@ -6,3 +6,16 @@ update-settings.json
 
 # points handed to tools/heights.js (tools/make_circuit.js <circuit> --points)
 tools/*_points.json
+
+# The game itself, copied from PolyTrack by setup.js (never commit these)
+/GoofyTrack.exe
+/*.dll
+/*.pak
+/*.bin
+/icudtl.dat
+/locales/
+/resources/
+/version
+/vk_swiftshader_icd.json
+/LICENSE.electron
+/LICENSES.chromium.html

@@ -86,6 +86,7 @@
   let pendingRoom = null;  // race room settings chosen on the host screen, applied when the room opens
   let parked = null;       // own car's state while it waits for the lights: what a car at rest looks like
   let stage = null;        // the podium: { cars: [{ car, state, placed }] }, no cars once the player has left it
+  let runCounts = true;    // the own run began on the track's start line, on the real track (set when the car spawns)
 
   const isHost = () => ctx != null && typeof ctx.connection.apexPeers === 'function';
   const room = () => (ctx != null && ctx.connection.apexRoom) || { race: false };
@@ -388,6 +389,8 @@
     const grid = race.grid;
     return { remotes: ctx.remotes(), solid: id => grid.some(s => s.id === id), moving: false };
   };
+  // Phases where the cars drive ordinary runs: from the start line, on the real track, on their own clock
+  const timeTrialPhase = () => race == null || race.phase === 'quali' || race.phase === 'results';
   const applySlot = (transform, slot) => {
     if (slot == null) return transform;
     const P = transform.position.constructor, Q = transform.quaternion.constructor;
@@ -901,7 +904,10 @@
     },
 
     // --- race hooks
-    startTransform(transform) { return applySlot(transform, slotFor(selfId)); },
+    startTransform(transform) {
+      runCounts = timeTrialPhase();
+      return applySlot(transform, slotFor(selfId));
+    },
     remoteStart(playerId, transform) { return applySlot(transform, slotFor(playerId)); },
     simStart() {                                   // where the physics puts the car being driven
       const s = slotFor(selfId);
@@ -909,6 +915,10 @@
     },
     locked() { return (race != null && race.phase === 'race' && performance.now() < race.goAt) || watching(); },
     raceActive() { return race != null; },
+    // A finished run becomes a personal record (and goes to the leaderboard) like in time trial, except
+    // formation and race laps: they start from a grid slot, on the shared clock, on a track that never
+    // finishes, so neither their time nor their replay stands on its own. Qualifying laps do count.
+    countsAsRecord() { return runCounts && timeTrialPhase(); },
     simTrack(track) { return simTrack(track); },
 
     // --- host screen ("Race" game mode next to Casual / Competitive)

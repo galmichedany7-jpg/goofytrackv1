@@ -1,38 +1,37 @@
-// Checks GitHub for a newer GoofyTrack release, downloads it over this folder and reinstalls it into the game.
+// Checks GitHub for a newer GoofyTrack, downloads it into this folder and rebuilds the game (GoofyTrack.exe).
 //
-//   node update.js ["C:\path\to\PolyTrack-v0.6.3-win32-x64"] [--play] [--check] [--force]
+//   node update.js [--play] [--check] [--force] ["C:\path\to\PolyTrack-v0.6.3-win32-x64"]
 //
 //   --play   start the game afterwards (whether or not there was an update)
 //   --check  only say whether an update is available
-//   --force  reinstall into the game even when everything is up to date
+//   --force  rebuild the game even when everything is up to date
 //
 // Or double-click "Mettre a jour GoofyTrack.bat" / "Jouer a GoofyTrack.bat".
 //
+// - Folder cloned with git: `git pull`, i.e. the latest commits, with your own git credentials (refused if
+//   you have local changes).
 // - Folder downloaded as a ZIP: the latest release's source code is downloaded from GitHub and copied over
 //   this folder (files you added are kept). The repository being private, the first run asks for a GitHub
 //   token, kept in update-settings.json (never committed).
-// - Folder cloned with git: `git pull` instead, with your own git credentials (refused if you have local changes).
-// Then build.js runs if the game does not have this version installed yet. The game folder is asked once
-// (or found next to this folder) and remembered in update-settings.json.
+// Then build.js runs if the game does not have this version yet. The very first time, the game is made from
+// a PolyTrack 0.6.3 install (given as argument, found next to this folder, or asked), copied into this folder.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline/promises');
 const { execFileSync, spawn } = require('child_process');
+const { EXE, installedVersion } = require('./config');
+const { findPolyTrack, isPolyTrack } = require('./setup');
 
 const REPO = 'galmichedany7-jpg/goofytrackv1';
 const SETTINGS = path.join(__dirname, 'update-settings.json');
 const flags = new Set(process.argv.slice(2).filter(a => a.startsWith('--')));
-const gameArg = process.argv.slice(2).find(a => !a.startsWith('--'));
+const polyTrackArg = process.argv.slice(2).find(a => !a.startsWith('--'));
 
 const loadSettings = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, 'utf8')); } catch { return {}; } };
 const saveSettings = s => fs.writeFileSync(SETTINGS, JSON.stringify(s, null, 2) + '\n');
 // The mod version of this folder, read fresh (config.js changes during an update)
 const sourceVersion = () => /MOD_VERSION:\s*'([^']+)'/.exec(fs.readFileSync(path.join(__dirname, 'config.js'), 'utf8'))[1];
-// The mod version built into the game: build.js writes it at the top of the theme
-const installedVersion = game => {
-  try { return /--apx-version: "VERSION ([^"]+)"/.exec(fs.readFileSync(path.join(game, 'resources', 'app', 'apex-theme.css'), 'utf8'))[1]; } catch { return null; }
-};
 // "V2.4.1" -> [2, 4, 1]; compares numerically, a missing part counting as 0
 const parts = v => String(v).replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
 const newer = (a, b) => { const x = parts(a), y = parts(b); for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
@@ -41,20 +40,15 @@ let rl;
 const ask = async question => { rl ??= readline.createInterface({ input: process.stdin, output: process.stdout }); return (await rl.question(question)).trim(); };
 const fail = message => { console.error('\n' + message); process.exitCode = 1; };
 
-async function findGame(settings) {
-  const isGame = dir => dir && fs.existsSync(path.join(dir, 'PolyTrack.exe')) && fs.existsSync(path.join(dir, 'resources'));
-  if (gameArg) return path.resolve(gameArg);
-  if (isGame(settings.game)) return settings.game;
-  // next to this folder, or next to its parent (the ZIP unpacks into a folder of its own)
-  for (const base of [path.join(__dirname, '..'), path.join(__dirname, '..', '..')]) {
-    let entries = [];
-    try { entries = fs.readdirSync(base, { withFileTypes: true }); } catch {}
-    for (const entry of entries)
-      if (entry.isDirectory() && isGame(path.join(base, entry.name))) return path.resolve(base, entry.name);
-  }
+// The PolyTrack install the game is made from, the first time only
+async function findSource(settings) {
+  if (polyTrackArg) return path.resolve(polyTrackArg);
+  if (isPolyTrack(settings.game)) return settings.game;   // where older versions installed the mod
+  const found = findPolyTrack();
+  if (found) return found;
   while (true) {
     const dir = (await ask('Dossier de PolyTrack (celui qui contient PolyTrack.exe) : ')).replace(/^"|"$/g, '');
-    if (isGame(dir)) return path.resolve(dir);
+    if (isPolyTrack(dir)) return path.resolve(dir);
     console.log('PolyTrack.exe introuvable dans ce dossier.');
   }
 }
@@ -78,7 +72,8 @@ async function github(url, settings, raw = false) {
 }
 
 function gameRunning() {
-  try { return execFileSync('tasklist', ['/FI', 'IMAGENAME eq PolyTrack.exe', '/NH'], { encoding: 'utf8' }).includes('PolyTrack.exe'); } catch { return false; }
+  const name = path.basename(EXE);
+  try { return execFileSync('tasklist', ['/FI', `IMAGENAME eq ${name}`, '/NH'], { encoding: 'utf8' }).includes(name); } catch { return false; }
 }
 
 // Folder downloaded as a ZIP: replace it with the latest release
@@ -139,21 +134,22 @@ async function main() {
   }
   if (flags.has('--check')) return;
 
-  const game = await findGame(settings);
-  if (settings.game !== game) { settings.game = game; saveSettings(settings); }
+  const source = fs.existsSync(EXE) ? null : await findSource(settings);
 
-  const version = sourceVersion(), installed = installedVersion(game);
-  if (installed !== version || flags.has('--force')) {
-    console.log(installed ? `Installation de GoofyTrack ${version} dans le jeu (il avait la ${installed})…` : `Installation de GoofyTrack ${version} dans le jeu…`);
-    while (gameRunning()) await ask('PolyTrack est ouvert : fermez le jeu puis appuyez sur Entrée.');
+  const version = sourceVersion(), installed = installedVersion();
+  if (source || installed !== version || flags.has('--force')) {
+    console.log(installed ? `Construction de GoofyTrack ${version} (le jeu avait la ${installed})…` : `Construction de GoofyTrack ${version}…`);
+    while (gameRunning()) await ask('GoofyTrack est ouvert : fermez le jeu puis appuyez sur Entrée.');
     // a fresh process, so the build runs the scripts just downloaded
-    execFileSync(process.execPath, [path.join(__dirname, 'build.js'), game], { stdio: 'inherit' });
+    execFileSync(process.execPath, [path.join(__dirname, 'build.js'), ...(source ? [source] : [])], { stdio: 'inherit' });
+    if (source && 'game' in settings) { delete settings.game; saveSettings(settings); }
+    if (source) console.log(`\nLe jeu est maintenant dans ce dossier : ${EXE}\nL'ancien dossier de PolyTrack n'est plus utilisé par GoofyTrack.`);
   } else {
     console.log(`Le jeu a déjà GoofyTrack ${version}.`);
   }
 
   if (flags.has('--play')) {
-    spawn(path.join(game, 'PolyTrack.exe'), [], { cwd: game, detached: true, stdio: 'ignore' }).unref();
+    spawn(EXE, [], { cwd: path.dirname(EXE), detached: true, stdio: 'ignore' }).unref();
     console.log('Bon jeu !');
   }
 }

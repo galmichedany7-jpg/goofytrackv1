@@ -15,6 +15,10 @@
 // OpenStreetMap seldom gives heights: storeys are taken from the map when it has them, else guessed from
 // the size of each building. No 3D model or texture is shipped, and the same seed always gives the same town.
 //
+// A town whose style has `rich` (Dijon) is drawn in more detail, as Monaco is: dressed fronts (windows, sills,
+// shutters, shops, balconies, cornices), mansards with dormers, chimneys, plane trees and lamps along the road.
+// The detail fades with the distance to the road, and the fronts that are not seen from it stay plain.
+//
 // Coordinates are the circuit's own: metres, the start line at the origin, heights counted from it.
 // Nothing here is collided with: the road keeps its own barriers.
 //
@@ -58,6 +62,12 @@
     standFrame: [0.58, 0.60, 0.63], seats: [[0.70, 0.16, 0.16], [0.80, 0.22, 0.20]],
     // the glazed tiles of Burgundy: green, ochre, black and red, laid in bands
     glazed: [[0.20, 0.42, 0.26], [0.84, 0.66, 0.22], [0.12, 0.12, 0.13], [0.62, 0.22, 0.16]],
+    // detailed fronts (the towns whose style has `rich`)
+    pane: [0.25, 0.34, 0.47], door: [0.30, 0.22, 0.17], ironwork: [0.13, 0.13, 0.14], zinc: [0.55, 0.57, 0.60], chimney: [0.66, 0.42, 0.34],
+    lamp: [0.20, 0.22, 0.22], lampGlass: [0.95, 0.92, 0.78],
+    shutters: [[0.45, 0.55, 0.62], [0.42, 0.52, 0.40], [0.74, 0.72, 0.66], [0.50, 0.30, 0.24], [0.36, 0.42, 0.50]],
+    signs: [[0.55, 0.12, 0.12], [0.15, 0.30, 0.22], [0.14, 0.20, 0.34], [0.80, 0.62, 0.20], [0.30, 0.30, 0.32]],
+    awnings: [[0.62, 0.16, 0.14], [0.18, 0.40, 0.26], [0.85, 0.85, 0.82], [0.20, 0.30, 0.50], [0.75, 0.55, 0.20]],
   };
   const PLAIN = [[0.74, 0.73, 0.70], [0.68, 0.69, 0.70], [0.78, 0.76, 0.70]];   // sheds, shops and modern blocks, anywhere
   const lin = c => [Math.pow(c[0], 2.2), Math.pow(c[1], 2.2), Math.pow(c[2], 2.2)];
@@ -117,8 +127,18 @@
       walls: [[0.86, 0.80, 0.68], [0.82, 0.76, 0.64], [0.88, 0.84, 0.74], [0.78, 0.72, 0.62], [0.84, 0.74, 0.58], [0.80, 0.78, 0.72], [0.86, 0.78, 0.66], [0.76, 0.70, 0.60]],
       tiles: [[0.50, 0.28, 0.20], [0.44, 0.27, 0.21], [0.36, 0.30, 0.28], [0.54, 0.32, 0.22]],
       floors: 1, steep: 0.30, detail: 70, hills: 0.6,
+      // detailed fronts: windows with sills and shutters, shops and awnings on the street, string courses and cornices,
+      // stone buildings under slate mansards with dormers and balconies, chimneys, plane trees and lamps along the road
+      rich: {
+        near: 140, far: 330,           // full detail within `near` metres of the road, windows only up to `far`
+        stone: [[0.88, 0.84, 0.74], [0.84, 0.80, 0.70], [0.90, 0.86, 0.77], [0.86, 0.81, 0.69]],   // the limestone fronts
+        stoneShare: 0.65,              // share of the buildings of four floors or more built in stone under a mansard
+        glazed: 0.015,                 // share of the houses under glazed tiles
+        plainArea: 5000,               // footprints larger than this are schools, halls and shops: flat roofs
+        trees: 5, lamps: 10,           // along the road: a plane tree every 5 cross-sections a side, a lamp every 10
+      },
       landmarks: () => {
-        const stone = { height: 17, wall: C.paleStone, tiles: C.slate, rise: 5, windows: true, bay: 4, storey: 5.5, windowHeight: 3, windowWidth: 1.4 };
+        const stone ={ height: 17, wall: C.paleStone, tiles: C.slate, rise: 5, windows: true, bay: 4, storey: 5.5, windowHeight: 3, windowWidth: 1.4 };
         const church = { height: 20, wall: C.paleStone, rise: 9, ridge: 0.22, windows: true, bay: 6, storey: 20, windowHeight: 10, windowWidth: 2 };
         return {
           palais: { ...stone, height: 18 },
@@ -260,12 +280,21 @@
       return { d: Math.sqrt(d), y };
     };
     const dist = (x, z) => near(x, z).d;
+    // distance to the road within rings * 60 m, and the unit direction towards its nearest point ({ d: Infinity } beyond)
+    const towards = (x, z, rings = 2) => {
+      const bi = Math.floor(x / BOX), bj = Math.floor(z / BOX);
+      let d = Infinity, best = -1;
+      for (let i = bi - rings; i <= bi + rings; i++) for (let j = bj - rings; j <= bj + rings; j++) for (const k of boxes.get(i + ',' + j) || []) { const p = F[k], q = (p[0] - x) * (p[0] - x) + (p[1] - z) * (p[1] - z); if (q < d) { d = q; best = k; } }
+      if (best < 0) return { d: Infinity, x: 0, z: 0 };
+      d = Math.sqrt(d);
+      return { d, x: (F[best][0] - x) / (d || 1), z: (F[best][1] - z) / (d || 1) };
+    };
     const nearest = (x, z) => { let best = 0, d = Infinity; F.forEach((p, i) => { const q = (p[0] - x) * (p[0] - x) + (p[1] - z) * (p[1] - z); if (q < d) { d = q; best = i; } }); return best; };
     const frame = i => {                                                 // position, unit tangent and unit left-hand normal at a cross-section
       const a = F[(i - 1 + n) % n], b = F[(i + 1) % n], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, t = [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
       return { p: F[i], t, n: [-t[1], t[0]] };
     };
-    return { F, n, centre: [cx, cz], reach, bounds: boundsOf(F), near, dist, nearest, frame };
+    return { F, n, centre: [cx, cz], reach, bounds: boundsOf(F), near, dist, towards, nearest, frame };
   }
 
   // ------------------------------------------------------------------ the land
@@ -365,8 +394,34 @@
       for (let k = 0; k < 6; k++) { const a = ring[k], b = ring[(k + 1) % 6]; B.tri3([a[0], y + h * 0.55, a[1]], [b[0], y + h * 0.55, b[1]], [x, y + h * 0.28, z], shade(col, 0.8), [a[0] - x, -1, a[1] - z]); }
     };
     const fir = (x, z, y, h, rnd) => { const col = C.forest[Math.floor(rnd() * 3)]; cone(circle(x, z, h * 0.3, 5, rnd() * 6), y + h * 0.15, [x, y + h, z], col); };
-    return { prism, circle, cone, tower, tree, fir };
+    // a faceted ball (icosahedron), for the crowns of the plane trees
+    const ball = (x, y, z, rx, ry, rz, cols, rnd) => {
+      const v = ICO.v.map(p => { const k = 0.91 + rnd() * 0.18; return [x + p[0] * rx * k, y + p[1] * ry * k, z + p[2] * rz * k]; });
+      ICO.f.forEach((f, i) => {
+        const a = v[f[0]], b = v[f[1]], c = v[f[2]], m = [(a[0] + b[0] + c[0]) / 3 - x, (a[1] + b[1] + c[1]) / 3 - y, (a[2] + b[2] + c[2]) / 3 - z];
+        B.tri3(a, b, c, shade(cols[i % cols.length], m[1] > 0 ? 1.12 : 0.96), m);
+      });
+    };
+    // a plane tree of the boulevards: a pale trunk and a round crown
+    const planeTree = (x, z, y, rnd) => {
+      const h = 4.6 + rnd() * 1.4, r = 3.4 + rnd() * 1.2, col = C.leaves[Math.floor(rnd() * C.leaves.length)];
+      prism(circle(x, z, 0.32, 5, rnd() * 6), y - 0.5, y + h + r * 0.4, [0.62, 0.58, 0.48], null);
+      ball(x, y + h + r * 0.75, z, r, r * 0.85, r, [col, shade(col, 0.94), shade(col, 1.05)], rnd);
+    };
+    // a street lamp: a pole, an arm over the road (ux, uz) and its lantern
+    const lamp = (x, z, y, ux, uz) => {
+      const H = 7.5, hx = x + ux * 1.6, hz = z + uz * 1.6;
+      prism(circle(x, z, 0.13, 4), y - 0.3, y + H, C.lamp, C.lamp);
+      prism([[x - uz * 0.08, z + ux * 0.08], [hx - uz * 0.08, hz + ux * 0.08], [hx + uz * 0.08, hz - ux * 0.08], [x + uz * 0.08, z - ux * 0.08]], y + H - 0.25, y + H - 0.1, C.lamp, C.lamp);
+      prism(circle(hx, hz, 0.32, 4), y + H - 0.75, y + H - 0.25, C.lampGlass, C.lamp);
+    };
+    return { prism, circle, cone, tower, tree, fir, ball, planeTree, lamp };
   }
+  const ICO = (() => {
+    const t = (1 + Math.sqrt(5)) / 2, v = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]].map(p => { const l = Math.hypot(...p); return p.map(c => c / l); });
+    const f = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+    return { v, f };
+  })();
 
   // ------------------------------------------------------------------ buildings
   // A building on its footprint: walls, windows near the road, and a hipped tiled roof (the footprint
@@ -400,6 +455,150 @@
       }
     });
     flat(B, top, y1 + o.rise, o.glazed ? C.glazed[2] : shade(o.tiles, 1.05));
+  }
+
+  // ------------------------------------------------------------------ detailed buildings (the towns whose style has `rich`)
+  // The footprint drawn in by d metres from every side (each corner moved along its bisector), or null where it is
+  // too narrow for that: an edge would turn over, or two edges cross.
+  function insetBy(P, d) {
+    const n = P.length, s = signedArea(P) > 0 ? 1 : -1, I = [];
+    const inward = (a, b) => { const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [-(b[1] - a[1]) / l * s, (b[0] - a[0]) / l * s]; };
+    for (let i = 0; i < n; i++) {
+      const p = P[(i + n - 1) % n], a = P[i], b = P[(i + 1) % n], n1 = inward(p, a), n2 = inward(a, b);
+      let mx = n1[0] + n2[0], mz = n1[1] + n2[1]; const ml = Math.hypot(mx, mz);
+      if (ml < 1e-6) { mx = n2[0]; mz = n2[1]; } else { mx /= ml; mz /= ml; }
+      const k = d / Math.max(0.35, mx * n2[0] + mz * n2[1]);
+      I.push([a[0] + mx * k, a[1] + mz * k]);
+    }
+    for (let i = 0; i < n; i++) { const a = P[i], b = P[(i + 1) % n], c = I[i], e = I[(i + 1) % n]; if ((b[0] - a[0]) * (e[0] - c[0]) + (b[1] - a[1]) * (e[1] - c[1]) <= 0) return null; }
+    if (signedArea(I) * s < Math.abs(signedArea(P)) * 0.06) return null;
+    if (n <= 64) {
+      const cross = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
+        if (i === 0 && j === n - 1) continue;
+        const a = I[i], b = I[(i + 1) % n], c = I[j], e = I[(j + 1) % n];
+        if (cross(a, b, c) * cross(a, b, e) < 0 && cross(c, e, a) * cross(c, e, b) < 0) return null;
+      }
+    }
+    return I;
+  }
+
+  // A building of the town, in detail. o.look says how its fronts are dressed; o.rich carries the road (to know
+  // which fronts are seen from it), the level of detail (2: everything, 1: windows and cornices, 0: plain walls),
+  // the props and the random generator.
+  //   walls       windows on every floor (sills, shutters), a door or a shop with its sign and awning on the ground
+  //               floor, a string course over it, balconies on the 2nd and top floors of the stone buildings, a cornice
+  //   roof        hipped (tiles) or mansard (slate, zinc on top, dormers), drawn in from the footprint whatever its
+  //               shape; chimneys on the tiled ones; flat for the large halls
+  function richBuilding(B, P, o) {
+    const R = o.rich, L = o.look, X = R.X, rnd = R.rnd, ccw = signedArea(P) > 0, y0 = o.base, y1 = y0 + o.height;
+    const floors = Math.max(1, Math.round(o.height / FLOOR)), fh = o.height / floors, edges = [];
+    P.forEach((a, i) => {
+      const b = P[(i + 1) % P.length], l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (l < 0.05) { edges.push(null); return; }
+      const ex = (b[0] - a[0]) / l, ez = (b[1] - a[1]) / l, ox = ccw ? ez : -ez, oz = ccw ? -ex : ex, out = [ox, 0, oz];
+      B.quad([a[0], y0 - o.foot, a[1]], [b[0], y0 - o.foot, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]], shade(o.wall, 0.94 + 0.12 * hash2(a[0], b[1])), out);
+      const e = { a, b, l, ex, ez, ox, oz, seen: false };
+      edges.push(e);
+      if (!R.tier || l < 2.6) return;
+      // the backs and the courtyards are not seen from the road
+      let to = R.road.towards((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 3);
+      if (to.d === Infinity) to = R.from;
+      const facing = ox * to.x + oz * to.z, full = R.tier === 2 && to.d < R.near;
+      if (facing < (to.d < 45 ? -0.6 : full ? -0.15 : 0.1)) return;
+      e.seen = true;
+      e.full = full;
+      const at = (t, y, off) => [a[0] + ex * t + ox * off, y, a[1] + ez * t + oz * off];
+      const face = (t0, t1, ya, yb, col, off) => B.quad(at(t0, ya, off), at(t1, ya, off), at(t1, yb, off), at(t0, yb, off), col, out);
+      const slab = (t0, t1, y, d0, d1, col) => {
+        B.quad(at(t0, y, d0), at(t1, y, d0), at(t1, y, d1), at(t0, y, d1), col, UP);
+        B.quad(at(t0, y - 0.15, d0), at(t1, y - 0.15, d0), at(t1, y - 0.15, d1), at(t0, y - 0.15, d1), shade(col, 0.7), [0, -1, 0]);
+      };
+      // ground floor: a shop where the front faces the road close by
+      let first = 0;
+      if (full && L.shops && to.d < 55 && facing > 0.35 && l > 5 && fh > 2.9 && rnd() < 0.85) {
+        const top = y0 + Math.min(2.8, fh - 0.4);
+        face(0.5, l - 0.5, y0 + 0.15, top, C.glass, 0.1);
+        face(0.35, l - 0.35, top + 0.05, top + 0.42, C.signs[Math.floor(rnd() * C.signs.length)], 0.16);
+        if (rnd() < 0.55) {
+          const col = C.awnings[Math.floor(rnd() * C.awnings.length)], ya = top + 0.2, t0 = 0.4, t1 = Math.min(l - 0.4, 0.4 + 12);
+          B.quad(at(t0, ya, 0.18), at(t1, ya, 0.18), at(t1, ya - 0.6, 1.6), at(t0, ya - 0.6, 1.6), col, [ox, 1, oz]);
+          B.quad(at(t0, ya, 0.18), at(t1, ya, 0.18), at(t1, ya - 0.6, 1.6), at(t0, ya - 0.6, 1.6), shade(col, 0.6), [-ox, -1, -oz]);
+          face(t0, t1, ya - 0.95, ya - 0.6, shade(col, 0.9), 1.6);
+        }
+        first = 1;
+      }
+      const count = Math.max(1, Math.floor((l - 0.6) / L.bay)), step = l / count, w = Math.min(L.windowWidth, step - 0.7);
+      e.count = count; e.step = step;
+      if (!full && w >= 0.5 && floors >= 2) {
+        // seen from afar: a column of glass in every bay, the floors drawn across it in the wall's colour (as Monaco's towers)
+        const wh = Math.min(L.windowHeight, fh - 1.1), gap = (fh - wh) / 2;
+        if (wh >= 0.6) {
+          for (let k = 0; k < count; k++) { const t = (k + 0.5) * step - w / 2; face(t, t + w, y0 + gap, y1 - gap, L.glass, 0.06); }
+          for (let f = 1; f < floors; f++) face(0, l, y0 + f * fh - gap, y0 + f * fh + gap, shade(o.wall, 0.97), 0.1);
+        }
+      } else if (w >= 0.5) for (let f = first; f < floors; f++) {
+        const fy = y0 + f * fh, wh = Math.min(L.windowHeight, fh - 1.1), wy = fy + Math.max(0.5, (fh - wh) * 0.5);
+        if (wh < 0.6) break;
+        for (let k = 0; k < count; k++) {
+          const t = (k + 0.5) * step - w / 2;
+          if (f === 0 && full && k === count >> 1) { face(t - 0.1, t + w + 0.1, fy, fy + Math.min(2.5, fh - 0.4), C.door, 0.06); continue; }
+          face(t, t + w, wy, wy + wh, L.glass, 0.06);
+          if (!full) continue;
+          if (to.d < 60) face(t - 0.12, t + w + 0.12, wy - 0.2, wy, L.sill, 0.14);
+          if (L.shutter && step - w > 1.25) { face(t - 0.58, t - 0.06, wy, wy + wh, L.shutter, 0.1); face(t + w + 0.06, t + w + 0.58, wy, wy + wh, L.shutter, 0.1); }
+        }
+        if (full && L.balconies && floors >= 4 && f >= 1 && (f === 2 || f === floors - 1) && l > 3) {
+          slab(0.2, l - 0.2, fy + 0.15, 0.05, 0.75, L.sill);                   // the balcony, its railing: a band of ironwork and a handrail
+          face(0.2, l - 0.2, fy + 0.15, fy + 0.45, C.ironwork, 0.75);
+          face(0.2, l - 0.2, fy + 0.92, fy + 1.02, C.ironwork, 0.75);
+        }
+      }
+      if (full && floors >= 2) face(0, l, y0 + fh - 0.1, y0 + fh + 0.2, L.band, 0.12);   // string course over the ground floor
+      face(0, l, y1 - 0.55, y1, L.band, 0.3);                                     // cornice
+    });
+
+    if (o.roof === 'flat') { flat(B, P, y1, o.lid || C.flatRoof); return; }
+    const area = Math.abs(signedArea(P)), mansard = o.roof === 'mansard';
+    let d = mansard ? 2.4 : clamp(Math.sqrt(area) * 0.3, 1.6, 6), I = null;
+    for (let k = 0; k < 4 && !I; k++) { I = insetBy(P, d); if (!I) d *= 0.6; }
+    if (!I) { flat(B, P, y1, shade(o.tiles, 0.9)); return; }                     // too thin for a roof: a terrace
+    const rise = mansard ? d * 1.75 : Math.min(7, d * o.pitch), top = y1 + rise, bands = o.glazed ? 4 : 1;
+    P.forEach((a, i) => {
+      const e = edges[i]; if (!e) return;
+      const j = (i + 1) % P.length, b = P[j], towards = [e.ox, mansard ? 0.6 : 1, e.oz];
+      for (let s = 0; s < bands; s++) {
+        const t0 = s / bands, t1 = (s + 1) / bands, on = (p, q, t) => [p[0] + (q[0] - p[0]) * t, y1 + rise * t, p[1] + (q[1] - p[1]) * t];
+        const col = o.glazed ? C.glazed[(s + i) % C.glazed.length] : shade(o.tiles, 0.9 + 0.2 * hash2(b[0], a[1]));
+        B.quad(on(a, I[i], t0), on(b, I[j], t0), on(b, I[j], t1), on(a, I[i], t1), col, towards);
+      }
+      // dormers on the fronts seen from the road, one over every window (every other one on a house)
+      if (!e.full || !L.dormers || rise < 2.6 || e.l < 4.5) return;
+      const F = (t, s) => { const u = t / e.l, ix = I[i][0] + (I[j][0] - I[i][0]) * u, iz = I[i][1] + (I[j][1] - I[i][1]) * u, bx = a[0] + e.ex * t, bz = a[1] + e.ez * t; return [bx + (ix - bx) * s, y1 + rise * s, bz + (iz - bz) * s]; };
+      const up = (p, h) => [p[0], p[1] + h, p[2]], fwd = (p, k) => [p[0] + e.ox * k, p[1], p[2] + e.oz * k];
+      const s0 = 0.12, s1 = s0 + 1.4 / rise, sp = s0 + 2.0 / rise;
+      if (sp > 0.95) return;
+      for (let k = 0; k < e.count; k += L.dormerEvery) {
+        const tc = (k + 0.5) * e.step; if (tc < 1 || tc > e.l - 1) continue;
+        const BL = F(tc - 0.6, s0), BR = F(tc + 0.6, s0), TL = up(BL, 1.4), TR = up(BR, 1.4), PF = up([(TL[0] + TR[0]) / 2, TL[1], (TL[2] + TR[2]) / 2], 0.6);
+        const KL = F(tc - 0.6, s1), KR = F(tc + 0.6, s1), PB = F(tc, sp), out = [e.ox, 0, e.oz];
+        B.quad(BL, BR, TR, TL, o.dormer, out); B.tri3(TL, TR, PF, o.dormer, out);
+        const WL = fwd(F(tc - 0.38, s0), 0.04), WR = fwd(F(tc + 0.38, s0), 0.04);
+        B.quad(up(WL, 0.25), up(WR, 0.25), up(WR, 1.2), up(WL, 1.2), L.glass, out);
+        B.tri3(BL, TL, KL, shade(o.dormer, 0.85), [-e.ex, 0, -e.ez]); B.tri3(BR, TR, KR, shade(o.dormer, 0.85), [e.ex, 0, e.ez]);
+        B.quad(TL, PF, PB, KL, o.dormerRoof, [e.ox - e.ex, 1, e.oz - e.ez]); B.quad(TR, PF, PB, KR, o.dormerRoof, [e.ox + e.ex, 1, e.oz + e.ez]);
+      }
+    });
+    flat(B, I, top, mansard ? C.zinc : o.glazed ? C.glazed[2] : shade(o.tiles, 1.05));
+    // chimneys on the tiled roofs
+    if (o.chimneys && R.tier) {
+      const c = centroid(I);
+      for (let k = 0, n = area > 220 ? 2 : 1; k < n; k++) {
+        const p = I[Math.floor(rnd() * I.length)], x = p[0] + (c[0] - p[0]) * 0.3, z = p[1] + (c[1] - p[1]) * 0.3;
+        if (!inPoly(x, z, I)) continue;
+        X.prism(X.circle(x, z, 0.5, 4, Math.atan2(edges[0] ? edges[0].ez : 0, edges[0] ? edges[0].ex : 1) + Math.PI / 4), top - 0.4, top + 1.2 + rnd() * 0.7, C.chimney, shade(C.chimney, 0.6));
+      }
+    }
   }
 
   // ------------------------------------------------------------------ the town
@@ -438,6 +637,31 @@
       box(-a.width / 2, -a.width / 4, base, base + a.height); box(a.width / 4, a.width / 2, base, base + a.height); box(-a.width / 4, a.width / 4, base + a.height * 0.62, base + a.height);
     };
 
+    // ---- detailed towns: what each building is, and how much of it is drawn
+    const rich = style.rich;
+    const richStyle = (P, c, area, h, floors, b) => {
+      const R = rich, from = road.towards(c[0], c[1], 6), d = from.d;
+      const tier = d < R.near ? 2 : d < R.far ? 1 : 0;
+      // the blocks of the old town come as one footprint for several houses: as tall as a house, not a shed
+      if (!b.levels && !b.height && area >= 2500 && area < R.plainArea) floors = 3 + Math.floor(h * 2) + style.floors;
+      const pick = (list, k) => list[Math.floor(hash2(c[0] * k, c[1] * (k + 0.3)) * list.length) % list.length];
+      const kind = area >= R.plainArea ? 'plain' : floors >= 4 && hash2(c[1] * 0.53, c[0] * 0.61) < R.stoneShare ? 'stone' : 'house';
+      const o = { height: clamp(floors, 1, 30) * FLOOR + 0.6, rich: { tier, road, from, near: R.near, X, rnd } };
+      if (kind === 'plain') {
+        const wall = PLAIN[Math.floor(h * 3)];
+        return Object.assign(o, { wall, roof: 'flat', look: { glass: C.glass, sill: shade(wall, 1.05), band: shade(wall, 0.9), bay: 3.4, windowWidth: 2.0, windowHeight: 1.5, shops: true } });
+      }
+      if (kind === 'stone') {
+        const wall = pick(R.stone, 0.71);
+        return Object.assign(o, { wall, roof: 'mansard', tiles: pick([C.slate, [0.34, 0.36, 0.41], [0.28, 0.30, 0.34]], 0.37), dormer: shade(wall, 1.02), dormerRoof: C.slate,
+          look: { glass: C.pane, sill: shade(wall, 1.07), band: shade(wall, 1.08), bay: 3.0, windowWidth: 1.25, windowHeight: 2.1, balconies: true, shops: true, dormers: true, dormerEvery: 1 } });
+      }
+      const wall = style.walls[Math.floor(hash2(c[1] * 0.9, c[0] * 0.7) * style.walls.length)], tiles = style.tiles[Math.floor(h * style.tiles.length)];
+      return Object.assign(o, { wall, roof: 'hip', tiles, pitch: style.steep / 0.3, glazed: hash2(c[0] * 0.13, c[1] * 0.17) < R.glazed, chimneys: true, dormer: shade(wall, 1.02), dormerRoof: tiles,
+        look: { glass: C.pane, sill: [0.86, 0.82, 0.74], band: shade(wall, 1.08), bay: 2.9, windowWidth: 1.05, windowHeight: 1.65, shops: true,
+          shutter: hash2(c[0] * 0.29, c[1] * 0.31) < 0.7 ? pick(C.shutters, 0.43) : null, dormers: hash2(c[0] * 0.47, c[1] * 0.19) < 0.4, dormerEvery: 2 } });
+    };
+
     // ---- buildings
     for (const b of data.buildings) {
       const P = b.p, c = centroid(P), area = Math.abs(signedArea(P)), base = baseAt(c[0], c[1]);
@@ -457,10 +681,12 @@
           roof: big ? 'flat' : 'hip', tiles: style.tiles[Math.floor(h * style.tiles.length)], rise: clamp(Math.sqrt(area) * style.steep, 1.8, 3.5 + 12 * style.steep), windows: near };
         if (b.kind === 'worship') Object.assign(o, { height: 12, wall: C.stone, roof: 'hip', rise: 5, tiles: C.slate });
         if (b.kind === 'station') Object.assign(o, { height: 9, wall: C.stone, roof: 'hip', rise: 3, tiles: C.slate, windows: true });
+        if (rich && !b.kind) o = richStyle(P, c, area, h, floors, b);
       }
       o.base = base; o.foot = foot;
-      building(B, P, o);
-      stats.buildings++; if (o.windows) stats.detailed++;
+      if (o.look) richBuilding(B, P, o);
+      else building(B, P, o);
+      stats.buildings++; if (o.windows || (o.rich && o.rich.tier)) stats.detailed++;
       if (o.fleche) { const f = o.fleche; X.cone(X.circle(c[0], c[1], f.radius, 8), base + o.height + o.rise, [c[0], base + f.height, c[1]], f.wall); }
       const t = o.towers;
       if (t) {
@@ -556,6 +782,7 @@
       B.quad([back[0] - ux * 13, floor, back[1] - uz * 13], [back[0] + ux * 13, floor, back[1] + uz * 13], [back[0] + ux * 13, y + 6, back[1] + uz * 13], [back[0] - ux * 13, y + 6, back[1] - uz * 13], C.standFrame, [nx, 0, nz]);
     };
     let lastStand = -100;
+    const stands = [];                                                   // [x, z, ux, uz] of each one's middle
     const most = Math.max(8, Math.round(road.n / 90));
     for (let i = 10; i < road.n && stats.stands < most; i += 6) {
       if (i - lastStand < 40) continue;
@@ -566,7 +793,32 @@
         let free = true;
         for (let s = -13; s <= 13 && free; s += 6.5) for (let d = 0; d <= 7 && free; d += 3.5) { const px = x + f.t[0] * s + nx * d, pz = z + f.t[1] * s + nz * d; if (built(px, pz, 2) || wet(px, pz) || road.dist(px, pz) < off - 6.5 || baseAt(px, pz) == null || (rock && baseAt(px, pz) === ROCK_HEIGHT) || inWoods(px, pz)) free = false; }
         if (!free) continue;
-        stand(x, z, f.p[2], f.t[0], f.t[1], nx, nz); stats.stands++; lastStand = i; break;
+        stand(x, z, f.p[2], f.t[0], f.t[1], nx, nz); stats.stands++; lastStand = i; stands.push([x + nx * 3.3, z + nz * 3.3, f.t[0], f.t[1]]); break;
+      }
+    }
+
+    // ---- detailed towns: plane trees and lamps along the road, where the pavement is free
+    if (rich) {
+      const inStand = (x, z) => stands.some(([sx, sz, ux, uz]) => Math.abs((x - sx) * ux + (z - sz) * uz) < 15.5 && Math.abs(-(x - sx) * uz + (z - sz) * ux) < 6);
+      // a street crossing the road (not one running along it, which the road was laid on)
+      const crossing = (x, z, tx, tz) => data.streets.some(s => s.line && s.line.some((q, k) => {
+        const r = s.line[k + 1]; if (!r) return false;
+        const lx = r[0] - q[0], lz = r[1] - q[1], l2 = lx * lx + lz * lz; if (l2 < 0.01) return false;
+        const u = clamp(((x - q[0]) * lx + (z - q[1]) * lz) / l2, 0, 1), d = Math.hypot(q[0] + lx * u - x, q[1] + lz * u - z);
+        return d < s.width / 2 + 2 && Math.abs(lx * tx + lz * tz) / Math.sqrt(l2) < 0.75;
+      }));
+      const spot = (i, side, extra, margin) => {
+        const f = road.frame(i), edge = side > 0 ? f.p[3] : f.p[4], off = edge + extra, nx = f.n[0] * side, nz = f.n[1] * side, x = f.p[0] + nx * off, z = f.p[1] + nz * off;
+        if (road.dist(x, z) < off - 1 || built(x, z, margin) || wet(x, z) || inStand(x, z) || crossing(x, z, f.t[0], f.t[1])) return null;
+        const y = baseAt(x, z); return y == null ? null : { x, z, y, nx, nz };
+      };
+      for (let i = 0; i < road.n; i += rich.trees) for (const side of [1, -1]) {
+        const s = spot(i, side, 5.5, 3); if (!s) continue;
+        X.planeTree(s.x, s.z, s.y, rnd); stats.trees++;
+      }
+      for (let i = Math.floor(rich.lamps / 2), k = 0; i < road.n; i += rich.lamps, k++) {
+        const side = k % 2 ? 1 : -1, s = spot(i, side, 2.4, 1.5); if (!s) continue;
+        X.lamp(s.x, s.z, s.y, -s.nx, -s.nz); stats.lamps = (stats.lamps || 0) + 1;
       }
     }
     return stats;

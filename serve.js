@@ -1,11 +1,11 @@
-// Development helper: serves the installed (modded) game folder over http so it can be tested in a browser.
+// Development helper: serves the built game (this folder, or another copy) over http so it can be tested in a browser.
 //
-//   node serve.js ["C:\path\to\PolyTrack"] [port]
+//   node serve.js ["C:\path\to\another\copy"] [port]
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-if (process.argv[2]) process.env.POLYTRACK_DIR = process.argv[2];
+if (process.argv[2]) process.env.GOOFYTRACK_DIR = process.argv[2];
 const { APP } = require('./config');
 const PORT = Number(process.argv[3]) || 8765;
 

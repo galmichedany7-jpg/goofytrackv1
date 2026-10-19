@@ -68,6 +68,8 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
       data = JSON.parse(fs.readFileSync(file, 'utf8'));
       log(`records: loaded from ${file}`);
     } else log(`records: none yet, will be saved to ${file} (set GITHUB_TOKEN to keep them in a gist)`);
+    // a host that wipes its disk (Render free plan) forgets every record on each restart
+    if (!githubToken && process.env.RENDER) console.error('records: WARNING no GITHUB_TOKEN on Render: the records are lost on every restart (every sleep)');
     const count = Object.values(data.tracks).reduce((n, t) => n + t.length, 0);
     log(`records: ${count} on ${Object.keys(data.tracks).length} track(s)`);
     ready = true;
@@ -192,7 +194,8 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     return true;
   }
 
-  return { load, handle, flush: () => (saveTimer != null ? saveNow() : saving), stats: () => ({ ready, tracks: Object.keys(data.tracks).length }) };
+  const storage = () => (githubToken ? 'gist' : 'file');
+  return { load, handle, flush: () => (saveTimer != null ? saveNow() : saving), stats: () => ({ ready, tracks: Object.keys(data.tracks).length, storage: storage() }) };
 }
 
 module.exports = { createRecords };

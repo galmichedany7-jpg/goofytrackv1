@@ -1,21 +1,27 @@
-// Installs / rebuilds the mod into a PolyTrack desktop install.
+// Builds GoofyTrack: the game in this folder (GoofyTrack.exe), made from PolyTrack 0.6.3.
 //
 //   node build.js ["C:\path\to\PolyTrack-v0.6.3-win32-x64"]
 //
-// First run: the game's archive (resources/app.asar) is set aside as app.asar.original and unpacked
-// into resources/app, which the game then loads instead. Every run rebuilds the modded files from
-// the pristine archive, so it is safe to run again after editing the mod. `node uninstall.js` undoes it.
+// First run: PolyTrack is copied into this folder (setup.js; the folder is only needed that once, and
+// found by itself when it sits next to this one), then its archive (resources/app.asar) is set aside as
+// app.asar.original and unpacked into resources/app, which the game loads instead. Every run rebuilds
+// the modified files from the pristine archive, so it is safe to run again after editing the code.
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-if (process.argv[2]) process.env.POLYTRACK_DIR = process.argv[2];
-const { GAME, ARCHIVE, ARCHIVE_BACKUP, APP, ORIGINALS, SUPPORTED_VERSION, MOD_NAME, MOD_VERSION, SERVER_URL, EDITOR_CHUNK } = require('./config');
+const { GAME, EXE, ARCHIVE, ARCHIVE_BACKUP, APP, ORIGINALS, SUPPORTED_VERSION, MOD_NAME, MOD_VERSION, SERVER_URL, EDITOR_CHUNK } = require('./config');
 const asar = require('./asar');
+const setup = require('./setup');
 
-if (!fs.existsSync(path.join(GAME, 'resources'))) {
-  console.error(`PolyTrack was not found in:\n  ${GAME}\nPass the game folder as an argument: node build.js "C:\\path\\to\\PolyTrack"`);
-  process.exit(1);
+// 0. The game itself, taken from PolyTrack the first time
+if (!fs.existsSync(EXE)) {
+  const source = process.argv[2] || setup.findPolyTrack();
+  if (!source) {
+    console.error(`GoofyTrack.exe is not in ${GAME} yet: give the PolyTrack 0.6.3 folder once, node build.js "C:\\path\\to\\PolyTrack"`);
+    process.exit(1);
+  }
+  setup.setup(source);
 }
 
 // 1. Set the original archive aside (first install only)
@@ -41,8 +47,10 @@ run('build_patterns.js');
 run('patch_bundle.js');
 
 // The mod's scripts, loaded before the game in this order (the game calls into them from the hooks of patch_bundle.js)
-const MOD_SCRIPTS = ['apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-room.js'];
+const MOD_SCRIPTS = ['apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-room.js', 'apex-notes.js'];
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
+// The patch notes button shows PATCHNOTES.md, handed to it in front of its script
+fs.writeFileSync(path.join(APP, 'apex-notes.js'), 'window.GOOFY_PATCHNOTES = ' + JSON.stringify(fs.readFileSync(path.join(__dirname, 'PATCHNOTES.md'), 'utf8')) + ';\n' + fs.readFileSync(path.join(__dirname, 'apex-notes.js'), 'utf8'));
 // The theme reads the version from a CSS variable (home screen badge)
 fs.writeFileSync(path.join(APP, 'apex-theme.css'), `html:root { --apx-version: "VERSION ${MOD_VERSION}"; }\n` + fs.readFileSync(path.join(__dirname, 'apex-theme.css'), 'utf8').replace(/^\uFEFF/, ''));
 fs.copyFileSync(path.join(__dirname, 'goofytrack-logo.svg'), path.join(APP, 'images', 'logo.svg'));
@@ -68,10 +76,15 @@ fs.rmSync(path.join(APP, 'apex-montbeliard.js'), { force: true });   // scenery 
 for (const old of ['monaco_decor.bin', 'monaco_decor.jpg']) fs.rmSync(path.join(APP, 'tracks', old), { force: true });   // scenery of 2.3 and 2.4
 const mainScript = '<script defer="defer" src="main.bundle.js">';
 let html = fs.readFileSync(path.join(ORIGINALS, 'index.html'), 'utf8');
-if (!html.includes(mainScript) || !html.includes('</head>')) throw new Error('index.html does not look like the supported game version');
+if (!html.includes(mainScript) || !html.includes('<head>') || !html.includes('</head>')) throw new Error('index.html does not look like the supported game version');
 // wake the GoofyTrack server as the game starts: a free host can take ~30 s to come out of sleep
 const wake = '<script>fetch(' + JSON.stringify(SERVER_URL + 'health') + ').catch(()=>{})</script>';
-html = html.replace(mainScript, wake + MOD_SCRIPTS.map(file => `<script defer="defer" src="${file}"></script>`).join('') + mainScript).replace('</head>', '<link rel="stylesheet" href="apex-theme.css"/></head>');
+// <title>: the window's name (Electron would otherwise show the app's, "PolyTrack")
+html = html.replace('<head>', `<head><title>${MOD_NAME}</title>`).replace(mainScript, wake + MOD_SCRIPTS.map(file => `<script defer="defer" src="${file}"></script>`).join('') + mainScript).replace('</head>', '<link rel="stylesheet" href="apex-theme.css"/></head>');
 fs.writeFileSync(path.join(APP, 'index.html'), html);
 console.log(`${MOD_NAME} ${MOD_VERSION} installed: apex-theme.css, ${MOD_SCRIPTS.join(', ')}, goofytrack-logo.svg, goofytrack_music.mp3, goofytrack_waiting.mp3, ` + require('./tracks').map(t => t.file).join(', '));
-console.log(`Done. Start ${path.join(GAME, 'PolyTrack.exe')}`);
+// The exe carries the version in its properties: refresh them when it changes (or could not be, the game being open)
+if (setup.exeVersion() !== setup.fullVersion(MOD_VERSION)) {
+  try { setup.rebrand(MOD_VERSION); } catch { console.warn(`Could not update the version shown in ${path.basename(EXE)}'s properties (is the game running?)`); }
+}
+console.log(`Done. Start ${EXE}`);
