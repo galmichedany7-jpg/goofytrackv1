@@ -9,20 +9,25 @@
 // same build of the mod, so two players never race with different code.
 //
 //   WS   /multiplayer/host     host: createInvite -> code; then receives joinInvite / iceCandidate / joinDisconnect
+//                              (&account=<session> when the host is logged in: its friends see the room, accounts.js)
 //   WS   /multiplayer/join     player: sends the code and its offer, receives acceptJoin / declineJoin / iceCandidate
 //   GET  /health               wakes the server up (free hosts put it to sleep when idle)
 //
-// It also keeps the leaderboards of the mod's own tracks (records.js): /leaderboard, /leaderboardUserEntry, /recordings.
+// It also keeps the leaderboards of the mod's own tracks (records.js): /leaderboard, /leaderboardUserEntry, /recordings,
+// and the players' accounts, an encrypted save each that follows them from PC to PC (accounts.js): /account/...
 //
 //   PORT=8787 node server.js
 //   ICE_SERVERS='[{"urls":"turn:...","username":"...","credential":"..."}]' adds TURN servers (optional)
-//   GITHUB_TOKEN=...           keeps the records in a secret gist of that GitHub account (otherwise in records.json)
+//   GITHUB_TOKEN=...           keeps the records and the accounts in secret gists of that GitHub account
+//                              (otherwise in records.json and accounts.json)
 const http = require('http');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { createRecords } = require('./records');
+const { createAccounts } = require('./accounts');
 
 const records = createRecords();
+const accounts = createAccounts({ bestPlace: userId => records.bestOf(userId) });
 
 const PORT = Number(process.env.PORT) || 8787;
 const GAME_VERSION = '0.6.3';
@@ -56,8 +61,9 @@ const newCode = () => {
 const normalizeCode = code => (typeof code === 'string' ? code.toUpperCase().replace(/[^A-Z0-9]/g, '') : '');
 
 // ------------------------------------------------------------------ host
-function onHost(socket, build) {
-  let code = null;
+// account: the session of the GoofyTrack account hosting, if any: its friends see the room and can join it
+function onHost(socket, build, account) {
+  let code = null, unlist = () => {};
 
   socket.on('message', data => {
     const m = parse(data);
@@ -76,6 +82,7 @@ function onHost(socket, build) {
           for (const [k, c] of codeByKey) if (c === code) codeByKey.delete(k);
           codeByKey.set(key, code);
           hosts.set(code, { socket, key, build, joins: new Map() });
+          unlist = accounts.hostRoom(account, code);
         }
         const host = hosts.get(code);
         const nickname = typeof m.nickname === 'string' ? m.nickname.slice(0, 32) : null;
@@ -98,6 +105,7 @@ function onHost(socket, build) {
 
   socket.on('close', () => {
     if (code == null) return;
+    unlist();
     const host = hosts.get(code);
     hosts.delete(code);
     for (const join of host.joins.values()) { send(join, { type: 'error', error: 'ExpiredInvite' }); join.close(); }
@@ -151,11 +159,12 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/health' || url.pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    const r = records.stats();
-    const kept = r.storage === 'gist' ? 'kept in a gist' : 'in a local file, lost on restart unless the disk is persistent';
-    return res.end(`GoofyTrack server: ${hosts.size} room(s) open, records ${r.ready ? `on ${r.tracks} track(s)` : 'loading'} (${kept})\n`);
+    const r = records.stats(), a = accounts.stats();
+    const kept = r.storage === 'gist' ? 'kept in gists' : 'in local files, lost on restart unless the disk is persistent';
+    return res.end(`GoofyTrack server: ${hosts.size} room(s) open, records ${r.ready ? `on ${r.tracks} track(s)` : 'loading'}, ${a.ready ? `${a.accounts} account(s)` : 'accounts loading'} (${kept})\n`);
   }
   if (records.handle(req, res, url)) return;
+  if (accounts.handle(req, res, url)) return;
   res.writeHead(404);
   res.end();
 });
@@ -171,7 +180,7 @@ server.on('upgrade', (req, socket, head) => {
     // free hosts drop idle connections: keep them alive
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
-    handler(ws, build);
+    handler(ws, build, url.searchParams.get('account'));
   });
 });
 setInterval(() => {
@@ -186,5 +195,7 @@ server.listen(PORT, () => console.log(`GoofyTrack server listening on port ${POR
 // rooms work right away; the records come up as soon as they are read (from the gist, a few seconds)
 const loadRecords = () => records.load().catch(e => { console.error('records: load failed, retrying in 30 s:', e.message); setTimeout(loadRecords, 30000); });
 loadRecords();
-// a restart (new deploy) must not lose the last record waiting to be saved
-process.on('SIGTERM', () => records.flush().finally(() => process.exit(0)));
+const loadAccounts = () => accounts.load().catch(e => { console.error('accounts: load failed, retrying in 30 s:', e.message); setTimeout(loadAccounts, 30000); });
+loadAccounts();
+// a restart (new deploy) must not lose the last record or save waiting to be written
+process.on('SIGTERM', () => Promise.allSettled([records.flush(), accounts.flush()]).finally(() => process.exit(0)));

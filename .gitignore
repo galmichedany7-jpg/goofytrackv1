@@ -2,6 +2,7 @@
 original/
 node_modules/
 server/records.json
+server/accounts.json
 update-settings.json
 
 # points handed to tools/heights.js (tools/make_circuit.js <circuit> --points)

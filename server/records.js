@@ -194,8 +194,18 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     return true;
   }
 
+  // a player's best place on the mod's boards: { position, trackId } or null (profile cards, accounts.js)
+  function bestOf(userId) {
+    let best = null;
+    for (const [trackId, entries] of Object.entries(data.tracks)) {
+      const position = positionOf(entries, userId);
+      if (position > 0 && (best == null || position < best.position)) best = { position, trackId };
+    }
+    return best;
+  }
+
   const storage = () => (githubToken ? 'gist' : 'file');
-  return { load, handle, flush: () => (saveTimer != null ? saveNow() : saving), stats: () => ({ ready, tracks: Object.keys(data.tracks).length, storage: storage() }) };
+  return { load, handle, bestOf, flush: () => (saveTimer != null ? saveNow() : saving), stats: () => ({ ready, tracks: Object.keys(data.tracks).length, storage: storage() }) };
 }
 
 module.exports = { createRecords };

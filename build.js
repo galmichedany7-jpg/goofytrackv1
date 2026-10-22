@@ -47,8 +47,14 @@ run('build_patterns.js');
 run('patch_bundle.js');
 
 // The mod's scripts, loaded before the game in this order (the game calls into them from the hooks of patch_bundle.js)
-const MOD_SCRIPTS = ['apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-room.js', 'apex-notes.js'];
+// (the account first: it watches the storage from the start)
+const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-room.js', 'apex-notes.js'];
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
+// The account keeps its save on our server, whose address it is handed in front of its script, with the mod's
+// tracks (the profile card counts the circuits finished and asks the server for their boards)
+fs.writeFileSync(path.join(APP, 'apex-account.js'), 'window.GOOFY_SERVER = ' + JSON.stringify(SERVER_URL) + ';\n'
+  + 'window.GOOFY_MOD_TRACKS = ' + JSON.stringify(require('./tracks').map(t => ({ id: t.id, name: t.name, author: t.author }))) + ';\n'
+  + fs.readFileSync(path.join(__dirname, 'apex-account.js'), 'utf8'));
 // The patch notes button shows PATCHNOTES.md, handed to it in front of its script
 fs.writeFileSync(path.join(APP, 'apex-notes.js'), 'window.GOOFY_PATCHNOTES = ' + JSON.stringify(fs.readFileSync(path.join(__dirname, 'PATCHNOTES.md'), 'utf8')) + ';\n' + fs.readFileSync(path.join(__dirname, 'apex-notes.js'), 'utf8'));
 // The theme reads the version from a CSS variable (home screen badge)

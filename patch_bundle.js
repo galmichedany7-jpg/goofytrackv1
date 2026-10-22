@@ -499,7 +499,8 @@ const patches = [
   {
     name: 'rooms are hosted through the GoofyTrack server',
     find: 'createMultiplayerHostWebSocket(){if(this.determinismState!=Mo.Ok)throw new Error("WebSocket creation not allowed with non-deterministic physics");return new WebSocket("https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"multiplayer/host")}',
-    replace: 'createMultiplayerHostWebSocket(){return new WebSocket(' + JSON.stringify(SERVER_URL + 'multiplayer/host' + SERVER_QUERY) + ')}',
+    // + the account hosting, if logged in: its friends see the room and can join it (apex-account.js)
+    replace: 'createMultiplayerHostWebSocket(){return new WebSocket(' + JSON.stringify(SERVER_URL + 'multiplayer/host' + SERVER_QUERY) + '+(window.ApexAccount?window.ApexAccount.hostQuery():""))}',
   },
   {
     name: 'rooms are joined through the GoofyTrack server',
@@ -567,6 +568,15 @@ const patches = [
     replace: 'const apexMusic=null!=document.querySelector("#ui .track-selection-ui:not(.hidden), #ui .track-info-ui")&&null!=this.getBuffer("waiting")?"waiting":"music";'
       + 'if(null!=(0,R.gn)(this,y,"f")&&(0,R.gn)(this,y,"f").key!=apexMusic){const e=(0,R.gn)(this,y,"f");e.gain.gain.cancelScheduledValues(0),e.gain.gain.setTargetAtTime(0,0,.2),e.source.stop(this.context.currentTime+1.5),(0,R.GG)(this,y,null,"f")}'
       + 'if(null==(0,R.gn)(this,y,"f")){const e=this.getBuffer(apexMusic);if(null!=e&&null!=this.context&&null!=this.destinationMaster){const t=this.context.createBufferSource();t.buffer=e,t.loop=!0;const n=this.context.createGain();n.gain.value=0,t.connect(n),n.connect(this.destinationMaster),t.start(0),(0,R.GG)(this,y,{source:t,gain:n,key:apexMusic},"f")}}',
+  },
+
+  // ---------------------------------------------------------------- account (apex-account.js)
+  {
+    // the save of the account logged in comes down before the game reads its own (a few seconds at most):
+    // after the storage is open and migrated to the current format, before the profiles and settings are read
+    name: 'account save synced as the game starts',
+    find: 'const e=new nf;await e.initialize(),e.migrate();',
+    replace: 'const e=new nf;await e.initialize(),e.migrate(),await(window.ApexAccount&&window.ApexAccount.ready());',
   },
 
   // ---------------------------------------------------------------- main menu footer

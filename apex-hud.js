@@ -34,8 +34,10 @@
   let frame = 0;
   let lastDelta = null;
   let mapHidden = false;
-  try { mapHidden = localStorage.getItem(MAP_HIDDEN_KEY) === 'true'; } catch (e) { /* storage unavailable */ }
+  const loadMapHidden = () => { try { mapHidden = localStorage.getItem(MAP_HIDDEN_KEY) === 'true'; } catch (e) { /* storage unavailable */ } };
+  loadMapHidden();
   const showMapState = () => { if (map) map.canvas.style.display = mapHidden ? 'none' : ''; };
+  window.addEventListener('apex-account-save', () => { loadMapHidden(); showMapState(); });   // the account's save (apex-account.js)
 
   const ui = () => document.getElementById('ui');
   // Texts the mod adds to the settings menu, in the game's languages (codes as in its translations)

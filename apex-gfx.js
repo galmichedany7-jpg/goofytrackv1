@@ -44,7 +44,16 @@
   };
   const STORAGE_KEY = 'goofytrack_ambiance';
   let ambiance = 'day';
-  try { const saved = localStorage.getItem(STORAGE_KEY); if (saved in AMBIANCES) ambiance = saved; } catch (e) { /* storage unavailable */ }
+  const loadAmbiance = () => { try { const saved = localStorage.getItem(STORAGE_KEY); if (saved in AMBIANCES) ambiance = saved; } catch (e) { /* storage unavailable */ } };
+  loadAmbiance();
+  // the account's save, come down as the game starts (apex-account.js)
+  window.addEventListener('apex-account-save', () => {
+    loadAmbiance();
+    const button = document.querySelector('#ui .apex-ambiance');
+    if (button) button.textContent = ambianceLabel();
+    applySky();
+    applied = null;
+  });
   let skyMaterial = null;
   let applied = null;             // ambiance currently applied to lights and fog
   const originals = new WeakMap(); // light or fog -> the game's own colours

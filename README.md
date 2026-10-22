@@ -4,7 +4,7 @@ Jeu de course pour Windows, construit sur [PolyTrack](https://www.kodub.com) 0.6
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation copie votre propre PolyTrack dans ce dossier et le transforme en GoofyTrack.
 
-**Version actuelle : 2.12** 
+**Version actuelle : 2.13** 
 Le détail de chaque version est dans les [patch notes](PATCHNOTES.md).
 
 ![Menu principal](docs/menu.jpg)
@@ -51,6 +51,13 @@ Le détail de chaque version est dans les [patch notes](PATCHNOTES.md).
 - **Dijon** : le tour des boulevards de la vieille ville (4,4 km) : place Darcy et la porte Guillaume, la République, le boulevard Carnot ; au centre, le palais des Ducs et la tour Philippe le Bon, Saint-Bénigne et son toit de tuiles vernissées.
 - **Goofy Coaster** : un grand huit de 3,7 km dessiné dans le vide, pour s'amuser : grande descente, looping, sauts, virage relevé à 72°, tire-bouchon, vagues et dos de chameau.
 - Ces pistes ont leur propre classement en ligne, partagé entre tous les joueurs du mod et tenu par le serveur GoofyTrack : records, position, fantômes et replays comme sur les pistes officielles.
+
+**Profil et compte GoofyTrack**
+- Badge de profil en haut à gauche du menu principal : votre voiture (redessinée à chaque changement de livrée), votre drapeau, votre pseudo et l'état du compte. Un clic ouvre la carte du profil : pistes bouclées, circuits du mod, meilleure place en ligne sur ces circuits, pistes perso, garage.
+- Depuis cette carte, avec un pseudo et un mot de passe, vos profils, records et fantômes, pistes perso et réglages vous suivent sur chaque PC où vous vous connectez.
+- Chaque compte a un numéro de joueur (#0001, #0002…). Onglet **Amis** : ajoutez vos amis par leur numéro, voyez qui est en ligne, et rejoignez en un clic la room d'un ami qui héberge.
+- Sur la page d'une map, le nom du créateur ouvre sa fiche de joueur quand un compte porte ce nom : stats, meilleure place, circuits créés, ajout en ami.
+- La sauvegarde est fusionnée à la connexion (le meilleur temps de chaque piste est gardé), puis synchronisée toute seule. Elle est chiffrée avec votre mot de passe : le serveur ne peut pas la lire, et un mot de passe oublié ne se réinitialise pas. Détails dans les [patch notes V2.13](PATCHNOTES.md) et dans [Comptes](#comptes).
 
 **Collisions entre voitures**
 - Dans une room « Course », les voitures sont solides les unes pour les autres, en permanence : essais libres, qualifications, tour de formation et course. On se pousse, on se bloque, un choc à l'arrière propulse la voiture de devant, un choc de côté fait tourner.
@@ -142,6 +149,17 @@ Sur l'offre gratuite de Render, le disque est effacé à chaque redémarrage. Po
 
 Au démarrage, le serveur retrouve son Gist (« GoofyTrack records », fichier `goofytrack-records.json`) ou le crée. Les records arrivent quelques secondes après le réveil du serveur et sont enregistrés au plus 5 secondes après chaque nouveau temps. Sans `GITHUB_TOKEN`, ils vont dans `server/records.json` (pratique en local). Le serveur ne rejoue pas les tours : comme entre amis, on fait confiance aux temps envoyés.
 
+### Comptes
+
+Le serveur garde aussi la sauvegarde de chaque compte ([`server/accounts.js`](server/accounts.js), côté jeu [`apex-account.js`](apex-account.js)), avec le même `GITHUB_TOKEN`, dans un second Gist secret (« GoofyTrack accounts », un fichier par compte). Sans `GITHUB_TOKEN`, ils vont dans `server/accounts.json`. **Sur Render, sans `GITHUB_TOKEN`, les comptes sont effacés à chaque mise en veille** (la page `/health` dit où ils sont gardés).
+
+- **Mot de passe** : il ne quitte jamais le PC. Le jeu en tire deux clés (PBKDF2, 310 000 tours) : l'une chiffre la sauvegarde (AES-GCM, après compression), l'autre sert à se connecter et le serveur n'en garde qu'une empreinte (scrypt). Le serveur ne stocke donc qu'un bloc illisible, et ne peut pas réinitialiser un mot de passe.
+- **Sauvegarde** : une liste d'entrées (profil, record, piste perso, réglage), chacune avec l'heure de sa dernière modification. Une suppression reste dans la liste, pour être reportée sur les autres PC. Deux sauvegardes se fusionnent entrée par entrée : le meilleur temps pour un record, la plus récente pour le reste.
+- **Synchronisation** : au lancement, le jeu attend la sauvegarde du compte (8 secondes au plus) avant de lire la sienne. Ensuite, elle est envoyée 4 secondes après chaque changement. Chaque envoi porte le numéro de la version de départ : si un autre PC a envoyé entre-temps, le serveur répond 409 avec la version plus récente, que le jeu fusionne avant de renvoyer.
+- **Amis** : chaque compte reçoit un numéro public dans l'ordre de création (#0001, #0002…). `RESERVED_IDS` garde des numéros pour certains pseudos (`julio:1` par défaut : le #0001 reste à Julio même si un autre compte est créé avant), `CREATOR_IDS` (`1` par défaut) donne la coche « créateur ». Le jeu envoie sa présence toutes les 30 s (profil affiché, au menu ou en jeu). Un joueur est en ligne pendant 75 s après la dernière. Le jeu qui héberge une room ajoute la session du compte à l'adresse du serveur multijoueur (`&account=`) : le serveur sait ainsi à qui est la room, et en montre le code aux amis de l'hôte seulement. La présence et les rooms restent en mémoire, sans être enregistrées.
+- **Fiches de joueur** : avec sa présence, le jeu envoie les stats de la carte de profil (pistes bouclées, circuits du mod, pistes perso) et l'identifiant public du joueur sur les classements. `/account/player?name=` les rend à n'importe qui, avec sa meilleure place sur les classements du serveur. Le nom du créateur d'une map est relié au compte de même nom (les noms de compte sont uniques). L'auteur des circuits du mod est donné dans [`tracks/index.js`](tracks/index.js).
+- **Limites** : 10 connexions ratées par pseudo toutes les 15 minutes, 5 créations de compte par adresse et par heure, 10 sessions (PC) par compte, 500 comptes, 8 Mo par sauvegarde, 100 amis et 50 demandes en attente par compte.
+
 ### Connexion entre joueurs
 
 Le serveur fournit des serveurs STUN publics (Google, Cloudflare), qui suffisent sur la plupart des connexions domestiques. Si un joueur n'arrive pas à rejoindre (« la connexion a échoué »), son réseau bloque probablement le pair-à-pair direct (certains réseaux 4G, d'entreprise ou d'école) : il faut alors ajouter un serveur TURN. Créez-en un gratuitement (par exemple chez [Metered](https://www.metered.ca/stun-turn) ou Cloudflare Calls), puis renseignez-le sur Render dans la variable d'environnement `ICE_SERVERS`, au format `[{"urls":"turn:...","username":"...","credential":"..."}]`.
@@ -182,6 +200,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
 | `apex-hud.js` | Mini-carte et écart en direct ; noms des touches selon le clavier (AZERTY) |
 | `apex-records.js` | Classements des pistes du mod : signature des records envoyés au serveur GoofyTrack |
+| `apex-account.js` | Badge et carte de profil du menu principal ; compte GoofyTrack : sauvegarde chiffrée, fusion et synchronisation avec le serveur ; amis, présence et « Rejoindre » |
 | `apex-scenery.js` | Décor : montagnes, forêts, rochers, côte de l'environnement Riviera ; affiche la ville des circuits qui en ont une |
 | `apex-monaco.js` | Décor de Monaco GP généré à partir du tracé : ville, port et yachts, Casino, Fairmont et tunnel, stands et tribunes, Rocher, collines |
 | `apex-town.js` | Décors des circuits construits sur des cartes réelles (Spa-Francorchamps, Montbéliard, Strasbourg, Dijon) : bâtiments, rues, cours d'eau, forêts, relief, monuments |
@@ -195,7 +214,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `goofytrack-logo.svg` | Logo du menu principal |
 | `audio/` | Musiques du jeu (« Vroum Vroum » et, dans le menu des courses, « WAITING », Teknah) |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |
-| `server/`, `render.yaml` | Serveur multijoueur (codes d'invitation, mise en relation, classements des pistes du mod) et son déploiement sur Render |
+| `server/`, `render.yaml` | Serveur multijoueur (codes d'invitation, mise en relation, classements des pistes du mod, comptes) et son déploiement sur Render |
 | `serve.js` | Développement : sert le jeu modé en http pour le tester dans un navigateur (`node serve.js`, ou `node serve.js "C:\chemin\vers\copie"`) |
 
 ## Licence

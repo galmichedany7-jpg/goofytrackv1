@@ -15,6 +15,53 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.13 : votre compte GoofyTrack, vos amis, partout
+
+Une version tournée vers les joueurs : un compte pour retrouver sa progression sur tous ses PC, un profil qui a enfin une tête, et des amis à rejoindre en un clic.
+
+**Votre profil, en haut à gauche**
+- Un badge sur l'écran d'accueil : **votre voiture** telle qu'elle apparaît dans les classements, votre drapeau et votre pseudo. Changez de livrée au garage ou de profil : il suit tout de suite.
+- Juste en dessous, votre compte et son numéro (par exemple « Julio · #0001 »), avec un point vert quand tout est synchronisé, « Hors ligne » si le serveur ne répond pas, ou « Se connecter » tant que vous n'avez pas de compte.
+- Un clic ouvre votre **carte de profil** : pistes bouclées, circuits du mod bouclés, **meilleure place en ligne** (par exemple « P1 Monaco GP »), pistes perso, et les circuits que vous avez créés.
+- **Modifier le profil** : changez de pseudo et de drapeau sans passer par le garage. La fenêtre du jeu s'ouvre directement, et vous revenez au menu une fois enregistré.
+
+**Votre compte GoofyTrack**
+- Un pseudo et un mot de passe, et votre progression vous suit sur chaque PC : profils (pseudo, voiture, identité sur les classements), **records et leurs fantômes**, pistes perso, réglages et touches, ambiance, mini-carte et options de course.
+- **Rien n'est perdu** : à la connexion, ce que le PC avait déjà est fusionné avec le compte. Pour chaque piste, le meilleur temps est gardé. Pour une piste perso ou un réglage, la version la plus récente l'emporte.
+- **Zéro effort ensuite** : la sauvegarde part quelques secondes après chaque record et revient au lancement du jeu. Serveur endormi ou pas d'internet ? Le jeu démarre quand même, la synchronisation se fera plus tard.
+- **Privée** : la sauvegarde est chiffrée sur votre PC avec une clé tirée de votre mot de passe. Le serveur ne voit ni le mot de passe, ni vos données. En contrepartie, **un mot de passe oublié ne se réinitialise pas** : la copie en ligne serait perdue, pas celle de vos PC.
+- « Se déconnecter » arrête la synchronisation et laisse tout sur le PC.
+
+**Sur un autre PC**
+1. Installez GoofyTrack comme d'habitude, puis lancez-le.
+2. Cliquez sur le badge en haut à gauche, puis « Se connecter ».
+3. Entrez votre pseudo et votre mot de passe : le jeu récupère tout et redémarre. Vous retrouvez votre voiture, vos temps et vos pistes.
+
+**Amis et rooms**
+- Chaque compte a un **numéro de joueur** unique : #0001, #0002… Un clic sur le vôtre, dans la carte du profil, le copie pour le donner.
+- Onglet **Amis** : ajoutez un ami avec son numéro. Il reçoit une demande (point rouge sur son badge) et l'accepte d'un clic. Si vous vous ajoutez tous les deux, c'est immédiat.
+- Pour chaque ami : sa voiture, son drapeau, et ce qu'il fait (en ligne, en jeu, **héberge une room**, ou « vu il y a 2 h »).
+- **Rejoindre** : quand un ami héberge une room, un bouton vous y emmène directement, sans taper de code. Le code n'est montré qu'à ses amis.
+
+**Les créateurs des maps**
+- Sur la page d'une map, le nom de son créateur devient cliquable quand il a un compte GoofyTrack : il ouvre sa **fiche de joueur**, avec ses stats, sa meilleure place, les circuits qu'il a créés, et un bouton pour l'ajouter en ami.
+- Killer Loop et Monaco GP mènent à Julio, les autres circuits du mod à Shyn dès qu'il aura son compte.
+- Les co-créateurs du jeu ont une **coche dorée** à côté de leur nom (« Co-créateur de GoofyTrack »). Le #0001 revient à Julio.
+
+**Comment c'est fait**
+- [`apex-account.js`](apex-account.js) : badge, cartes, amis et synchronisation. Le stockage du jeu est surveillé (`Storage.prototype.setItem`) pour savoir quoi envoyer, et le jeu attend la sauvegarde du compte (8 s au plus) avant de lire la sienne ([`patch_bundle.js`](patch_bundle.js)).
+- La sauvegarde est une liste d'entrées (profil, record, piste, réglage), chacune avec l'heure de sa dernière modification. Une suppression est gardée pour être reportée sur les autres PC. Elle est compressée puis chiffrée en AES-GCM, avec une clé PBKDF2 (310 000 tours). Une deuxième clé tirée du même mot de passe sert à se connecter, et le serveur n'en garde qu'une empreinte scrypt.
+- Deux PC qui envoient en même temps ne s'écrasent pas : le second reçoit la version la plus récente, la fusionne et renvoie.
+- La miniature de la voiture est celle des classements du jeu, cadrée de face pour tenir dans le rond, et gardée en mémoire pour le lancement suivant.
+- « Rejoindre » ouvre le menu multijoueur et entre le code comme le ferait le joueur. « Modifier le profil » ouvre la fenêtre de profil du garage puis referme le garage derrière elle.
+
+**Serveur**
+- Comptes ([`server/accounts.js`](server/accounts.js)) : un fichier par compte dans un second Gist secret (« GoofyTrack accounts »). Routes `/account/register`, `/login`, `/save`, `/presence` (toutes les 30 s), `/friends`, `/player` (fiche publique, sans compte).
+- Le jeu qui héberge une room indique au serveur multijoueur à quel compte elle appartient, pour la montrer à ses amis.
+- `RESERVED_IDS` (`julio:1`) garde le #0001 pour Julio, `CREATOR_IDS` (`1`) donne la coche dorée.
+
+**Mise à jour** : `Jouer a GoofyTrack.bat` (ou `git pull` puis `node build.js`). Nouvelle empreinte de build : tous les joueurs d'une room doivent passer en V2.13. Le serveur doit être redéployé **avec `GITHUB_TOKEN` sur Render**, sinon les comptes et les classements sont effacés à chaque mise en veille du serveur.
+
 ## V2.12 : GoofyTrack.exe, patch notes dans le jeu, Dijon en détail
 
 **Le jeu**
