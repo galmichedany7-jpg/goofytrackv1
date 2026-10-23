@@ -15,6 +15,28 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.16 : 18 nouveaux designs et des badges
+
+Dix-huit nouveaux motifs, des raretés pour les jantes et les échappements, et un profil qui se modifie sans quitter l'accueil, avec des badges à côté de votre pseudo.
+
+**Nouveaux motifs**
+- *Mythiques* : **Goofy Signature** (le logo GoofyTrack sur les pontons et le nez) et **Champion** (des couronnes de lauriers, des ailerons en damier).
+- *Légendaires*, une édition par circuit, aux côtés de la Monaco GP Edition : **Spa Edition** (la vague de l'Eau Rouge et la pluie des Ardennes), **Strasbourg Edition** (les colombages alsaciens et la flèche de la cathédrale), **Dijon Edition** (une bande moutarde et les tuiles vernissées de Bourgogne), **Montbéliard Edition** (les bandes de sécurité des usines, un écusson, les rouleaux de la chaîne), **Goofy Coaster Edition** (des rails qui serpentent sur toute la voiture) et **Killer Loop Edition** (des bandes qui s'enroulent comme la boucle).
+- *Épiques* : **Camouflage**, **Flammes**, **Tigre**. *Très rares* : **Éclair**, **Code-barres**, **Carbone**.
+- *Rare* : **Numéro géant**. *Communs* : **Bande diagonale**, **Bouts d'ailerons**, **Pointillés**.
+
+**Raretés**
+- Les **jantes** et les **échappements** ont aussi un nom et une rareté, avec le même cadre de couleur que les motifs. Légendaires : la jante **Turbine** et l'échappement **Canon XXL**.
+- Les trois listes du garage sont triées par rareté : les plus communes en haut, les plus rares en bas.
+- Les noms longs passent sur deux lignes dans les tuiles.
+- Pour l'instant toutes les pièces restent libres : les coffres pour les débloquer viendront plus tard.
+
+**Profil et badges**
+- **Modifier le profil** (sur votre carte de profil, clic sur le badge en haut à gauche) ouvre une fenêtre juste là, sur l'accueil : votre pseudo, votre drapeau (avec une recherche) et vos badges. Plus de détour par le garage.
+- **Badges** : jusqu'à deux à côté de votre pseudo, sur l'accueil, votre carte, la liste d'amis de vos amis et la page des pistes. Pour commencer : **Co-créateur de GoofyTrack**, **VIP** (un diamant violet et rose, pour nos amis et les premiers joueurs) et le **podium** de chaque circuit du mod : un bouton doré **P1**, argenté **P2** ou bronze **P3** avec le tracé du circuit (au survol, « P1 de Monaco GP » par exemple), que vous gardez tant que vous gardez votre place au classement de ce circuit.
+
+**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.16. Le serveur (Render) doit être redéployé pour les badges.
+
 ## V2.15 : trois livrées, des motifs rares et la Monaco GP Edition
 
 Le garage ne s'occupe plus que de la voiture : votre pseudo et votre drapeau restent sur votre carte de profil. Et chaque motif a maintenant un nom et une rareté.

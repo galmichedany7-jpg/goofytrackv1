@@ -21,6 +21,10 @@ const CIRCUITS = [
   ...Object.entries(MAP_CIRCUITS).map(([key, c]) => ({ name: c.mesh, model: key, data: JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', key, key + '.json'), 'utf8')), sums: sumsOf(key) })),
 ];
 const circuitParts = c => [['Road', c.data.ids.road], ['Start', c.data.ids.start], ['Checkpoint', c.data.ids.checkpoint], ['Finish', c.data.ids.finish]].map(([part, id]) => [c.name + part, id]);
+// The mod's car patterns (build_patterns.js), numbered 16 on after the game's: never reorder them, a car
+// saved with one keeps its number (apex-rarity.js names them in this order)
+const MOD_PATTERNS = ['monaco', 'bignumber', 'diagonal', 'wingtips', 'dotted', 'camo', 'lightning', 'flames', 'tiger', 'barcode', 'carbon',
+  'spa', 'strasbourg', 'dijon', 'montbeliard', 'coaster', 'killer_loop', 'goofy', 'champion'];
 const RIVIERA_GROUND = 6318394;    // 0x60693a: the Riviera plain (apex-scenery.js recognises the environment by it)
 
 // Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
@@ -591,11 +595,19 @@ const patches = [
       + '{const e=document.createElement("div");e.className="social-links",(0,R.gn)(this,_h,"f").appendChild(e);{const t=document.createElement("a");t.href="https://www.kodub.com/googleplay/polytrack",t.target="_blank",e.appendChild(t);const n=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(n.classList.add("loading"),n.addEventListener("load",(()=>{n.classList.remove("loading")}))),n.src="images/google_play.svg",t.appendChild(n)}const t=document.createElement("a");t.href="https://www.kodub.com/discord/polytrack",t.target="_blank",e.appendChild(t);const n=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(n.classList.add("loading"),n.addEventListener("load",(()=>{n.classList.remove("loading")}))),n.src="images/discord.svg",t.appendChild(n);const i=document.createElement("a");i.href="https://www.kodub.com/reddit/polytrack",i.target="_blank",e.appendChild(i);const r=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(r.classList.add("loading"),r.addEventListener("load",(()=>{r.classList.remove("loading")}))),r.src="images/reddit.svg",i.appendChild(r)}}',
     replace: 'for(const[t,n]of' + JSON.stringify(FOOTER.map((line, i) => [line, i === 0 ? 'GoofyTrack ' + MOD_VERSION + ' - build ' + BUILD_ID : ''])) + '){const e=document.createElement("a");e.textContent=t,e.title=n,(0,R.gn)(this,_h,"f").appendChild(e)}}',
   },
+  // ---------------------------------------------------------------- profile editor (apex-account.js)
+  {
+    // the profiles (name, flag, car) and the PolyTrack server they are sent to: the profile card edits the
+    // name and flag through them, from the home screen, as the game's own window would
+    name: 'the profile card reaches the game\'s profiles',
+    find: 'S.syncUserProfile(T);',
+    replace: 'S.syncUserProfile(T),window.GoofyGame={profiles:S,api:T};',
+  },
   // ---------------------------------------------------------------- the mod's car patterns (build_patterns.js)
   {
-    name: 'Monaco GP Edition pattern',
+    name: 'the mod\'s patterns follow the game\'s',
     find: 'e[15]={url:"images/pattern_outline.svg"},',
-    replace: 'e[15]={url:"images/pattern_outline.svg"},e[16]={url:"images/pattern_monaco.svg"},',
+    replace: 'e[15]={url:"images/pattern_outline.svg"},' + MOD_PATTERNS.map((name, i) => 'e[' + (16 + i) + ']={url:"images/pattern_' + name + '.svg"},').join(''),
   },
 ];
 
@@ -720,10 +732,21 @@ const garagePatches = [
       + 'save:()=>(0,i.gn)(this,Wn,"m",pe).call(this),dirty:()=>(0,i.gn)(this,oe,"f"),parked:()=>(0,i.gn)(this,Wn,"m",re).call(this),click:()=>a.playUIClick()})'
       + '}dispose(){' + LIVERY + '&&' + LIVERY + '.garage(null);',
   },
+  // each pattern, rims and exhaust shows its name and rarity, the rarest at the bottom (apex-rarity.js)
   {
-    name: 'each pattern shows its name and rarity (apex-rarity.js)',
+    name: 'pattern rarities',
     find: '(0,i.gn)(this,nn,"f").appendChild(a);',
-    replace: '(0,i.gn)(this,nn,"f").appendChild(a),window.ApexRarity&&window.ApexRarity.pattern(a,s);',
+    replace: '(0,i.gn)(this,nn,"f").appendChild(a),window.ApexRarity&&window.ApexRarity.item("pattern",a,s);',
+  },
+  {
+    name: 'rims rarities',
+    find: '(0,i.gn)(this,sn,"f").appendChild(l);',
+    replace: '(0,i.gn)(this,sn,"f").appendChild(l),window.ApexRarity&&window.ApexRarity.item("rims",l,o);',
+  },
+  {
+    name: 'exhaust rarities',
+    find: '(0,i.gn)(this,an,"f").appendChild(l);',
+    replace: '(0,i.gn)(this,an,"f").appendChild(l),window.ApexRarity&&window.ApexRarity.item("exhaust",l,o);',
   },
 ];
 

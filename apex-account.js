@@ -33,7 +33,7 @@
   const GAME = 'polytrack_v5_prod_';
   const PROFILES = 3;                                  // the game's slots
   const SETTINGS = [GAME + 'settings', GAME + 'key_bindings', GAME + 'is_music_enabled', GAME + 'unlocked_car_styles',
-    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries'];   // not the keyboard layout: one per PC
+    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries', 'goofytrack.badges'];   // not the keyboard layout: one per PC
   const KDF_ROUNDS = 310000;
   const BOOT_WAIT = 8000;
   const PUSH_DELAY = 4000;
@@ -348,12 +348,15 @@
       const s = p && await profileStats(p);
       const out = await call('POST', '/account/presence', {
         profile: p && { nickname: p.nickname, countryCode: p.countryCode, carStyle: p.carStyle, tokenHash: s.hash,
-          stats: { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom } },
+          stats: { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom }, badges: pickedBadges() },
         state: homeReady() ? 'menu' : 'playing',
         room: window.ApexLobby ? window.ApexLobby.currentRoom() : null,
       }, acc.session);
       if (account !== acc) return;
-      if (acc.id !== out.id || acc.verified !== out.verified) { acc.id = out.id; acc.verified = out.verified; saveAccount(); }
+      const badges = Array.isArray(out.badges) ? out.badges : acc.badges;   // an older server has none
+      if (acc.id !== out.id || acc.verified !== out.verified || JSON.stringify(acc.badges) !== JSON.stringify(badges)) {
+        acc.id = out.id; acc.verified = out.verified; acc.badges = badges; saveAccount();
+      }
       social = { requests: out.requests, online: out.online };
     } catch (e) {
       if (e.status === 401 && account === acc) { account = null; cloud = null; saveAccount(); }
@@ -391,7 +394,7 @@
       span.classList.add('apex-author');
       span.title = tr('Voir le profil de ', 'See the profile of ') + player.name + ' · ' + idText(player.id);
       span.tabIndex = 0;
-      verifiedMark(span, player.verified);
+      badgeMarks(span, badgesOfPlayer(player));
       const show = event => { event.preventDefault(); event.stopPropagation(); openPlayer(player.name); };
       span.addEventListener('click', show);
       span.addEventListener('keydown', event => { if (event.key === 'Enter') show(event); });
@@ -418,6 +421,11 @@
   // (whose Confirm only prepares the change): then the garage's Save writes it and the garage closes, nothing
   // left unsaved, back to the home screen and the profile card
   async function editProfile() {
+    if (window.GoofyGame?.profiles) {      // patch_bundle.js: the game's profiles, edited from here
+      viewing = null; tab = 'profile'; editing = true; draft = null;
+      if (overlay == null) open(); else render();
+      return;
+    }
     const garage = await openGarage();
     if (garage == null) return;
     const [exit, save] = garage.buttons;
@@ -567,6 +575,8 @@
     overlay.remove();
     overlay = null;
     viewing = null;
+    editing = false;
+    draft = null;
     clearTimeout(friendsTimer);
     removing = null;
     document.removeEventListener('keydown', onKey, true);
@@ -600,12 +610,62 @@
   // the check mark of the game's creators, next to their name
   const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.5l2.5 2.1 3.3-.4.9 3.2 2.9 1.6-1.2 3.1 1.2 3.1-2.9 1.6-.9 3.2-3.3-.4L12 22.5l-2.5-2.1-3.3.4-.9-3.2-2.9-1.6 1.2-3.1-1.2-3.1 2.9-1.6.9-3.2 3.3.4z"/>'
     + '<path d="M7.6 12.2l3 3 5.8-6" fill="none" stroke="#14100a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const verifiedMark = (parent, verified) => {
-    if (verified !== 'creator') return;
-    const mark = el(parent, 'span', 'verified');
-    mark.innerHTML = CHECK;
-    mark.title = tr('Co-créateur de GoofyTrack', 'GoofyTrack co-creator');
-  };
+  // the VIP diamond: a cut gem in a violet to pink gradient, its facets in light lines
+  const DIAMOND = '<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="apx-vip" x1="0" y1="0" x2="1" y2="1">'
+    + '<stop offset="0" stop-color="#6a3dff"/><stop offset="0.45" stop-color="#b45cff"/><stop offset="1" stop-color="#ff5fa8"/></linearGradient></defs>'
+    + '<path d="M6.5 3.5h11l4 5.5L12 21 2.5 9z" fill="url(#apx-vip)"/>'
+    + '<path d="M2.5 9h19M9.5 3.5 7.5 9 12 21l4.5-12-2-5.5M7.5 9 12 3.5 16.5 9" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="0.9" stroke-linejoin="round"/>'
+    + '<path d="M6.5 3.5h11l4 5.5L12 21 2.5 9z" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="0.8" stroke-linejoin="round"/></svg>';
+  // ---------------------------------------------------------------- badges
+  // Shown next to a name, two at most: 'creator' (the check mark), 'vip' (the diamond: friends and the first
+  // players), and 'p1:<trackId>', 'p2:…', 'p3:…' while
+  // first, second or third on that circuit of the mod (gold, silver and bronze). The server knows who owns what (server/accounts.js); the player picks theirs in the
+  // profile editor, and the others see them on their cards, in their friends list, on a track's page.
+  const BADGES_KEY = 'goofytrack.badges';     // the badges picked (synced): ids, or nothing for the default
+  const MAX_BADGES = 2;
+  const trackName = id => MOD_TRACKS.find(t => t.id === id)?.name || tr('un circuit du mod', 'a mod circuit');
+  function badgeInfo(id) {
+    if (id === 'creator') return { label: tr('Co-créateur de GoofyTrack', 'GoofyTrack co-creator') };
+    if (id === 'vip') return { label: tr('VIP de GoofyTrack', 'GoofyTrack VIP') };
+    const podium = /^p([123]):(.+)$/.exec(typeof id === 'string' ? id : '');
+    if (podium) {
+      const place = 'P' + podium[1], track = MOD_TRACKS.find(t => t.id === podium[2]);
+      return { label: tr(place + ' de ', place + ' at ') + trackName(podium[2]), place, outline: track?.outline || null };
+    }
+    return null;
+  }
+  // the badges this player owns: the server's last word (the check mark alone, before it knew of badges)
+  const ownedBadges = () => (account == null ? [] : Array.isArray(account.badges) ? account.badges : account.verified === 'creator' ? ['creator'] : []);
+  // those picked and still owned; by default the check mark of the creators
+  function pickedBadges() {
+    const owned = ownedBadges(), picked = readJson(BADGES_KEY);
+    return (Array.isArray(picked) ? picked : owned.filter(b => b === 'creator')).filter(b => owned.includes(b)).slice(0, MAX_BADGES);
+  }
+  // another player's: those the server shows, or the check mark of an older server
+  const badgesOfPlayer = v => (Array.isArray(v?.badges) ? v.badges : v?.verified === 'creator' ? ['creator'] : []);
+  function badgeMarks(parent, ids) {
+    for (const id of ids.slice(0, MAX_BADGES)) {
+      const info = badgeInfo(id);
+      if (info == null) continue;
+      if (id === 'creator' || id === 'vip') {
+        const mark = el(parent, 'span', id === 'vip' ? 'verified vip' : 'verified');
+        mark.innerHTML = id === 'vip' ? DIAMOND : CHECK;
+        mark.title = info.label;
+        continue;
+      }
+      // a gold, silver or bronze button: the circuit's outline (track_outlines.js) and the place
+      const pill = el(parent, 'span', 'badge-podium ' + info.place.toLowerCase());
+      if (info.outline) {
+        const svg = pill.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('aria-hidden', 'true');
+        const line = svg.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'path'));
+        line.setAttribute('d', info.outline);
+      }
+      el(pill, 'b', null, info.place);
+      pill.title = info.label;
+    }
+  }
   // the account's state, in a few words: [text, kind]
   const accountState = () => (account == null ? [tr('Se connecter', 'Log in'), 'out']
     : syncing ? [tr('Synchronisation…', 'Syncing…'), 'busy']
@@ -648,7 +708,7 @@
       name.textContent = '';
       flag(name, p?.countryCode);
       el(name, 'span', null, p ? p.nickname : tr('Profil', 'Profile'));
-      verifiedMark(name, account?.verified);
+      badgeMarks(name, pickedBadges());
       const status = badge.querySelector('.status');
       status.textContent = account && kind === 'ok' ? account.name + (account.id ? ' · ' + idText(account.id) : '') : state;
       status.className = 'status ' + kind;
@@ -660,11 +720,13 @@
   // ---------------------------------------------------------------- profile card
   let mode = 'login', tab = 'profile';
   let viewing = null;            // another player's card, shown instead of the profile (a track's author)
+  let editing = false;           // the profile editor, shown instead of the profile
   function render() {
     if (overlay == null) return;
     const panel = overlay.querySelector('.panel');
     panel.textContent = '';
     if (viewing) return renderPlayer(panel, viewing);
+    if (editing) return renderEditor(panel);
     overlay.dataset.view = account != null ? 'account' : 'login';
     const p = currentProfile();
 
@@ -676,7 +738,7 @@
     const who = el(header, 'div', 'who');
     const title = el(who, 'h2');
     el(title, 'span', null, p ? p.nickname : tr('Profil', 'Profile'));
-    verifiedMark(title, account?.verified);
+    badgeMarks(title, pickedBadges());
     const country = el(who, 'div', 'country');
     if (p?.countryCode) { flag(country, p.countryCode); el(country, 'span', null, countryName(p.countryCode)); }
     else el(country, 'span', null, tr('Pays non choisi', 'No country set'));
@@ -824,6 +886,111 @@
     fetchPlayer(name).then(fresh => { if (fresh && viewing?.id === fresh.id) { viewing = fresh; render(); } });
   }
 
+  // ---------------------------------------------------------------- profile editor
+  // The name, flag and badges, edited from the home screen. The name and flag go through the game's profiles
+  // (window.GoofyGame, patch_bundle.js) and on to the PolyTrack server, as the game's own window would send
+  // them: otherwise the server's older copy would come back at the next start.
+  const COUNTRIES = 5569;        // webpack id of the game's country list (PolyTrack 0.6.3)
+  let draft = null;              // { nickname, countryCode, badges, search } being edited
+  const norm = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  function countryList() {
+    try { return gameModule(COUNTRIES).O().map(c => ({ code: c.code, name: c.name, local: countryName(c.code) })).sort((a, b) => a.local.localeCompare(b.local)); }
+    catch (e) { console.warn('GoofyTrack profile: country list', e); return []; }
+  }
+  function renderEditor(panel) {
+    const p = currentProfile();
+    const first = draft == null;
+    draft ??= { nickname: p?.nickname || '', countryCode: p?.countryCode || null, badges: pickedBadges(), search: '' };
+    const back = () => { editing = false; draft = null; render(); };
+
+    const header = el(panel, 'div', 'header');
+    const car = el(header, 'img', 'car');
+    car.src = 'images/car_thumbnail_placeholder.png';
+    car.draggable = false;
+    if (p) showCar(car, p.carStyle);
+    const who = el(header, 'div', 'who');
+    el(who, 'h2', null, tr('Modifier le profil', 'Edit profile'));
+    el(who, 'div', 'country', tr('Pseudo, drapeau et badges', 'Name, flag and badges'));
+    const x = el(header, 'button', 'close', '✕');
+    x.title = tr('Retour', 'Back');
+    x.addEventListener('click', back);
+
+    const body = el(panel, 'div', 'body editor');
+    const nameLabel = el(body, 'label', null, tr('Pseudo', 'Name'));
+    const name = el(nameLabel, 'input');
+    Object.assign(name, { type: 'text', value: draft.nickname, placeholder: 'Anonymous', spellcheck: false, maxLength: 32 });
+    name.addEventListener('input', () => { draft.nickname = name.value; });
+    el(body, 'p', 'hint', tr('Affiché dans les classements et en ligne.', 'Shown in the leaderboards and online.'));
+
+    const flagTitle = el(body, 'h3', null, tr('Drapeau', 'Flag'));
+    const flagPicked = el(flagTitle, 'span', 'picked');
+    const search = el(body, 'input', 'flag-search');
+    Object.assign(search, { type: 'search', placeholder: tr('Rechercher un pays', 'Search a country'), value: draft.search, spellcheck: false });
+    const grid = el(body, 'div', 'flags');
+    const countries = [{ code: null, name: 'None', local: tr('Aucun drapeau', 'No flag') }].concat(countryList());
+    const fill = () => {
+      flagPicked.textContent = ' · ' + (draft.countryCode ? countryName(draft.countryCode) : tr('aucun', 'none'));
+      grid.textContent = '';
+      const q = norm(draft.search);
+      for (const c of countries) {
+        if (q && !norm(c.local).includes(q) && !norm(c.name).includes(q)) continue;
+        const b = el(grid, 'button', 'flag-option' + (c.code === draft.countryCode ? ' selected' : ''));
+        if (c.code) flag(b, c.code);
+        el(b, 'span', null, c.local);
+        b.title = c.local;
+        b.addEventListener('click', () => { draft.countryCode = c.code; fill(); });
+      }
+    };
+    search.addEventListener('input', () => { draft.search = search.value; fill(); });
+    fill();
+    // the flag picked in view, inside the list only (not the whole panel)
+    if (first) requestAnimationFrame(() => { const picked = grid.querySelector('.selected'); if (picked) grid.scrollTop = picked.offsetTop - grid.clientHeight / 2 + picked.offsetHeight / 2; });
+
+    el(body, 'h3', null, tr('Badges', 'Badges') + ' · ' + draft.badges.length + ' / ' + MAX_BADGES);
+    const owned = ownedBadges();
+    if (account == null) el(body, 'p', 'hint', tr('Connectez-vous à un compte GoofyTrack pour gagner des badges.', 'Log in to a GoofyTrack account to earn badges.'));
+    else if (!owned.length) el(body, 'p', 'hint', tr('Pas encore de badge : montez sur le podium d\'un circuit du mod pour gagner son badge P1, P2 ou P3.', 'No badge yet: make the podium on a mod circuit to earn its P1, P2 or P3 badge.'));
+    else {
+      const list = el(body, 'div', 'badge-list');
+      for (const id of owned) {
+        const on = draft.badges.includes(id);
+        const b = el(list, 'button', 'badge-option' + (on ? ' selected' : ''));
+        badgeMarks(b, [id]);
+        el(b, 'span', 'label', badgeInfo(id)?.label || id);
+        b.disabled = !on && draft.badges.length >= MAX_BADGES;
+        b.addEventListener('click', () => { draft.badges = on ? draft.badges.filter(other => other !== id) : [...draft.badges, id]; render(); });
+      }
+      el(body, 'p', 'hint', tr('Deux au plus, à côté de votre pseudo. Un badge P1, P2 ou P3 dure tant que vous gardez votre place sur le podium.',
+        'Two at most, next to your name. A P1, P2 or P3 badge lasts as long as you keep your place on the podium.'));
+    }
+
+    const status = el(body, 'p', 'state');
+    const actions = el(body, 'div', 'actions');
+    el(actions, 'button', null, tr('Annuler', 'Cancel')).addEventListener('click', back);
+    const save = el(actions, 'button', 'primary', tr('Enregistrer', 'Save'));
+    save.addEventListener('click', () => {
+      const nickname = draft.nickname.trim() || 'Anonymous';
+      if (new TextEncoder().encode(nickname).length >= 50) { status.className = 'state error'; status.textContent = tr('Pseudo trop long.', 'Name too long.'); return; }
+      saveProfile(nickname, draft.countryCode, draft.badges);
+      back();
+    });
+    if (first) name.focus();
+  }
+
+  function saveProfile(nickname, countryCode, badges) {
+    const game = window.GoofyGame;
+    const before = game.profiles.getCurrentUserProfile();
+    if (before.nickname !== nickname || before.countryCode !== countryCode) {
+      game.profiles.setNickname(nickname);
+      game.profiles.setCountryCode(countryCode);
+      const p = game.profiles.getCurrentUserProfile();
+      game.api?.submitUserProfile(p.token, p.nickname, p.countryCode, p.carStyle).catch(e => console.warn('GoofyTrack profile: PolyTrack server', e));
+    }
+    try { storage.setItem(BADGES_KEY, JSON.stringify(badges)); } catch (e) { /* storage full */ }   // watched: synced
+    scheduleBadge();
+    sendPresence();      // friends see the new name, flag and badges at once
+  }
+
   function renderPlayer(panel, v) {
     overlay.dataset.view = 'player';
     const header = el(panel, 'div', 'header');
@@ -834,7 +1001,7 @@
     const who = el(header, 'div', 'who');
     const title = el(who, 'h2');
     el(title, 'span', null, v.nickname);
-    verifiedMark(title, v.verified);
+    badgeMarks(title, v.self ? pickedBadges() : badgesOfPlayer(v));
     const country = el(who, 'div', 'country');
     if (v.countryCode) { flag(country, v.countryCode); el(country, 'span', null, countryName(v.countryCode)); }
     el(who, 'span', 'player-id', idText(v.id));
@@ -971,7 +1138,7 @@
     const name = el(text, 'div', 'name');
     flag(name, f.countryCode);
     el(name, 'span', null, f.nickname);
-    verifiedMark(name, f.verified);
+    badgeMarks(name, badgesOfPlayer(f));
     el(text, 'div', 'sub', `${f.name} · ${idText(f.id)}`);
     el(text, 'div', 'presence ' + f.state, stateText(f));
     const buttons = el(row, 'div', 'actions');
@@ -1085,8 +1252,44 @@
 #ui .apex-account .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px 0; }
 #ui .apex-profile .verified, #ui .apex-account .verified { flex: none; display: inline-flex; width: 18px; height: 18px; color: #f5c518; }
 #ui .apex-account h2 .verified { width: 22px; height: 22px; }
+#ui .apex-profile .verified.vip, #ui .apex-account .verified.vip, #ui .track-info-ui .verified.vip {
+  filter: drop-shadow(0 0 3px rgba(228, 92, 240, 0.55)); animation: apx-vip-glow 2.8s ease-in-out infinite;
+}
+@keyframes apx-vip-glow { 50% { filter: drop-shadow(0 0 6px rgba(255, 111, 174, 0.9)); } }
+@media (prefers-reduced-motion: reduce) { #ui .verified.vip { animation: none; } }
 #ui .apex-profile .verified svg, #ui .apex-account .verified svg { width: 100%; height: 100%; }
 #ui .apex-account h2 { display: flex; align-items: center; gap: 8px; }
+#ui .apex-profile .badge-podium, #ui .apex-account .badge-podium, #ui .track-info-ui .badge-podium {
+  flex: none; display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 7px 0 4px; box-sizing: border-box;
+  border-radius: 6px; background: linear-gradient(160deg, #ffe58a 0%, #f2c230 45%, #c48f0a 100%); color: #2a1d02;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -1px 0 rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.4);
+  font-size: 12px; font-weight: 800; letter-spacing: 0.03em; line-height: 1; white-space: nowrap; text-transform: none; cursor: default;
+}
+#ui .apex-profile .badge-podium svg, #ui .apex-account .badge-podium svg, #ui .track-info-ui .badge-podium svg { width: 15px; height: 15px; flex: none; }
+#ui .apex-profile .badge-podium path, #ui .apex-account .badge-podium path, #ui .track-info-ui .badge-podium path {
+  fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round;
+}
+#ui .apex-profile .badge-podium.p2, #ui .apex-account .badge-podium.p2, #ui .track-info-ui .badge-podium.p2 {
+  background: linear-gradient(160deg, #ffffff 0%, #cdd3dc 45%, #8b95a3 100%); color: #1b2129;
+}
+#ui .apex-profile .badge-podium.p3, #ui .apex-account .badge-podium.p3, #ui .track-info-ui .badge-podium.p3 {
+  background: linear-gradient(160deg, #f6cfa6 0%, #cd8540 45%, #8c4f1c 100%); color: #2b1505;
+}
+#ui .apex-account h2 .badge-podium { height: 24px; padding: 0 8px 0 5px; font-size: 14px; }
+#ui .apex-account h2 .badge-podium svg { width: 19px; height: 19px; }
+#ui .apex-account .editor h3 { margin-top: 16px; }
+#ui .apex-account .editor .flag-search { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+#ui .apex-account .editor h3 .picked { font-weight: 400; letter-spacing: 0.04em; text-transform: none; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); }
+#ui .apex-account .flags { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-height: 210px; overflow-y: auto; margin-bottom: 4px; padding-right: 4px; }
+#ui .apex-account .flag-option, #ui .apex-account .badge-option {
+  display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border-radius: var(--apx-r-md, 12px); text-align: left;
+}
+#ui .apex-account .flag-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ui .apex-account .flag-option.selected, #ui .apex-account .badge-option.selected {
+  background-color: var(--apx-accent-soft, rgba(242, 13, 22, 0.18)); box-shadow: inset 0 0 0 2px var(--apx-accent, #f20d16);
+}
+#ui .apex-account .badge-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+#ui .apex-account .editor .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 #ui .apex-account h2 > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 #ui .apex-account .player-id {
   margin-top: 8px; padding: 3px 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em;

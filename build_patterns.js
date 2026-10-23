@@ -67,13 +67,139 @@ const patterns = {
   monaco: sym(s => rect(s > 0 ? 767 : 0, 0, 257, 1024) + rect(X(s, 236) - 5, 0, 10, 1024))
     + checker(0, 1024, 12, 92, 27) + checker(257, 767, 612, 676, 32) + checker(0, 1024, 885, 1005, 40)
     + [215, 285, 355].map(y => poly([[512, y - 30], [536, y], [512, y + 30], [488, y]])).join(''),
+
+  // ---- common and rare
+  // A big racing number 8 on the nose, smaller ones on the sidepods
+  bignumber: eight(512, 270, 1.6) + sym(s => eight(X(s, 290), 640, 1)),
+  // One wide band across the car, nose left to tail right
+  diagonal: poly([[0, 250], [0, 390], [1024, 870], [1024, 730]]),
+  // Only the wing ends: front wing tips and rear wing endplates
+  wingtips: sym(s => rect(s > 0 ? X(s, 330) : 0, 12, 182, 80) + rect(s > 0 ? X(s, 300) : 0, 885, 212, 120)),
+  // A dotted line down the centre, nose to tail
+  dotted: Array.from({ length: 16 }, (_, i) => rect(499, 18 + i * 63, 26, 34)).join(''),
+
+  // ---- very rare and epic
+  // Camouflage blobs all over
+  camo: (() => { const r = rng(7); let out = ''; for (let i = 0; i < 80; i++) out += blob(r() * 1024, r() * 1024, 42 + r() * 45, r); return out; })(),
+  // A lightning bolt down each flank
+  lightning: sym(s => zigzag(i => X(s, i % 2 ? 300 : 205), i => 50 + i * 92, 10, 15)),
+  // Hot-rod flames licking back from the nose
+  flames: rect(0, 0, 1024, 140) + sym(s => [[0, 620], [95, 470], [185, 560], [270, 420], [355, 500], [440, 360]]
+    .map(([d, tip]) => poly([[X(s, d - 48), 138], [X(s, d - 30), tip - 150], [X(s, d - 6), tip], [X(s, d + 12), tip - 170], [X(s, d + 46), 138]])).join('')),
+  // Tiger stripes from the flanks, tapering towards the spine
+  tiger: [130, 240, 350, 460, 570, 680, 790, 900].map((y, i) => sym(s => poly([[X(s, 512), y - 26], [X(s, 330), y - 8],
+    [X(s, 110 + (i % 3) * 55), y + 24], [X(s, 320), y + 14], [X(s, 512), y + 24]]))).join(''),
+  // A barcode across the engine cover
+  barcode: (() => { const r = rng(3); let out = '', y = 560; while (y < 790) { const h = 4 + Math.floor(r() * 4) * 4; out += rect(0, y, 1024, h); y += h + 4 + Math.floor(r() * 3) * 4; } return out; })(),
+  // Carbon weave: a fine lattice of small lozenges
+  carbon: (() => { let out = ''; for (let r = 0; r < 33; r++) for (let c = 0; c < 33; c++) {
+    const cx = c * 32 + (r % 2 ? 16 : 0), cy = r * 32; out += poly([[cx, cy - 11], [cx + 11, cy], [cx, cy + 11], [cx - 11, cy]]); } return out; })(),
+
+  // ---- legendary: one edition per circuit of the mod
+  // Spa: the Eau Rouge climb as a wave along each flank, raindrops on top (the Ardennes weather)
+  spa: sym(s => ribbon(y => X(s, 330 + 85 * Math.sin(y / 1024 * Math.PI * 3)), 42, 0, 1024))
+    + (() => { const r = rng(11); let out = ''; for (let i = 0; i < 34; i++) { const x = round(512 + (r() * 2 - 1) * 170), y = round(30 + r() * 960);
+      out += `<ellipse cx="${x}" cy="${y}" rx="9" ry="11" fill="${G}"/>` + poly([[x - 8, y - 3], [x, y - 24], [x + 8, y - 3]]); } return out; })(),
+  // Strasbourg: Alsatian half-timbering on the flanks, the cathedral's spire up the nose
+  strasbourg: sym(s => {
+    const x0 = Math.min(X(s, 262), X(s, 512));
+    let out = rect(x0, 886, 250, 14);
+    for (let y = 300, k = 0; y < 880; y += 117, k++) {
+      out += rect(x0, y, 250, 12) + line(X(s, 262), y, X(s, 262), y + 117, 14);
+      out += k % 2 ? line(X(s, 262), y, X(s, 512), y + 117, 12) + line(X(s, 512), y, X(s, 262), y + 117, 12) : line(X(s, 387), y, X(s, 387), y + 117, 12);
+    }
+    return out;
+  }) + poly([[512, 30], [548, 330], [476, 330]]) + rect(470, 330, 84, 26) + rect(505, 360, 14, 40),
+  // Dijon: a mustard band down the nose, the Burgundy glazed-tile lozenges on the flanks
+  dijon: rect(456, 0, 112, 560) + sym(s => {
+    let out = '';
+    for (let r = 0; r < 11; r++) for (let c = 0; c < 6; c++) if ((r + c) % 2 === 0) {
+      const cx = X(s, 250 + c * 48 + (r % 2 ? 24 : 0)), cy = 390 + r * 46;
+      out += poly([[cx, cy - 24], [cx + 24, cy], [cx, cy + 24], [cx - 24, cy]]);
+    }
+    return out;
+  }),
+  // Montbeliard: the car factories' hazard stripes across the engine cover, a shield on the nose,
+  // conveyor rollers along the flanks
+  montbeliard: Array.from({ length: 18 }, (_, i) => poly([[i * 64 - 60, 600], [i * 64 - 26, 600], [i * 64 + 34, 720], [i * 64, 720]])).join('')
+    + `<path d="M452 165 H572 V255 L512 335 L452 255 Z M472 185 V248 L512 302 L552 248 V185 Z" fill="${G}" fill-rule="evenodd"/>` + rect(504, 200, 16, 84)
+    + sym(s => Array.from({ length: 12 }, (_, i) => `<circle cx="${X(s, 300)}" cy="${120 + i * 70}" r="22" fill="${G}"/>`).join('')
+      + rect(Math.min(X(s, 268), X(s, 332)), 100, 64, 8) + rect(Math.min(X(s, 268), X(s, 332)), 900, 64, 8)),
+  // Goofy Coaster: a pair of rails with their sleepers winding all over the car
+  coaster: (() => {
+    const fx = y => 512 + 300 * Math.sin(y / 1024 * Math.PI * 4);
+    let out = ribbon(y => fx(y) - 46, 11, 0, 1024) + ribbon(y => fx(y) + 46, 11, 0, 1024);
+    for (let y = 10; y < 1024; y += 40) out += line(fx(y) - 52, y, fx(y) + 52, y, 14);
+    return out;
+  })(),
+  // Killer Loop: stripes spiralling around the body, like the loop
+  killer_loop: [-3, -2, -1, 0, 1].map(k => poly([[k * 256, 0], [k * 256 + 96, 0], [k * 256 + 1120, 1024], [k * 256 + 1024, 1024]])).join(''),
+
+  // ---- mythic
+  // Goofy Signature: the GoofyTrack logo big on both sidepods and on the nose, the wings, a centre band
+  goofy: sym(s => logo(X(s, 300), 640, s, 2)) + logo(512, 250, 0, 0.75) + rect(0, 12, 1024, 80) + rect(0, 885, 1024, 120)
+    + rect(490, 390, 44, 495),
+  // Champion: laurel wreaths on the nose and both sidepods, a centre band, chequered wings
+  champion: laurels(512, 250, 120) + sym(s => laurels(X(s, 300), 640, 105)) + rect(484, 0, 56, 1024)
+    + checker(0, 1024, 12, 92, 27) + checker(0, 1024, 885, 1005, 40),
 };
-// a chequered flag over a box: every other square, from its top left corner (hoisted: used above)
+// ---- shapes (function declarations: hoisted, used above)
+// a chequered flag over a box: every other square, from its top left corner
 function checker(x0, x1, y0, y1, size) {
   let s = '';
   for (let r = 0, y = y0; y < y1; r++, y += size) for (let c = 0, x = x0; x < x1; c++, x += size)
     if ((r + c) % 2 === 0) s += rect(x, y, Math.min(size, x1 - x), Math.min(size, y1 - y));
   return s;
+}
+
+// a seeded random number generator (mulberry32): the same patterns on every build
+function rng(seed) {
+  return () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function round(n) { return Math.round(n * 10) / 10; }
+// an irregular blob around a point
+function blob(cx, cy, r, random) {
+  return poly(Array.from({ length: 9 }, (_, i) => { const a = i / 9 * Math.PI * 2, d = r * (0.65 + 0.5 * random()); return [round(cx + Math.cos(a) * d), round(cy + Math.sin(a) * d)]; }));
+}
+// a band of half-width w following x = fx(y), from y0 to y1
+function ribbon(fx, w, y0, y1) {
+  const left = [], right = [];
+  for (let y = y0; y <= y1; y += 16) { left.push([round(fx(y) - w), y]); right.unshift([round(fx(y) + w), y]); }
+  return poly(left.concat(right));
+}
+// a straight stroke of width w
+function line(x1, y1, x2, y2, w) {
+  const len = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / len * w / 2, ny = (x2 - x1) / len * w / 2;
+  return poly([[x1 + nx, y1 + ny], [x2 + nx, y2 + ny], [x2 - nx, y2 - ny], [x1 - nx, y1 - ny]].map(p => p.map(round)));
+}
+// a zigzag through n points (x(i), y(i)), w thick
+function zigzag(x, y, n, w) {
+  let out = '';
+  for (let i = 0; i < n - 1; i++) out += line(x(i), y(i), x(i + 1), y(i + 1), w) + `<circle cx="${x(i + 1)}" cy="${y(i + 1)}" r="${w / 2}" fill="${G}"/>`;
+  return out;
+}
+// a racing number 8: two rings, k times the sidepods' size
+function eight(cx, cy, k) {
+  const ring = (y, rx, ry, t) => `M${cx - rx} ${y}a${rx} ${ry} 0 1 0 ${2 * rx} 0a${rx} ${ry} 0 1 0 ${-2 * rx} 0Z M${cx - rx + t} ${y}a${rx - t} ${ry - t} 0 1 0 ${2 * (rx - t)} 0a${rx - t} ${ry - t} 0 1 0 ${-2 * (rx - t)} 0Z`;
+  return `<path d="${ring(cy - 30 * k, 30 * k, 26 * k, 11 * k)} ${ring(cy + 22 * k, 34 * k, 30 * k, 11 * k)}" fill="${G}" fill-rule="evenodd"/>`;
+}
+// the GoofyTrack icon (images/goofytrack_icon.svg, drawn in 3..197 x 50..152) in one colour, k times its size.
+// On a flank (side s) it reads along the body, its top towards the spine: the texture is mirrored there, hence a
+// reflection; on top (s = 0) it reads across the body, its top towards the nose, as seen from the chase camera.
+function logo(cx, cy, s, k) {
+  const icon = fs.readFileSync(path.join(__dirname, 'images', 'goofytrack_icon.svg'), 'utf8');
+  const paths = [...icon.matchAll(/<path\b[^>]*\sd="([^"]+)"/g)].map(m => `<path d="${m[1]}" fill="${G}"/>`).join('');
+  const turn = s > 0 ? 'matrix(0 1 1 0 0 0)' : s < 0 ? 'matrix(0 -1 -1 0 0 0)' : 'rotate(180)';
+  return `<g transform="translate(${cx} ${cy}) ${turn} scale(${k}) translate(-100 -101)">${paths}</g>`;
+}
+// a laurel wreath: leaves along two arcs, open at the top
+function laurels(cx, cy, r) {
+  let out = '';
+  for (const side of [1, -1]) for (let i = 0; i < 9; i++) {
+    const a = (100 + i * 18) * Math.PI / 180, x = round(cx + side * Math.cos(a) * r), y = round(cy + Math.sin(a) * r * 1.1);
+    out += `<ellipse cx="${x}" cy="${y}" rx="${round(r / 3.6)}" ry="${round(r / 9)}" transform="rotate(${side * (i * 18 + 10)} ${x} ${y})" fill="${G}"/>`;
+  }
+  return out + rect(cx - 6, round(cy + r * 1.1 - 10), 12, 34);
 }
 
 for (const [name, shapes] of Object.entries(patterns)) {

@@ -204,8 +204,15 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     return best;
   }
 
+  // the mod's circuits where a player is on the podium: [{ trackId, position: 1..3 }], first places first
+  // (their P1, P2 and P3 badges, accounts.js)
+  function podiumOf(userId) {
+    return Object.entries(data.tracks).map(([trackId, entries]) => ({ trackId, position: positionOf(entries, userId) }))
+      .filter(p => p.position >= 1 && p.position <= 3).sort((a, b) => a.position - b.position);
+  }
+
   const storage = () => (githubToken ? 'gist' : 'file');
-  return { load, handle, bestOf, flush: () => (saveTimer != null ? saveNow() : saving), stats: () => ({ ready, tracks: Object.keys(data.tracks).length, storage: storage() }) };
+  return { load, handle, bestOf, podiumOf, flush: () => (saveTimer != null ? saveNow() : saving), stats: () => ({ ready, tracks: Object.keys(data.tracks).length, storage: storage() }) };
 }
 
 module.exports = { createRecords };

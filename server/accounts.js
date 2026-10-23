@@ -15,8 +15,8 @@
 // Each account also has a public number (#0001, #0002... in the order they were made), by which players add
 // each other as friends. Friends see each other's profile (name, flag, car), whether they are playing, and
 // the invite code of the room they are in (hosting it or not), to join it in one click:
-//   POST /account/presence  { profile: { nickname, countryCode, carStyle }, state: 'menu' | 'playing', room: code | null }
-//                           -> { id, verified, requests, online }     every 30 s while the game runs
+//   POST /account/presence  { profile: { nickname, countryCode, carStyle, badges }, state: 'menu' | 'playing', room: code | null }
+//                           -> { id, verified, badges, requests, online }     every 30 s while the game runs
 //   GET  /account/friends                            -> { me, friends, requests, sent }
 //   POST /account/friends   { action: 'add' | 'accept' | 'decline' | 'cancel' | 'remove', id }
 //   GET  /account/player?name=<account name> | ?id=<number>   -> a player's public card, no session needed
@@ -29,6 +29,10 @@
 //
 // RESERVED_IDS ("julio:1,shyn:2", the default) keeps numbers for some names; CREATOR_IDS ("1,2") are shown with the
 // "creator" check mark.
+//
+// Badges, shown next to a player's name: 'creator' (CREATOR_IDS), 'vip' (VIP_IDS), and 'p1:<trackId>', 'p2:…', 'p3:…' while the
+// player holds that place on a circuit of the mod (records.js). A player picks up to two of the badges they own (the
+// presence's profile.badges); others see those they still own. The presence answers with all they own.
 //
 // Storage: one file per account in a secret GitHub Gist when GITHUB_TOKEN is set, a local JSON file otherwise.
 const fs = require('fs');
@@ -46,10 +50,13 @@ const FAILED_LOGINS = 10;               // per name, every 15 minutes
 const REGISTRATIONS = 5;                // per address, every hour
 const MAX_FRIENDS = 100;
 const MAX_REQUESTS = 50;                // waiting for an answer, per account
+const MAX_BADGES = 2;                   // shown next to a name
 const ONLINE = 75 * 1000;               // since the last presence: the game sends one every 30 s
 const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:1,shyn:2').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([name, id]) => [name.normalize('NFC').toLowerCase(), Number(id)]));
 const CREATOR_IDS = new Set((process.env.CREATOR_IDS ?? '1,2').split(',').filter(Boolean).map(Number));
+// the VIP diamond: friends and the first players, by number (#0003 is 3)
+const VIP_IDS = new Set((process.env.VIP_IDS ?? '').split(',').filter(Boolean).map(Number));
 const COUNTRY = /^[a-z]{2}$/i;
 
 const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
@@ -71,9 +78,10 @@ function limiter(max, windowMs) {
   };
 }
 
-// bestPlace(tokenHash): the player's best place on the mod's boards (records.js), for the profile cards
+// bestPlace(tokenHash): the player's best place on the mod's boards (records.js), for the profile cards;
+// podium(tokenHash): the circuits where they are in the top three (their P1, P2, P3 badges)
 function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = process.env.ACCOUNTS_GIST_ID,
-  file = process.env.ACCOUNTS_FILE || path.join(__dirname, 'accounts.json'), log = console.log, bestPlace = () => null, roomOpen = () => false } = {}) {
+  file = process.env.ACCOUNTS_FILE || path.join(__dirname, 'accounts.json'), log = console.log, bestPlace = () => null, podium = () => [], roomOpen = () => false } = {}) {
   // key (lower-case name) -> { name, id, salt, hash, sessions: [sha256(session)], version, blob, created, updated,
   //                            friends: [id], requests: [id] (asked by them), profile: { nickname, countryCode, carStyle } }
   const accounts = new Map();
@@ -247,6 +255,8 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
 
   // ---------------------------------------------------------------- friends
   const verifiedOf = id => (CREATOR_IDS.has(id) ? 'creator' : null);
+  // the badges a player owns now
+  const badgesOf = a => [...(CREATOR_IDS.has(a.id) ? ['creator'] : []), ...(VIP_IDS.has(a.id) ? ['vip'] : []), ...(a.profile?.tokenHash ? podium(a.profile.tokenHash).map(p => 'p' + p.position + ':' + p.trackId) : [])];
   const isOnline = key => Date.now() - (presence.get(key)?.time ?? 0) < ONLINE;
   // the room a player is in: the one they host, or the one they said they joined if it is still open
   const roomOf = key => rooms.get(key) ?? (roomOpen(presence.get(key)?.room) ? presence.get(key).room : null);
@@ -255,6 +265,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
     const a = accounts.get(key), p = a.profile || {}, online = isOnline(key), room = online ? roomOf(key) : null;
     const out = {
       id: a.id, name: a.name, verified: verifiedOf(a.id),
+      badges: (p.badges || []).filter(b => badgesOf(a).includes(b)),   // those picked, still owned
       nickname: p.nickname || a.name, countryCode: p.countryCode || null, carStyle: p.carStyle || null,
       online, state: online ? (rooms.has(key) ? 'hosting' : room != null ? 'room' : presence.get(key).state) : 'offline',
       lastSeen: presence.get(key)?.time ?? null,
@@ -277,12 +288,13 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
         countryCode: COUNTRY.test(p.countryCode || '') ? p.countryCode : null,
         carStyle: typeof p.carStyle === 'string' && p.carStyle.length <= 200 ? p.carStyle : null,
         tokenHash: HEX64.test(p.tokenHash || '') ? p.tokenHash : null,   // the player's id on the boards (public)
+        badges: Array.isArray(p.badges) ? [...new Set(p.badges.filter(b => typeof b === 'string' && b.length <= 80))].slice(0, MAX_BADGES) : [],
         stats: { tracks: count(stats.tracks), circuits: count(stats.circuits), custom: count(stats.custom) },
       };
       if (JSON.stringify(profile) !== JSON.stringify(s.account.profile)) { s.account.profile = profile; changed(s.key); }
     }
     const a = s.account;
-    return [200, { id: a.id, verified: verifiedOf(a.id), requests: a.requests.length, online: keysOf(a.friends).filter(isOnline).length }];
+    return [200, { id: a.id, verified: verifiedOf(a.id), badges: badgesOf(a), requests: a.requests.length, online: keysOf(a.friends).filter(isOnline).length }];
   }
 
   function getFriends(s) {

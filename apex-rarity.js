@@ -1,8 +1,10 @@
-// Car pattern rarities: each pattern of the garage has a name and a rarity, shown on its tile, whose frame
-// takes the rarity's colour (common grey to mythic red). Display only for now: every pattern stays free
-// (crates to unlock them may come later). The liveries (apex-livery.js) show the name of theirs.
+// Car part rarities: each pattern, rims and exhaust of the garage has a name and a rarity, shown on its tile,
+// whose frame takes the rarity's colour (common grey to mythic red); each tab lists the most common first,
+// the rarest at the bottom. Display only for now: every part stays free (crates to unlock them may come
+// later). The liveries (apex-livery.js) show the name of their pattern.
 //
-// patch_bundle.js has the garage call pattern(button, index) for each tile of its Pattern tab.
+// patch_bundle.js has the garage call item(kind, button, index) for each tile of its Pattern, Rims and
+// Exhaust tabs, kind being 'pattern', 'rims' or 'exhaust'.
 (() => {
   'use strict';
 
@@ -36,13 +38,59 @@
     { fr: 'Dégradé',           en: 'Fade',              rarity: 'epic' },
     { fr: 'Contours',          en: 'Outline',           rarity: 'veryRare' },
     { fr: 'Monaco GP Edition', en: 'Monaco GP Edition', rarity: 'legendary' },
+    { fr: 'Numéro géant',      en: 'Big number',        rarity: 'rare' },
+    { fr: 'Bande diagonale',   en: 'Diagonal band',     rarity: 'common' },
+    { fr: 'Bouts d\'ailerons', en: 'Wing tips',         rarity: 'common' },
+    { fr: 'Pointillés',        en: 'Dotted line',       rarity: 'common' },
+    { fr: 'Camouflage',        en: 'Camouflage',        rarity: 'epic' },
+    { fr: 'Éclair',            en: 'Lightning',         rarity: 'veryRare' },
+    { fr: 'Flammes',           en: 'Flames',            rarity: 'epic' },
+    { fr: 'Tigre',             en: 'Tiger',             rarity: 'epic' },
+    { fr: 'Code-barres',       en: 'Barcode',           rarity: 'veryRare' },
+    { fr: 'Carbone',           en: 'Carbon',            rarity: 'veryRare' },
+    { fr: 'Spa Edition',       en: 'Spa Edition',       rarity: 'legendary' },
+    { fr: 'Strasbourg Edition', en: 'Strasbourg Edition', rarity: 'legendary' },
+    { fr: 'Dijon Edition',     en: 'Dijon Edition',     rarity: 'legendary' },
+    { fr: 'Montbéliard Edition', en: 'Montbéliard Edition', rarity: 'legendary' },
+    { fr: 'Goofy Coaster Edition', en: 'Goofy Coaster Edition', rarity: 'legendary' },
+    { fr: 'Killer Loop Edition', en: 'Killer Loop Edition', rarity: 'legendary' },
+    { fr: 'Goofy Signature',   en: 'Goofy Signature',   rarity: 'mythic' },
+    { fr: 'Champion',          en: 'Champion',          rarity: 'mythic' },
   ];
+  // by the game's model index (Wheel0..11, PolyTrack's own; the first three were the free ones)
+  const RIMS = [
+    { fr: 'Huit branches',     en: 'Eight spoke',       rarity: 'common' },
+    { fr: 'Croix',             en: 'Cross',             rarity: 'common' },
+    { fr: 'Rayons fins',       en: 'Wire',              rarity: 'rare' },
+    { fr: 'Dix branches',      en: 'Ten spoke',         rarity: 'common' },
+    { fr: 'Hélice',            en: 'Propeller',         rarity: 'epic' },
+    { fr: 'Disque plein',      en: 'Solid disc',        rarity: 'rare' },
+    { fr: 'Tourbillon',        en: 'Swirl',             rarity: 'veryRare' },
+    { fr: 'Rayons croisés',    en: 'Crossed wire',      rarity: 'veryRare' },
+    { fr: 'Rivets',            en: 'Studded',           rarity: 'epic' },
+    { fr: 'Perforée',          en: 'Drilled',           rarity: 'rare' },
+    { fr: 'Turbine',           en: 'Turbofan',          rarity: 'legendary' },
+    { fr: 'Étoile',            en: 'Star',              rarity: 'veryRare' },
+  ];
+  // by the game's model index (Exhaust0..7, PolyTrack's own; the first two were the free ones)
+  const EXHAUSTS = [
+    { fr: 'Sortie simple',     en: 'Single',            rarity: 'common' },
+    { fr: 'Gros calibre',      en: 'Wide bore',         rarity: 'common' },
+    { fr: 'Triple sortie',     en: 'Triple',            rarity: 'epic' },
+    { fr: 'Double plat',       en: 'Flat twin',         rarity: 'rare' },
+    { fr: 'Évasé',             en: 'Flared',            rarity: 'veryRare' },
+    { fr: 'Carré',             en: 'Square',            rarity: 'rare' },
+    { fr: 'Double canon',      en: 'Twin barrel',       rarity: 'veryRare' },
+    { fr: 'Canon XXL',         en: 'XXL barrel',        rarity: 'legendary' },
+  ];
+  const ITEMS = { pattern: PATTERNS, rims: RIMS, exhaust: EXHAUSTS };
+  const RANK = Object.keys(RARITIES);   // common first
 
-  function info(index) {
-    const p = PATTERNS[index];
+  function info(index, kind = 'pattern') {
+    const p = ITEMS[kind]?.[index];
     if (p == null) return null;
     const r = RARITIES[p.rarity];
-    return { name: tr(p.fr, p.en), rarity: p.rarity, rarityName: tr(r.fr, r.en), color: r.color };
+    return { name: tr(p.fr, p.en), rarity: p.rarity, rank: RANK.indexOf(p.rarity), rarityName: tr(r.fr, r.en), color: r.color };
   }
   // a car style as the game saves it (base64url): byte 1 is the pattern
   function ofStyle(style) {
@@ -66,13 +114,16 @@
   box-shadow: inset 0 0 0 2px var(--rarity), 0 0 0 3px #fff, 0 0 14px 2px color-mix(in srgb, var(--rarity) 70%, transparent);
 }
 #ui .customization-panel-ui > .options-panel > button.apx-rarity > .apx-rarity-label {
-  position: absolute; left: 8px; right: 8px; top: 7px;   /* above the car, drawn lower in the tile */
+  position: absolute; left: 6px; top: 6px; max-width: calc(100% - 12px); box-sizing: border-box;   /* above the car, drawn lower in the tile */
+  padding: 3px 6px; border-radius: 6px; background: rgba(10, 12, 18, 0.72);   /* readable on a white wing too */
+  z-index: 2;   /* over the car picture */
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
   pointer-events: none; text-align: left; line-height: 1.1;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 #ui .customization-panel-ui > .options-panel > button.apx-rarity > .apx-rarity-label > .name {
-  font-size: 14px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+  font-size: 14px; color: #fff; max-width: 100%; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;   /* long names on two lines */
 }
 #ui .customization-panel-ui > .options-panel > button.apx-rarity > .apx-rarity-label > .tier {
   font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--rarity);
@@ -96,12 +147,13 @@
   window.ApexRarity = {
     info,
     ofStyle,
-    // a tile of the garage's Pattern tab
-    pattern(button, index) {
-      const i = info(index);
+    // a tile of the garage's Pattern, Rims or Exhaust tab, sorted by rarity (the tabs are flex columns)
+    item(kind, button, index) {
+      const i = info(index, kind);
       if (i == null) return;
       button.classList.add('apx-rarity', i.rarity);
       button.style.setProperty('--rarity', i.color);
+      button.style.order = String(i.rank * 100 + index);
       button.title = `${i.name} · ${i.rarityName}`;
       const label = document.createElement('span');
       label.className = 'apx-rarity-label';

@@ -51,9 +51,10 @@ run('patch_bundle.js');
 const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-room.js', 'apex-lobby.js', 'apex-notes.js', 'apex-rarity.js', 'apex-livery.js'];
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
 // The account keeps its save on our server, whose address it is handed in front of its script, with the mod's
-// tracks (the profile card counts the circuits finished and asks the server for their boards)
+// tracks (the profile card counts the circuits finished and asks the server for their boards; the P1 badges
+// draw their outline, track_outlines.js)
 fs.writeFileSync(path.join(APP, 'apex-account.js'), 'window.GOOFY_SERVER = ' + JSON.stringify(SERVER_URL) + ';\n'
-  + 'window.GOOFY_MOD_TRACKS = ' + JSON.stringify(require('./tracks').map(t => ({ id: t.id, name: t.name, author: t.author }))) + ';\n'
+  + 'window.GOOFY_MOD_TRACKS = ' + JSON.stringify(require('./tracks').map(t => ({ id: t.id, name: t.name, author: t.author, outline: require('./track_outlines').outline(t) }))) + ';\n'
   + fs.readFileSync(path.join(__dirname, 'apex-account.js'), 'utf8'));
 // The room list asks the server for the rooms of this very build: the one the patched game connects with
 const buildQuery = /multiplayer\/join(\?mod=[^"]+)"/.exec(fs.readFileSync(path.join(APP, 'main.bundle.js'), 'utf8'))[1];
