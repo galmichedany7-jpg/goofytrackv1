@@ -1835,3 +1835,151 @@ html dialog.message-box-ui > div > p {
 	text-align: right;
 	color: var(--apx-fg-muted);
 }
+
+/* ---------- Room list on the Multiplayer screen (apex-lobby.js) ------------------- */
+#ui .multiplayer-ui > .join.apex-lobby-join {
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+}
+#ui .multiplayer-ui > .join.apex-lobby-join > .main-box,
+#ui .multiplayer-ui > .join.apex-lobby-join > .error-box {
+	width: min(980px, calc(100vw - 32px));
+}
+#ui .multiplayer-ui .apex-lobby-box > .experimental-warning {
+	display: none;
+}
+#ui .multiplayer-ui .apex-lobby {
+	padding: 6px 16px 0;
+}
+#ui .multiplayer-ui .apex-lobby > .rooms {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 120px;
+	max-height: min(52vh, 460px);
+	overflow-y: auto;
+	pointer-events: auto;
+}
+#ui .multiplayer-ui .apex-lobby .state {
+	margin: 36px 12px;
+	font-size: 19px;
+	text-align: center;
+	color: var(--apx-fg-muted);
+}
+#ui .multiplayer-ui .apex-lobby .state.error {
+	color: var(--apx-warn);
+}
+#ui .multiplayer-ui .apex-lobby .room {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 10px 10px 10px 16px;
+	border-radius: var(--apx-r-md);
+	background-color: var(--apx-fill);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+}
+#ui .multiplayer-ui .apex-lobby .room:hover {
+	background-color: var(--apx-fill-hover);
+}
+#ui .multiplayer-ui .apex-lobby .room > .who {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	align-items: center;
+	column-gap: 8px;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+#ui .multiplayer-ui .apex-lobby .room .flag {
+	width: 26px;
+	height: 18px;
+	border-radius: 3px;
+	object-fit: cover;
+}
+#ui .multiplayer-ui .apex-lobby .room .host {
+	grid-column: 2;
+	font-size: 21px;
+	font-weight: 700;
+	color: var(--apx-fg);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+#ui .multiplayer-ui .apex-lobby .room .track {
+	grid-column: 1 / 3;
+	font-size: 16px;
+	color: var(--apx-fg-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+#ui .multiplayer-ui .apex-lobby .room > .what {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 2px;
+	flex: 0 0 auto;
+	font-size: 15px;
+	color: var(--apx-fg-muted);
+}
+#ui .multiplayer-ui .apex-lobby .room .mode {
+	padding: 2px 10px;
+	border-radius: var(--apx-r-pill);
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	color: var(--apx-fg);
+	background-color: var(--apx-fill-hover);
+}
+#ui .multiplayer-ui .apex-lobby .room .mode.race {
+	color: var(--apx-accent-ink);
+	background-color: var(--apx-accent);
+}
+#ui .multiplayer-ui .apex-lobby .room > .players {
+	flex: 0 0 64px;
+	font-size: 22px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+	color: var(--apx-fg);
+}
+#ui .multiplayer-ui .apex-lobby .room > .players.full {
+	color: var(--apx-bad);
+}
+#ui .multiplayer-ui .apex-lobby .room > .join-room {
+	flex: 0 0 auto;
+	margin: 0;
+	min-width: 132px;
+	pointer-events: auto;
+}
+/* the invite code: one line under the list */
+#ui .multiplayer-ui .apex-lobby-box > .invite-code-container.apex-code {
+	flex-direction: row;
+	align-items: center;
+	gap: 14px;
+	padding: 10px 16px 4px;
+}
+#ui .multiplayer-ui .apex-lobby-box > .invite-code-container.apex-code > .connecting-text {
+	margin: 0;
+	left: 16px;
+	top: 50%;
+	transform: translateY(-40%);
+	font-size: 24px;
+}
+#ui .multiplayer-ui .apex-lobby-box > .invite-code-container.apex-code > .label {
+	flex: 0 0 auto;
+	font-size: 17px;
+	color: var(--apx-fg-muted);
+}
+#ui .multiplayer-ui .apex-lobby-box > .invite-code-container.apex-code > input.invite-code {
+	flex: 1 1 auto;
+	margin: 0;
+	width: auto;
+	font-size: 24px;
+	height: 46px;
+}
+/* host screen: in the room list or not */
+#ui .multiplayer-ui .main-box.apex-lobby-host > .apex-listed {
+	display: block;
+	margin: 6px 16px 0;
+	pointer-events: auto;
+}

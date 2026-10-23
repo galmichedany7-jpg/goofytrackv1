@@ -334,7 +334,7 @@
   // ---------------------------------------------------------------- friends
   // Each account has a public number (#0001...), by which players add each other. While the game runs, it
   // tells the server every 30 s that the player is here, with the profile picked (name, flag, car) for
-  // their friends to see. The room the player hosts comes from the multiplayer server (hostQuery).
+  // their friends to see, and the room they are in (apex-lobby.js): friends can join it, hosted or not.
   const PRESENCE_EVERY = 30000;
   let social = { requests: 0, online: 0 };     // from the last presence: requests waiting, friends online
   const idText = id => '#' + String(id).padStart(4, '0');
@@ -350,6 +350,7 @@
         profile: p && { nickname: p.nickname, countryCode: p.countryCode, carStyle: p.carStyle, tokenHash: s.hash,
           stats: { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom } },
         state: homeReady() ? 'menu' : 'playing',
+        room: window.ApexLobby ? window.ApexLobby.currentRoom() : null,
       }, acc.session);
       if (account !== acc) return;
       if (acc.id !== out.id || acc.verified !== out.verified) { acc.id = out.id; acc.verified = out.verified; saveAccount(); }
@@ -891,8 +892,9 @@
     loadFriends();
   }
 
-  const STATE_ORDER = { hosting: 0, menu: 1, playing: 1, offline: 2 };
+  const STATE_ORDER = { hosting: 0, room: 0, menu: 1, playing: 1, offline: 2 };
   const stateText = f => (f.state === 'hosting' ? tr('Héberge une room', 'Hosting a room')
+    : f.state === 'room' ? tr('Dans une room', 'In a room')
     : f.state === 'menu' ? tr('En ligne', 'Online')
     : f.state === 'playing' ? tr('En jeu', 'Playing')
     : f.lastSeen ? tr('Vu ', 'Seen ') + ago(f.lastSeen) : tr('Hors ligne', 'Offline'));
@@ -1148,6 +1150,7 @@
 
   window.ApexAccount = {
     ready, sync, open,
+    presence: () => sendPresence(),          // the room changed (apex-lobby.js): friends see it at once
     get name() { return account?.name ?? null; },
     // added to the multiplayer server's address when hosting a room (patch_bundle.js): friends see the room
     hostQuery: () => (account ? '&account=' + account.session : ''),

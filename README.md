@@ -4,7 +4,7 @@ Jeu de course pour Windows, construit sur [PolyTrack](https://www.kodub.com) 0.6
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation copie votre propre PolyTrack dans ce dossier et le transforme en GoofyTrack.
 
-**Version actuelle : 2.13** 
+**Version actuelle : 2.14** 
 Le détail de chaque version est dans les [patch notes](PATCHNOTES.md).
 
 ![Menu principal](docs/menu.jpg)
@@ -36,6 +36,7 @@ Le détail de chaque version est dans les [patch notes](PATCHNOTES.md).
 - Écart en direct : pendant le tour, votre avance ou votre retard sur votre meilleur tour de la session, mesuré en continu le long de la piste et pas seulement aux points de contrôle.
 
 **Multijoueur**
+- Liste des rooms : l'écran Multijoueur affiche les rooms ouvertes (hôte, piste, mode, joueurs) ; un clic sur « Rejoindre » suffit, sans code. Le code d'invitation reste possible en dessous, et l'hôte peut garder sa room hors de la liste.
 - Tableau des 5 meilleurs temps de la room, affiché pendant la course.
 - Fantôme du meilleur tour vu dans la room, rejoué à côté de vous.
 - Les rooms passent par le serveur GoofyTrack (voir plus bas) : un code d'invitation reste valable tant que l'hôte est dans la room, et seuls les joueurs qui ont exactement le même build du mod peuvent la rejoindre.
@@ -55,7 +56,7 @@ Le détail de chaque version est dans les [patch notes](PATCHNOTES.md).
 **Profil et compte GoofyTrack**
 - Badge de profil en haut à gauche du menu principal : votre voiture (redessinée à chaque changement de livrée), votre drapeau, votre pseudo et l'état du compte. Un clic ouvre la carte du profil : pistes bouclées, circuits du mod, meilleure place en ligne sur ces circuits, pistes perso, garage.
 - Depuis cette carte, avec un pseudo et un mot de passe, vos profils, records et fantômes, pistes perso et réglages vous suivent sur chaque PC où vous vous connectez.
-- Chaque compte a un numéro de joueur (#0001, #0002…). Onglet **Amis** : ajoutez vos amis par leur numéro, voyez qui est en ligne, et rejoignez en un clic la room d'un ami qui héberge.
+- Chaque compte a un numéro de joueur (#0001, #0002…). Onglet **Amis** : ajoutez vos amis par leur numéro, voyez qui est en ligne, et rejoignez en un clic la room où se trouve un ami, qu'il l'héberge ou qu'il l'ait rejointe.
 - Sur la page d'une map, le nom du créateur ouvre sa fiche de joueur quand un compte porte ce nom : stats, meilleure place, circuits créés, ajout en ami.
 - La sauvegarde est fusionnée à la connexion (le meilleur temps de chaque piste est gardé), puis synchronisée toute seule. Elle est chiffrée avec votre mot de passe : le serveur ne peut pas la lire, et un mot de passe oublié ne se réinitialise pas. Détails dans les [patch notes V2.13](PATCHNOTES.md) et dans [Comptes](#comptes).
 
@@ -127,6 +128,7 @@ Pour les releases : le tag doit être `V` + `MOD_VERSION` de `config.js` (`V2.7`
 La partie elle-même se joue en pair-à-pair (WebRTC entre l'hôte et chaque joueur). Un serveur ne sert qu'à distribuer les codes d'invitation et à mettre en relation l'hôte et les joueurs qui le rejoignent. Le mod utilise le sien, dans [`server/`](server/server.js) : un petit programme Node qui parle le même protocole que celui de PolyTrack.
 
 - **Codes** : six caractères (sans 0/O ni 1/I), valables tant que l'hôte reste connecté. Minuscules, espaces et tirets sont acceptés à la saisie.
+- **Liste des rooms** ([`apex-lobby.js`](apex-lobby.js)) : le jeu qui héberge envoie toutes les 3 s, sur sa connexion au serveur, ce que la liste montre de la room (`roomInfo` : hôte, piste, mode, joueurs, phase de course, visible ou non). `GET /rooms?mod=<build>` rend les rooms visibles de ce build ; l'écran Multijoueur l'interroge toutes les 4 s et rejoint une room en remplissant son code à la place du joueur.
 - **Build** : à chaque `node build.js`, une empreinte des fichiers du mod est calculée (affichée par le build, et dans l'infobulle de la première ligne en bas du menu). Le serveur refuse un joueur dont l'empreinte diffère de celle de l'hôte, avec un message clair dans le jeu. Après une modification, tout le monde doit donc refaire `node build.js` avec les mêmes fichiers.
 - **Adresse** : `SERVER_URL` dans [`config.js`](config.js). La variable d'environnement `GOOFY_SERVER` la remplace le temps d'un build (par exemple `http://localhost:8787/` pour un test local).
 
@@ -156,7 +158,7 @@ Le serveur garde aussi la sauvegarde de chaque compte ([`server/accounts.js`](se
 - **Mot de passe** : il ne quitte jamais le PC. Le jeu en tire deux clés (PBKDF2, 310 000 tours) : l'une chiffre la sauvegarde (AES-GCM, après compression), l'autre sert à se connecter et le serveur n'en garde qu'une empreinte (scrypt). Le serveur ne stocke donc qu'un bloc illisible, et ne peut pas réinitialiser un mot de passe.
 - **Sauvegarde** : une liste d'entrées (profil, record, piste perso, réglage), chacune avec l'heure de sa dernière modification. Une suppression reste dans la liste, pour être reportée sur les autres PC. Deux sauvegardes se fusionnent entrée par entrée : le meilleur temps pour un record, la plus récente pour le reste.
 - **Synchronisation** : au lancement, le jeu attend la sauvegarde du compte (8 secondes au plus) avant de lire la sienne. Ensuite, elle est envoyée 4 secondes après chaque changement. Chaque envoi porte le numéro de la version de départ : si un autre PC a envoyé entre-temps, le serveur répond 409 avec la version plus récente, que le jeu fusionne avant de renvoyer.
-- **Amis** : chaque compte reçoit un numéro public dans l'ordre de création (#0001, #0002…). `RESERVED_IDS` garde des numéros pour certains pseudos (`julio:1` par défaut : le #0001 reste à Julio même si un autre compte est créé avant), `CREATOR_IDS` (`1` par défaut) donne la coche « créateur ». Le jeu envoie sa présence toutes les 30 s (profil affiché, au menu ou en jeu). Un joueur est en ligne pendant 75 s après la dernière. Le jeu qui héberge une room ajoute la session du compte à l'adresse du serveur multijoueur (`&account=`) : le serveur sait ainsi à qui est la room, et en montre le code aux amis de l'hôte seulement. La présence et les rooms restent en mémoire, sans être enregistrées.
+- **Amis** : chaque compte reçoit un numéro public dans l'ordre de création (#0001, #0002…). `RESERVED_IDS` garde des numéros pour certains pseudos (`julio:1` par défaut : le #0001 reste à Julio même si un autre compte est créé avant), `CREATOR_IDS` (`1` par défaut) donne la coche « créateur ». Le jeu envoie sa présence toutes les 30 s (profil affiché, au menu ou en jeu). Un joueur est en ligne pendant 75 s après la dernière. Le jeu qui héberge une room ajoute la session du compte à l'adresse du serveur multijoueur (`&account=`) : le serveur sait ainsi à qui est la room. Un joueur qui a rejoint une room en donne le code avec sa présence ; il ne compte que tant que la room est ouverte. Le code n'est montré qu'aux amis du joueur. La présence et les rooms restent en mémoire, sans être enregistrées.
 - **Fiches de joueur** : avec sa présence, le jeu envoie les stats de la carte de profil (pistes bouclées, circuits du mod, pistes perso) et l'identifiant public du joueur sur les classements. `/account/player?name=` les rend à n'importe qui, avec sa meilleure place sur les classements du serveur. Le nom du créateur d'une map est relié au compte de même nom (les noms de compte sont uniques). L'auteur des circuits du mod est donné dans [`tracks/index.js`](tracks/index.js).
 - **Limites** : 10 connexions ratées par pseudo toutes les 15 minutes, 5 créations de compte par adresse et par heure, 10 sessions (PC) par compte, 500 comptes, 8 Mo par sauvegarde, 100 amis et 50 demandes en attente par compte.
 

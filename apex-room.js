@@ -858,6 +858,7 @@
         ctx.connection.apexRoom = pendingRoom || { race: false };
         pendingRoom = null;
       }
+      if (window.ApexLobby) window.ApexLobby.session(true);
     },
     onPlayers(list) {
       if (ctx == null) return;
@@ -888,10 +889,19 @@
       updateStage(dt);
       updateGhost(dt);
       if (window.ApexCollide) window.ApexCollide.frame(collisionSession());
+      if (window.ApexLobby && isHost()) {               // what the room list shows of this room (apex-lobby.js)
+        const self = players.find(p => p.isSelf);
+        window.ApexLobby.hostFrame({
+          host: self ? self.nickname : null, countryCode: self ? self.countryCode : null, players: players.length,
+          race: !!room().race, phase: race ? race.phase : null, laps: room().race ? raceLaps() : null,
+          info: ctx.connection.apexInfo ? ctx.connection.apexInfo() : null,
+        });
+      }
     },
     end(owner) {
       // A new session may already have taken over; only its owner can tear it down.
       if (owner !== undefined && ctx != null && ctx.owner !== owner) return;
+      if (ctx != null && window.ApexLobby) window.ApexLobby.session(false);
       disposeGhost();
       closeStage();
       if (window.ApexShow) window.ApexShow.clear();

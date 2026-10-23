@@ -14,8 +14,8 @@
 //
 // Each account also has a public number (#0001, #0002... in the order they were made), by which players add
 // each other as friends. Friends see each other's profile (name, flag, car), whether they are playing, and
-// the invite code of the room they host, to join it in one click:
-//   POST /account/presence  { profile: { nickname, countryCode, carStyle }, state: 'menu' | 'playing' }
+// the invite code of the room they are in (hosting it or not), to join it in one click:
+//   POST /account/presence  { profile: { nickname, countryCode, carStyle }, state: 'menu' | 'playing', room: code | null }
 //                           -> { id, verified, requests, online }     every 30 s while the game runs
 //   GET  /account/friends                            -> { me, friends, requests, sent }
 //   POST /account/friends   { action: 'add' | 'accept' | 'decline' | 'cancel' | 'remove', id }
@@ -23,7 +23,8 @@
 //        (with one: whether you are friends): profile, stats the game sends with its presence, best place
 //        on the mod's boards. The game links a track's author to the account of that name.
 // Adding someone sends them a request; adding someone who has asked first makes you friends at once.
-// The room comes from the multiplayer server itself (server.js): the game hosting a room says whose it is.
+// A hosted room comes from the multiplayer server itself (server.js): the game hosting a room says whose it is.
+// A room joined comes with the presence, and only counts while the multiplayer server still has it open.
 // All but register and login take the session as "Authorization: Bearer <session>".
 //
 // RESERVED_IDS ("julio:1", the default) keeps numbers for some names; CREATOR_IDS ("1") are shown with the
@@ -72,13 +73,13 @@ function limiter(max, windowMs) {
 
 // bestPlace(tokenHash): the player's best place on the mod's boards (records.js), for the profile cards
 function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = process.env.ACCOUNTS_GIST_ID,
-  file = process.env.ACCOUNTS_FILE || path.join(__dirname, 'accounts.json'), log = console.log, bestPlace = () => null } = {}) {
+  file = process.env.ACCOUNTS_FILE || path.join(__dirname, 'accounts.json'), log = console.log, bestPlace = () => null, roomOpen = () => false } = {}) {
   // key (lower-case name) -> { name, id, salt, hash, sessions: [sha256(session)], version, blob, created, updated,
   //                            friends: [id], requests: [id] (asked by them), profile: { nickname, countryCode, carStyle } }
   const accounts = new Map();
   const bySession = new Map();          // sha256(session) -> key
   const byId = new Map();               // public number -> key
-  const presence = new Map();           // key -> { time, state } (not saved: who is playing now)
+  const presence = new Map();           // key -> { time, state, room } (not saved: who is playing now, in which room)
   const rooms = new Map();              // key -> invite code of the room the player hosts
   const dirty = new Set();
   let ready = false, saveTimer = null, saving = Promise.resolve();
@@ -247,23 +248,26 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   // ---------------------------------------------------------------- friends
   const verifiedOf = id => (CREATOR_IDS.has(id) ? 'creator' : null);
   const isOnline = key => Date.now() - (presence.get(key)?.time ?? 0) < ONLINE;
+  // the room a player is in: the one they host, or the one they said they joined if it is still open
+  const roomOf = key => rooms.get(key) ?? (roomOpen(presence.get(key)?.room) ? presence.get(key).room : null);
   // what a player shows to others; the room's code only to friends
   function view(key, friend) {
-    const a = accounts.get(key), p = a.profile || {}, online = isOnline(key);
+    const a = accounts.get(key), p = a.profile || {}, online = isOnline(key), room = online ? roomOf(key) : null;
     const out = {
       id: a.id, name: a.name, verified: verifiedOf(a.id),
       nickname: p.nickname || a.name, countryCode: p.countryCode || null, carStyle: p.carStyle || null,
-      online, state: online ? (rooms.has(key) ? 'hosting' : presence.get(key).state) : 'offline',
+      online, state: online ? (rooms.has(key) ? 'hosting' : room != null ? 'room' : presence.get(key).state) : 'offline',
       lastSeen: presence.get(key)?.time ?? null,
     };
-    if (friend && online && rooms.has(key)) out.room = rooms.get(key);
+    if (friend && room != null) out.room = room;
     return out;
   }
   const keysOf = ids => ids.map(id => byId.get(id)).filter(key => key != null);
 
   function updatePresence(s, body) {
     const state = body.state === 'playing' ? 'playing' : 'menu';
-    presence.set(s.key, { time: Date.now(), state });
+    const room = typeof body.room === 'string' ? body.room.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || null : null;
+    presence.set(s.key, { time: Date.now(), state, room });
     const p = body.profile;
     if (p && typeof p === 'object') {
       const count = n => (Number.isSafeInteger(n) && n >= 0 && n < 1e6 ? n : null);

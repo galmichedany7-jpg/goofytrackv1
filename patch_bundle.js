@@ -264,7 +264,8 @@ const patches = [
     name: 'host exposes its connected players',
     anchor: 'getPlayers(){return(0,R.gn)(this,_n,"f").map(',
     before: true,
-    insert: 'apexPeers(){return(0,R.gn)(this,_n,"f")}',
+    // and what the room list shows of the room: mode (0 casual, 1 competitive), track name, size
+    insert: 'apexPeers(){return(0,R.gn)(this,_n,"f")}apexInfo(){return{mode:(0,R.gn)(this,wn,"f"),track:(0,R.gn)(this,bn,"f")?.trackMetadata?.name??null,maxPlayers:(0,R.gn)(this,Sn,"f")}}',
   },
   {
     name: 'player can send mod messages to the host',
@@ -499,13 +500,15 @@ const patches = [
   {
     name: 'rooms are hosted through the GoofyTrack server',
     find: 'createMultiplayerHostWebSocket(){if(this.determinismState!=Mo.Ok)throw new Error("WebSocket creation not allowed with non-deterministic physics");return new WebSocket("https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"multiplayer/host")}',
-    // + the account hosting, if logged in: its friends see the room and can join it (apex-account.js)
-    replace: 'createMultiplayerHostWebSocket(){return new WebSocket(' + JSON.stringify(SERVER_URL + 'multiplayer/host' + SERVER_QUERY) + '+(window.ApexAccount?window.ApexAccount.hostQuery():""))}',
+    // + the account hosting, if logged in: its friends see the room and can join it (apex-account.js);
+    // the room list (apex-lobby.js) keeps the socket, to tell the server what the room is about
+    replace: 'createMultiplayerHostWebSocket(){const apexSocket=new WebSocket(' + JSON.stringify(SERVER_URL + 'multiplayer/host' + SERVER_QUERY) + '+(window.ApexAccount?window.ApexAccount.hostQuery():""));return window.ApexLobby?window.ApexLobby.hostSocket(apexSocket):apexSocket}',
   },
   {
     name: 'rooms are joined through the GoofyTrack server',
     find: 'createMultiplayerJoinWebSocket(){if(this.determinismState!=Mo.Ok)throw new Error("WebSocket creation not allowed with non-deterministic physics");return new WebSocket("https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"multiplayer/join")}',
-    replace: 'createMultiplayerJoinWebSocket(){return new WebSocket(' + JSON.stringify(SERVER_URL + 'multiplayer/join' + SERVER_QUERY) + ')}',
+    // apex-lobby.js notes the code joined: friends can follow the player into that room
+    replace: 'createMultiplayerJoinWebSocket(){const apexSocket=new WebSocket(' + JSON.stringify(SERVER_URL + 'multiplayer/join' + SERVER_QUERY) + ');return window.ApexLobby?window.ApexLobby.joinSocket(apexSocket):apexSocket}',
   },
   {
     // the server turns away a player whose build differs from the host's with the "incompatible mods" reason

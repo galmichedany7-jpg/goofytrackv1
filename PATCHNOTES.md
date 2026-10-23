@@ -15,6 +15,21 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.14 : fini les codes, rejoignez d'un clic
+
+**Liste des rooms**
+- L'écran **Multijoueur** affiche maintenant les **rooms en cours** : l'hôte et son drapeau, la piste, le mode (Casual, Compétitif, Course et son nombre de tours), où en est la course (essais, qualifications, en course…) et le nombre de joueurs. Un clic sur **Rejoindre** et vous y êtes, plus besoin de s'échanger un code.
+- La liste se met à jour toute seule toutes les 4 secondes. Une room pleine est marquée « Pleine ».
+- Le code d'invitation marche toujours, sur une ligne sous la liste.
+- Sur l'écran **Héberger**, le bouton **Visible dans la liste des rooms** (activé par défaut) permet de garder une room pour soi : seuls vos amis et ceux qui ont le code peuvent alors la rejoindre.
+- Seules les rooms du même build apparaissent : celles que vous pouvez vraiment rejoindre.
+
+**Rejoindre un ami**
+- Dans l'onglet **Amis**, le bouton **Rejoindre** apparaît dès qu'un ami est **dans une room**, qu'il l'héberge ou qu'il l'ait rejointe (« Dans une room »). Avant, il fallait que l'ami soit l'hôte.
+- Vos amis voient votre room tout de suite, sans attendre la présence suivante.
+
+**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.14. Le serveur (Render) doit être redéployé avec cette version : sans lui, la liste reste vide (« Serveur injoignable »), mais les codes marchent toujours.
+
 ## V2.13 : votre compte GoofyTrack, vos amis, partout
 
 Une version tournée vers les joueurs : un compte pour retrouver sa progression sur tous ses PC, un profil qui a enfin une tête, et des amis à rejoindre en un clic.
