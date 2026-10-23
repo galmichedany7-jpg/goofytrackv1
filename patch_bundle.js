@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const { APP, ORIGINALS, MOD_VERSION, SERVER_URL, EDITOR_CHUNK } = require('./config');
+const { APP, ORIGINALS, MOD_VERSION, SERVER_URL, EDITOR_CHUNK, GARAGE_CHUNK } = require('./config');
 const MOD_TRACKS = require('./tracks');
 const MOD_TRACK_IDS = JSON.stringify(MOD_TRACKS.map(t => t.id));
 const MONACO = require('./tracks/monaco/monaco.json');
@@ -591,6 +591,12 @@ const patches = [
       + '{const e=document.createElement("div");e.className="social-links",(0,R.gn)(this,_h,"f").appendChild(e);{const t=document.createElement("a");t.href="https://www.kodub.com/googleplay/polytrack",t.target="_blank",e.appendChild(t);const n=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(n.classList.add("loading"),n.addEventListener("load",(()=>{n.classList.remove("loading")}))),n.src="images/google_play.svg",t.appendChild(n)}const t=document.createElement("a");t.href="https://www.kodub.com/discord/polytrack",t.target="_blank",e.appendChild(t);const n=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(n.classList.add("loading"),n.addEventListener("load",(()=>{n.classList.remove("loading")}))),n.src="images/discord.svg",t.appendChild(n);const i=document.createElement("a");i.href="https://www.kodub.com/reddit/polytrack",i.target="_blank",e.appendChild(i);const r=document.createElement("img");(0,R.gn)(this,ph,"f").hasLoaded()||(r.classList.add("loading"),r.addEventListener("load",(()=>{r.classList.remove("loading")}))),r.src="images/reddit.svg",i.appendChild(r)}}',
     replace: 'for(const[t,n]of' + JSON.stringify(FOOTER.map((line, i) => [line, i === 0 ? 'GoofyTrack ' + MOD_VERSION + ' - build ' + BUILD_ID : ''])) + '){const e=document.createElement("a");e.textContent=t,e.title=n,(0,R.gn)(this,_h,"f").appendChild(e)}}',
   },
+  // ---------------------------------------------------------------- the mod's car patterns (build_patterns.js)
+  {
+    name: 'Monaco GP Edition pattern',
+    find: 'e[15]={url:"images/pattern_outline.svg"},',
+    replace: 'e[15]={url:"images/pattern_outline.svg"},e[16]={url:"images/pattern_monaco.svg"},',
+  },
 ];
 
 function applyPatches(file, patches) {
@@ -680,6 +686,47 @@ const editorPatches = [
   },
 ];
 
+// The garage is a chunk of its own: it only paints the car, with three liveries (apex-livery.js). The name
+// and flag are the profile card's (apex-account.js), and so is switching profile.
+const LIVERY = 'window.ApexLivery';
+const garagePatches = [
+  {
+    name: 'garage Save saves the car, without the name and flag window',
+    find: 'v.addEventListener("click",(()=>{a.playUIClick(),(0,i.gn)(this,jn,"f").classList.add("hidden"),(0,i.gn)(this,Wn,"m",he).call(this,(0,i.gn)(this,ne,"f"),(0,i.gn)(this,ie,"f"),(0,i.gn)(this,se,"f"),(()=>{(0,i.gn)(this,jn,"f").classList.remove("hidden"),(0,i.gn)(this,Wn,"m",pe).call(this)}))}))',
+    replace: 'v.addEventListener("click",(()=>{a.playUIClick(),(0,i.gn)(this,Wn,"m",pe).call(this)}))',
+  },
+  {
+    name: 'Switch Profile becomes Liveries',
+    find: 'x.append(document.createTextNode(e.get("Switch Profile"))),x.addEventListener("click",(()=>{a.playUIClick(),xn.Xx()||(',
+    replace: 'x.append(document.createTextNode(' + LIVERY + '?' + LIVERY + '.label():e.get("Switch Profile"))),x.addEventListener("click",(()=>{a.playUIClick(),xn.Xx()||' + LIVERY + '&&' + LIVERY + '.open()||(',
+  },
+  {
+    name: 'the car saved is the livery picked',
+    find: '(0,i.GG)(this,oe,!1,"f"),(0,i.GG)(this,ae,!0,"f")),(0,i.gn)(this,Dn,"f").tryActivatePersistentStorage()',
+    replace: '(0,i.GG)(this,oe,!1,"f"),(0,i.GG)(this,ae,!0,"f"),' + LIVERY + '&&' + LIVERY + '.saved((0,i.gn)(this,ee,"f").token,(0,i.gn)(this,ee,"f").carStyle.serialize())),(0,i.gn)(this,Dn,"f").tryActivatePersistentStorage()',
+  },
+  {
+    name: 'the cars parked beside the player\'s are the other liveries',
+    find: 'const n=(0,i.gn)(this,Tn,"f")[t],e=(0,i.gn)(this,Hn,"f").getUserProfile(t);',
+    replace: 'const n=(0,i.gn)(this,Tn,"f")[t];if(' + LIVERY + '){const e=' + LIVERY + '.parked(t);null!=e?(n.setCarStyle(y.A.deserializeSafe(e)),n.setVisible(!0)):n.setVisible(!1);continue}const e=(0,i.gn)(this,Hn,"f").getUserProfile(t);',
+  },
+  {
+    // in the constructor, y is a button: the car style class comes from the car itself
+    name: 'the garage hands its car to the liveries',
+    find: '(0,i.gn)(this,Wn,"m",re).call(this),(0,i.GG)(this,oe,!1,"f")}dispose(){',
+    replace: '(0,i.gn)(this,Wn,"m",re).call(this),(0,i.GG)(this,oe,!1,"f"),' + LIVERY + '&&' + LIVERY + '.garage({'
+      + 'get:()=>(0,i.gn)(this,Sn,"f").getCarStyle().serialize(),'
+      + 'set:t=>{const n=(0,i.gn)(this,Sn,"f").getCarStyle().constructor.deserializeSafe(t);(0,i.gn)(this,te,"f").setCarStyle(n),(0,i.gn)(this,Sn,"f").setCarStyle(n),(0,i.GG)(this,oe,!0,"f")},'
+      + 'save:()=>(0,i.gn)(this,Wn,"m",pe).call(this),dirty:()=>(0,i.gn)(this,oe,"f"),parked:()=>(0,i.gn)(this,Wn,"m",re).call(this),click:()=>a.playUIClick()})'
+      + '}dispose(){' + LIVERY + '&&' + LIVERY + '.garage(null);',
+  },
+  {
+    name: 'each pattern shows its name and rarity (apex-rarity.js)',
+    find: '(0,i.gn)(this,nn,"f").appendChild(a);',
+    replace: '(0,i.gn)(this,nn,"f").appendChild(a),window.ApexRarity&&window.ApexRarity.pattern(a,s);',
+  },
+];
+
 // The desktop app's window: the GoofyTrack icon (otherwise Windows shows the one inside PolyTrack.exe)
 const electronPatches = [
   {
@@ -693,4 +740,5 @@ applyPatches('main.bundle.js', patches);
 applyPatches(path.join('electron', 'main.js'), electronPatches);
 applyPatches('simulation_worker.bundle.js', workerPatches);
 applyPatches(EDITOR_CHUNK, editorPatches);
-console.log(`Patched main.bundle.js (${patches.length} hooks), the physics worker (${workerPatches.length}) and the editor (${editorPatches.length}), build ${BUILD_ID}, server ${SERVER_URL}`);
+applyPatches(GARAGE_CHUNK, garagePatches);
+console.log(`Patched main.bundle.js (${patches.length} hooks), the physics worker (${workerPatches.length}), the editor (${editorPatches.length}) and the garage (${garagePatches.length}), build ${BUILD_ID}, server ${SERVER_URL}`);

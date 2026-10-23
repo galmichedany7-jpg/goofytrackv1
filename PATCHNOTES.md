@@ -15,6 +15,29 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.15 : trois livrées, des motifs rares et la Monaco GP Edition
+
+Le garage ne s'occupe plus que de la voiture : votre pseudo et votre drapeau restent sur votre carte de profil. Et chaque motif a maintenant un nom et une rareté.
+
+**Raretés**
+- Chaque motif de l'onglet **Motif** porte un nom et une rareté, dont la couleur fait le cadre : **Commun** (gris), **Rare** (vert), **Très rare** (bleu), **Épique** (violet), **Légendaire** (jaune), **Mythique** (rouge). Le motif choisi est entouré de blanc.
+- Nouveau motif **Monaco GP Edition**, *légendaire* : le partage du drapeau monégasque (votre couleur principale en haut, la secondaire sur le bas des flancs, sous un filet), des ailerons et une bande en damier, et les losanges des Grimaldi sur le nez.
+- Les livrées affichent le motif qu'elles portent et sa rareté.
+- Pour l'instant tous les motifs restent libres : les coffres pour les débloquer viendront plus tard.
+
+**Livrées**
+- Le bouton **Changer de profil** du garage devient **Livrées** : trois designs de voiture enregistrés, à choisir en un clic. La livrée choisie passe tout de suite sur votre voiture, dans les classements comme en ligne.
+- **Enregistrer** garde vos modifications dans la livrée choisie, sans rouvrir la fenêtre du pseudo et du drapeau. Changer de livrée garde d'abord ce que vous avez modifié.
+- Un emplacement vide part d'une copie de votre voiture actuelle : de quoi essayer une variante sans perdre l'original.
+- Les deux autres livrées sont garées à côté de votre voiture dans le garage.
+- Vos livrées suivent votre compte GoofyTrack sur tous vos PC. Au premier lancement, votre voiture actuelle devient la livrée 1.
+
+**Profil**
+- Le pseudo et le drapeau ne se changent plus au garage, mais avec **Modifier le profil** sur votre carte de profil (clic sur le badge en haut à gauche).
+- **Changer de profil** (et l'import d'un profil) passe aussi sur la carte de profil.
+
+**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.15. Rien à changer sur le serveur.
+
 ## V2.14 : fini les codes, rejoignez d'un clic
 
 **Liste des rooms**

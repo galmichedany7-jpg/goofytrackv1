@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const { GAME, EXE, ARCHIVE, ARCHIVE_BACKUP, APP, ORIGINALS, SUPPORTED_VERSION, MOD_NAME, MOD_VERSION, SERVER_URL, EDITOR_CHUNK } = require('./config');
+const { GAME, EXE, ARCHIVE, ARCHIVE_BACKUP, APP, ORIGINALS, SUPPORTED_VERSION, MOD_NAME, MOD_VERSION, SERVER_URL, EDITOR_CHUNK, GARAGE_CHUNK } = require('./config');
 const asar = require('./asar');
 const setup = require('./setup');
 
@@ -37,7 +37,7 @@ if (version !== SUPPORTED_VERSION) console.warn(`Warning: this mod targets PolyT
 if (!fs.existsSync(APP)) console.log(`Unpacked ${asar.extractAll(ARCHIVE_BACKUP, APP)} game files into resources/app`);
 fs.mkdirSync(ORIGINALS, { recursive: true });
 fs.mkdirSync(path.join(ORIGINALS, 'electron'), { recursive: true });
-for (const [inner, name] of [['models/car.glb', 'car.glb'], ['main.bundle.js', 'main.bundle.js'], ['simulation_worker.bundle.js', 'simulation_worker.bundle.js'], [EDITOR_CHUNK, EDITOR_CHUNK], ['index.html', 'index.html'], ['electron/main.js', 'electron/main.js']])
+for (const [inner, name] of [['models/car.glb', 'car.glb'], ['main.bundle.js', 'main.bundle.js'], ['simulation_worker.bundle.js', 'simulation_worker.bundle.js'], [EDITOR_CHUNK, EDITOR_CHUNK], [GARAGE_CHUNK, GARAGE_CHUNK], ['index.html', 'index.html'], ['electron/main.js', 'electron/main.js']])
   fs.writeFileSync(path.join(ORIGINALS, name), asar.readFile(ARCHIVE_BACKUP, inner));
 
 // 3. Build
@@ -48,7 +48,7 @@ run('patch_bundle.js');
 
 // The mod's scripts, loaded before the game in this order (the game calls into them from the hooks of patch_bundle.js)
 // (the account first: it watches the storage from the start)
-const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-room.js', 'apex-lobby.js', 'apex-notes.js'];
+const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-room.js', 'apex-lobby.js', 'apex-notes.js', 'apex-rarity.js', 'apex-livery.js'];
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
 // The account keeps its save on our server, whose address it is handed in front of its script, with the mod's
 // tracks (the profile card counts the circuits finished and asks the server for their boards)

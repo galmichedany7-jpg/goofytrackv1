@@ -1,4 +1,4 @@
-// Generates the 16 livery patterns for the F1 body.
+// Generates the livery patterns for the F1 body: the game's 16, then the mod's (patch_bundle.js adds them to its list).
 // Texture space (1024 x 1024): X follows the angle around the body (512 = centreline, sides further out),
 // Y runs from the nose (0) to the tail (1024). Red = primary colour, green = secondary colour.
 //
@@ -61,7 +61,20 @@ const patterns = {
   gradient: `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0.1" stop-color="#f00"/><stop offset="0.9" stop-color="#0f0"/></linearGradient></defs><rect width="1024" height="1024" fill="url(#g)"/>`,
   // Contrasting wings with a thin body outline
   outline: rect(0, 0, 1024, 92) + rect(0, 884, 1024, 140) + sym(s => rect(X(s, 196) - 7, 92, 14, 792)),
+  // Monaco GP Edition (GoofyTrack, legendary): the flag's split, primary above and secondary on the lower
+  // flanks under a pinstripe, chequered wings and a chequered band behind the cockpit, the Grimaldi
+  // lozenges down the nose
+  monaco: sym(s => rect(s > 0 ? 767 : 0, 0, 257, 1024) + rect(X(s, 236) - 5, 0, 10, 1024))
+    + checker(0, 1024, 12, 92, 27) + checker(257, 767, 612, 676, 32) + checker(0, 1024, 885, 1005, 40)
+    + [215, 285, 355].map(y => poly([[512, y - 30], [536, y], [512, y + 30], [488, y]])).join(''),
 };
+// a chequered flag over a box: every other square, from its top left corner (hoisted: used above)
+function checker(x0, x1, y0, y1, size) {
+  let s = '';
+  for (let r = 0, y = y0; y < y1; r++, y += size) for (let c = 0, x = x0; x < x1; c++, x += size)
+    if ((r + c) % 2 === 0) s += rect(x, y, Math.min(size, x1 - x), Math.min(size, y1 - y));
+  return s;
+}
 
 for (const [name, shapes] of Object.entries(patterns)) {
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg width="1024" height="1024" version="1.1" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">\n <rect width="1024" height="1024" fill="#f00"/>\n ${shapes}\n</svg>\n`;

@@ -33,7 +33,7 @@
   const GAME = 'polytrack_v5_prod_';
   const PROFILES = 3;                                  // the game's slots
   const SETTINGS = [GAME + 'settings', GAME + 'key_bindings', GAME + 'is_music_enabled', GAME + 'unlocked_car_styles',
-    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings'];   // not the keyboard layout: one per PC
+    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries'];   // not the keyboard layout: one per PC
   const KDF_ROUNDS = 310000;
   const BOOT_WAIT = 8000;
   const PUSH_DELAY = 4000;
@@ -398,27 +398,44 @@
     });
   }
 
-  // the game's own profile window (name, country), which lives in the garage: opened by the garage's Save
-  // (its own Save writes the profile; the profile button's Confirm only prepares it), then the garage closes
-  // behind it, nothing left unsaved, back to the home screen and the profile card
-  async function editProfile() {
-    const wait = async (find, tries = 60) => {
-      for (let i = 0; i < tries; i++) { const found = find(); if (found) return found; await new Promise(resolve => setTimeout(resolve, 100)); }
-      return null;
-    };
+  const wait = async (find, tries = 60) => {
+    for (let i = 0; i < tries; i++) { const found = find(); if (found) return found; await new Promise(resolve => setTimeout(resolve, 100)); }
+    return null;
+  };
+  // the garage, opened from the home screen: its top bar (Exit, Save, Default, Random, Liveries) and the
+  // name and flag button it hides (apex-livery.js: the garage only paints the car)
+  async function openGarage() {
     const garageButton = document.querySelector('#ui .menu-ui > .main-buttons-container > .button-image');   // the first one
-    if (garageButton == null) return;
+    if (garageButton == null) return null;
     close();
     garageButton.click();
-    // the garage's top bar: Exit, Save, Default, Random, Switch Profile
-    const top = await wait(() => document.querySelector('#ui .profile-button-container')?.closest('#ui > div')?.querySelector('.top'));
-    if (top == null) return;
-    const [exit, save] = top.querySelectorAll(':scope > button');
-    save.click();
+    const named = await wait(() => document.querySelector('#ui .profile-button-container > button'));
+    const top = named?.closest('#ui > div')?.querySelector('.top');
+    return top ? { named, buttons: [...top.querySelectorAll(':scope > button')] } : null;
+  }
+
+  // the game's own profile window (name, country), which lives in the garage behind its name and flag button
+  // (whose Confirm only prepares the change): then the garage's Save writes it and the garage closes, nothing
+  // left unsaved, back to the home screen and the profile card
+  async function editProfile() {
+    const garage = await openGarage();
+    if (garage == null) return;
+    const [exit, save] = garage.buttons;
+    garage.named.click();
     if (await wait(() => document.querySelector('#ui .profile-settings-ui')) == null) return;
     await wait(() => document.querySelector('#ui .profile-settings-ui') == null, 36000);   // up to an hour to choose
+    save.click();
     exit.click();
     if (await wait(homeReady)) { sendPresence(); open(); }   // friends see the new name and flag at once
+  }
+
+  // the game's own profile list (switch, import), from the garage's last button, which shows the liveries
+  // unless told otherwise; the player is left in the garage, where the list leads
+  async function switchProfile() {
+    const garage = await openGarage();
+    if (garage == null) return;
+    window.ApexLivery?.switchProfile();
+    garage.buttons[garage.buttons.length - 1].click();
   }
 
   // joins a friend's room as the player would: Multiplayer, the invite code, Join
@@ -728,6 +745,7 @@
         syncing || lastError || lastSync == null ? (lastError || state) : tr('synchronisé ', 'synced ') + ago(lastSync));
       const row = el(body, 'div', 'row');
       el(row, 'button', null, tr('Modifier le profil', 'Edit profile')).addEventListener('click', editProfile);
+      el(row, 'button', null, tr('Changer de profil', 'Switch profile')).addEventListener('click', switchProfile);
       el(row, 'button', null, 'Garage').addEventListener('click', garage);
       const now = el(row, 'button', null, tr('Synchroniser', 'Sync now'));
       now.disabled = !!syncing;
@@ -740,6 +758,7 @@
 
     const row = el(body, 'div', 'row');
     el(row, 'button', null, tr('Modifier le profil', 'Edit profile')).addEventListener('click', editProfile);
+    el(row, 'button', null, tr('Changer de profil', 'Switch profile')).addEventListener('click', switchProfile);
     el(row, 'button', null, 'Garage').addEventListener('click', garage);
     el(body, 'h3', null, tr('Compte GoofyTrack', 'GoofyTrack account'));
     el(body, 'p', 'hint', tr('Connectez-vous pour retrouver vos profils, records, pistes perso et réglages sur tous vos PC.',

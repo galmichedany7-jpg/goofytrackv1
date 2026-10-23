@@ -27,7 +27,7 @@
 // A room joined comes with the presence, and only counts while the multiplayer server still has it open.
 // All but register and login take the session as "Authorization: Bearer <session>".
 //
-// RESERVED_IDS ("julio:1", the default) keeps numbers for some names; CREATOR_IDS ("1") are shown with the
+// RESERVED_IDS ("julio:1,shyn:2", the default) keeps numbers for some names; CREATOR_IDS ("1,2") are shown with the
 // "creator" check mark.
 //
 // Storage: one file per account in a secret GitHub Gist when GITHUB_TOKEN is set, a local JSON file otherwise.
@@ -47,9 +47,9 @@ const REGISTRATIONS = 5;                // per address, every hour
 const MAX_FRIENDS = 100;
 const MAX_REQUESTS = 50;                // waiting for an answer, per account
 const ONLINE = 75 * 1000;               // since the last presence: the game sends one every 30 s
-const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:1').split(',').filter(Boolean)
+const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:1,shyn:2').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([name, id]) => [name.normalize('NFC').toLowerCase(), Number(id)]));
-const CREATOR_IDS = new Set((process.env.CREATOR_IDS ?? '1').split(',').filter(Boolean).map(Number));
+const CREATOR_IDS = new Set((process.env.CREATOR_IDS ?? '1,2').split(',').filter(Boolean).map(Number));
 const COUNTRY = /^[a-z]{2}$/i;
 
 const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
