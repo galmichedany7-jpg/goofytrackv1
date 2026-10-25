@@ -25,6 +25,8 @@ const circuitParts = c => [['Road', c.data.ids.road], ['Start', c.data.ids.start
 // saved with one keeps its number (apex-rarity.js names them in this order)
 const MOD_PATTERNS = ['monaco', 'bignumber', 'diagonal', 'wingtips', 'dotted', 'camo', 'lightning', 'flames', 'tiger', 'barcode', 'carbon',
   'spa', 'strasbourg', 'dijon', 'montbeliard', 'coaster', 'killer_loop', 'goofy', 'champion'];
+// The mod's wings (build_car.js draws Wing0.., apex-rarity.js names them in this order)
+const WING_COUNT = 8;
 const RIVIERA_GROUND = 6318394;    // 0x60693a: the Riviera plain (apex-scenery.js recognises the environment by it)
 
 // Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
@@ -295,6 +297,80 @@ const patches = [
     name: 'mod track groups are listed first',
     find: '"string"==typeof t){n.appendChild(e);const i=document.createElement("div");i.className="group-title"',
     replace: '"string"==typeof t){' + JSON.stringify([...new Set(MOD_TRACKS.map(t => t.group))]) + '.includes(t)?n.prepend(e):n.appendChild(e);const i=document.createElement("div");i.className="group-title"',
+  },
+  {
+    // The community tracks join them too, grouped by environment (Summer, Winter, Desert, Riviera) after the game's
+    // own: one list under the game's headings, which "next track" goes through in the order shown (the mod tracks
+    // stay last). Records and boards work the same for both. The list is left at hand for the Track of the Week (below).
+    name: 'community tracks are listed with the official tracks',
+    find: 'saveTime:null}))),"f");const i=(0,R.gn)(this,au,"f").getAllCustomTrackNames();',
+    replace: 'saveTime:null}))),"f");{const apexRank=e=>e==Cl.A.Summer?0:e==Cl.A.Winter?1:e==Cl.A.Desert?2:3,apexOfficial=(0,R.gn)(this,eu,"f");'
+      + '(0,R.GG)(this,eu,[...apexOfficial.filter((e=>"string"!=typeof e.group)),...(0,R.gn)(this,tu,"f").map((e=>({...e,group:e.environment})))]'
+      + '.sort(((e,t)=>apexRank(e.environment)-apexRank(t.environment))).concat(apexOfficial.filter((e=>"string"==typeof e.group))),"f"),(0,R.GG)(this,tu,[],"f"),'
+      + 'window.ApexOfficialTracks=(0,R.gn)(this,eu,"f")}'
+      + 'const i=(0,R.gn)(this,au,"f").getAllCustomTrackNames();',
+  },
+  // The community tab is gone (the tournaments will take its place): the official tab is the first one again,
+  // swiping goes from it straight to the custom tracks, and a tab remembered as "community" opens the official one.
+  {
+    name: 'no community tab',
+    find: '(0,i.gn)(this,A,"m",ae).call(this,"community")})),v.appendChild((0,i.gn)(this,P,"f"));',
+    replace: '(0,i.gn)(this,A,"m",ae).call(this,"community")}));',
+  },
+  {
+    name: 'no community tab: swipe',
+    find: 't>0?"community"==pe?(0,i.gn)(this,A,"m",ae).call(this,"official"):"custom"==pe&&(0,i.gn)(this,A,"m",ae).call(this,"community"):"official"==pe?(0,i.gn)(this,A,"m",ae).call(this,"community"):"community"==pe&&(0,i.gn)(this,A,"m",ae).call(this,"custom")',
+    replace: 't>0?"custom"==pe&&(0,i.gn)(this,A,"m",ae).call(this,"official"):"official"==pe&&(0,i.gn)(this,A,"m",ae).call(this,"custom")',
+  },
+  {
+    name: 'no community tab: remembered tab',
+    find: 'if("official"==e||"community"==e||"custom"==e)return e',
+    replace: 'if("official"==e||"custom"==e)return e',
+  },
+
+  // ---------------------------------------------------------------- Track of the Week (server/weekly.js)
+  // One of the official tracks above, drawn each week by the GoofyTrack server instead of PolyTrack's. The server
+  // only gives its id and end time: the game takes the rest from its own list, and loads it from the game files
+  // like the other official tracks (it is then played as one: records, "next track"). Shown at the top of the
+  // official tab, sized like its rows of tracks.
+  {
+    name: 'Track of the Week from the GoofyTrack server',
+    find: 'async getTrackOfTheWeek(){',
+    replace: 'async getTrackOfTheWeek(){return new Promise(((t,n)=>{const i=new XMLHttpRequest;i.timeout=(0,R.gn)(this,gf,"f"),i.overrideMimeType("text/plain"),'
+      + 'i.onreadystatechange=()=>{if(i.readyState==XMLHttpRequest.DONE)if(200==i.status)try{const e=JSON.parse(i.responseText),r=new Date(e.serverTime),'
+      + 'a=null==e.current?null:(window.ApexOfficialTracks??[]).find((t=>t.id==e.current.trackId));if(null==a)return void t({current:null});'
+      + 'const s=new Date(e.current.endTime);if(isNaN(r.getTime())||isNaN(s.getTime()))return void n(new Error("Invalid dates"));'
+      + 't({current:{trackId:a.id,trackMetadata:a.trackMetadata,environment:a.environment,thumbnailUrl:a.thumbnail,coverUrl:null,trackUrl:null,'
+      + 'endTime:s,clientEndTime:new Date(s.getTime()+(Date.now()-r.getTime())),apexLoad:a.loadCallback}})}catch(e){n(new Error("Unknown error: "+String(e)))}'
+      + 'else n(new Error("Failed to connect to server"))},i.open("GET",' + JSON.stringify(SERVER_URL + 'trackOfTheWeek') + ',!0),i.send()}))}'
+      + 'async apexKodubTrackOfTheWeek(){',
+  },
+  {
+    name: 'Track of the Week is loaded from the game files',
+    find: '(async()=>{let e;try{e=await(0,i.gn)(this,x,"f").loadTrackCodeFromUrl(r.trackUrl)}catch(e){throw console.error(e),new ue.A}const t=ce.A.fromExportString(e);if(null==t)throw new ue.A;return t.trackData}),"community",r.trackId,r.thumbnailUrl)',
+    replace: '(async()=>{if(null!=r.apexLoad)return(await r.apexLoad()).trackData;let e;try{e=await(0,i.gn)(this,x,"f").loadTrackCodeFromUrl(r.trackUrl)}catch(e){throw console.error(e),new ue.A}const t=ce.A.fromExportString(e);if(null==t)throw new ue.A;return t.trackData}),null!=r.apexLoad?"official":"community",r.trackId,r.thumbnailUrl)',
+  },
+  {
+    // a thumbnail of the game files, not of another site
+    name: 'Track of the Week thumbnail',
+    find: 't.crossOrigin="anonymous",t.loading="lazy",t.className="thumbnail loading"',
+    replace: 'null==r.apexLoad&&(t.crossOrigin="anonymous"),t.loading="lazy",t.className="thumbnail loading"',
+  },
+  {
+    name: 'Track of the Week in the official tab',
+    find: 'const r=document.createElement("div");t.appendChild(r),(0,i.gn)(this,A,"m",ne).call(this,r);',
+    replace: 'const r=document.createElement("div");e.prepend(r),(0,i.gn)(this,A,"m",ne).call(this,r);',
+  },
+  {
+    name: 'Track of the Week sized when the official tab opens',
+    find: '(0,i.gn)(this,L,"f").classList.add("open"),(0,i.gn)(this,z,"f").classList.remove("open"),(0,i.gn)(this,U,"f").classList.remove("open")):"community"==e?',
+    replace: '(0,i.gn)(this,L,"f").classList.add("open"),(0,i.gn)(this,z,"f").classList.remove("open"),(0,i.gn)(this,U,"f").classList.remove("open"),(0,i.gn)(this,A,"m",re).call(this)):"community"==e?',
+  },
+  {
+    // as wide as a whole number of track cards: the theme makes them wider than the game's 236 px
+    name: 'Track of the Week sized on the track cards',
+    find: 'const e=236,t=Math.floor((0,i.gn)(this,F,"f").parentElement.clientWidth/e);',
+    replace: 'const e=document.querySelector(".track-selection-ui .tracks-container.open .track:not(.track-of-the-week)")?.offsetWidth||236,t=Math.max(1,Math.floor((0,i.gn)(this,F,"f").parentElement.clientWidth/e));',
   },
 
   // ---------------------------------------------------------------- mod track leaderboards (apex-records.js, server/records.js)
@@ -609,6 +685,89 @@ const patches = [
     find: 'e[15]={url:"images/pattern_outline.svg"},',
     replace: 'e[15]={url:"images/pattern_outline.svg"},' + MOD_PATTERNS.map((name, i) => 'e[' + (16 + i) + ']={url:"images/pattern_' + name + '.svg"},').join(''),
   },
+  // ---------------------------------------------------------------- wings (build_car.js, apex-livery.js)
+  // The car style gets a wing (its model, Wing0..) and a wing colour, null while the wings take the pattern
+  // and the primary colour as before. Saved in 4 more bytes (16-18 the colour, 19 the wing, its high bit set
+  // when the colour is the wing's own): a style with the standard wing painted like the body is written as
+  // before, 16 bytes, so cars and records saved before stay the same. The game reads the extra bytes when
+  // they are there; multiplayer sends all 20 (binaryLength), which every player of this build reads.
+  {
+    name: 'car style: wing fields',
+    find: 'this.pattern=e,this.rims=t,this.exhaust=n,',
+    replace: 'this.pattern=e,this.rims=t,this.exhaust=n,this.wing=0,this.wingHex=null,',
+  },
+  {
+    name: 'car style: wing colour',
+    find: 'get rimsColor(){return new h.Q1f((0,c.gn)(this,o,"f"))}',
+    replace: 'get rimsColor(){return new h.Q1f((0,c.gn)(this,o,"f"))}get wingColor(){return new h.Q1f(this.wingHex??(0,c.gn)(this,r,"f"))}',
+  },
+  {
+    name: 'car style: equals with the wing',
+    find: 'this.rimsHex==e.rimsHex}',
+    replace: 'this.rimsHex==e.rimsHex&&this.wing==e.wing&&this.wingHex==e.wingHex}',
+  },
+  {
+    name: 'car style: clone with the wing',
+    find: 'clone(){return new i(this.pattern,this.rims,this.exhaust,(0,c.gn)(this,r,"f"),(0,c.gn)(this,a,"f"),(0,c.gn)(this,s,"f"),(0,c.gn)(this,o,"f"))}',
+    replace: 'clone(){const e=new i(this.pattern,this.rims,this.exhaust,(0,c.gn)(this,r,"f"),(0,c.gn)(this,a,"f"),(0,c.gn)(this,s,"f"),(0,c.gn)(this,o,"f"));return e.wing=this.wing,e.wingHex=this.wingHex,e}',
+  },
+  {
+    name: 'car style: saved as before without a wing of its own',
+    find: 'serialize(){return d.l(this.serializeBinary())}',
+    replace: 'serialize(){const e=this.serializeBinary();return d.l(0==this.wing&&null==this.wingHex?e.subarray(0,16):e)}',
+  },
+  {
+    name: 'car style: wing bytes',
+    find: '(0,c.gn)(this,o,"f")>>16&255],13),e}',
+    replace: '(0,c.gn)(this,o,"f")>>16&255],13),e.set([255&(this.wingHex??0),(this.wingHex??0)>>8&255,(this.wingHex??0)>>16&255,this.wing|(null==this.wingHex?0:128)],16),e}',
+  },
+  {
+    name: 'car style: reads styles saved without a wing',
+    find: 'if(e.length<i.binaryLength)throw new Error("Data length is too short")',
+    replace: 'if(e.length<16)throw new Error("Data length is too short")',
+  },
+  {
+    name: 'car style: reads the wing',
+    find: 'return new i(t,n,r,a,s,o,l)}static get defaultPattern',
+    replace: 'const W=new i(t,n,r,a,s,o,l);return e.length>=20&&(W.wing=i.isValidWing(127&e[19])?127&e[19]:0,W.wingHex=128&e[19]?e[16]|e[17]<<8|e[18]<<16:null),W}static get defaultPattern',
+  },
+  {
+    name: 'car style: valid wings',
+    find: 'static isValidExhaust(e){return Number.isSafeInteger(e)&&e>=0&&e<i.exhausts.length}',
+    replace: 'static isValidExhaust(e){return Number.isSafeInteger(e)&&e>=0&&e<i.exhausts.length}static isValidWing(e){return Number.isSafeInteger(e)&&e>=0&&e<i.wings.length}',
+  },
+  {
+    name: 'car style: the wing models',
+    find: 'u.binaryLength=16,',
+    replace: 'u.binaryLength=20,u.wings=Object.freeze(Array.from({length:' + WING_COUNT + '},((e,t)=>Object.freeze({model:"Wing"+t})))),',
+  },
+  {
+    name: 'car: loads the wings',
+    find: 'B.models={chassis:r(i("Body",!0)),suspension:r(i("Suspension",!0)),rims:a,exhausts:s,',
+    replace: 'const W=new Map;for(let e=0;e<w.A.wings.length;e++)W.set(e,r(i(w.A.wings[e].model,!0)));B.models={chassis:r(i("Body",!0)),suspension:r(i("Suspension",!0)),rims:a,exhausts:s,wings:W,',
+  },
+  {
+    // on the chassis like the exhaust, after it: the wing's brake light is the one the game lights
+    name: 'car: puts its wing on',
+    find: '(0,l.gn)(this,ye,"f").add((0,l.gn)(this,we,"f"));for(const e of(0,l.gn)(this,xe,"f"))(0,l.gn)(this,me,"f").add(e);',
+    replace: '(0,l.gn)(this,ye,"f").add((0,l.gn)(this,we,"f")),this.apxWingMix={value:1},this.apxWing=B.models.wings.get((0,l.gn)(this,Me,"f").wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing);for(const e of(0,l.gn)(this,xe,"f"))(0,l.gn)(this,me,"f").add(e);',
+  },
+  {
+    name: 'car: changes its wing and paints it',
+    find: '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):',
+    replace: 'e.wing!=(0,l.gn)(this,Me,"f").wing&&((0,l.gn)(this,ye,"f").remove(this.apxWing),(0,l.gn)(this,ge,"f").removeMaterial(this.apxWing.material),this.apxWing=B.models.wings.get(e.wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing)),this.apxWingMix.value=null==e.wingHex?1:0,'
+      + '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):"Wing"==t.name?t.color.set(e.wingColor):',
+  },
+  {
+    // the body's paint, with the pattern left out (carWingPattern 0) when the wing has a colour of its own;
+    // a function of its own, as three.js shares the programs of materials whose onBeforeCompile reads the same
+    name: 'car: the wing material',
+    find: 'for(const e of t)if("Main"==e.name){if(!(e instanceof c._4j))throw new Error("Main material must be MeshStandardMaterial");',
+    replace: 'for(const e of t)if("Wing"==e.name)e.onBeforeCompile=e=>{e.fragmentShader="uniform sampler2D carColorPattern;\\nuniform vec3 carColorSecondary;\\nuniform float carWingPattern;\\n"+e.fragmentShader,'
+      + 'e.fragmentShader=e.fragmentShader.replace("vec4 diffuseColor = vec4( diffuse, opacity );","float colorSource = texture(carColorPattern, vUv).g * carWingPattern;\\nvec4 diffuseColor = vec4( carColorSecondary * colorSource + diffuse * (1.0 - colorSource), opacity );"),'
+      + 'e.uniforms.carColorPattern=(0,l.gn)(this,Te,"f"),e.uniforms.carColorSecondary=(0,l.gn)(this,Ee,"f"),e.uniforms.carWingPattern=this.apxWingMix,e.defines??(e.defines={}),e.defines.USE_UV=!0},e.needsUpdate=!0;'
+      + 'else if("Main"==e.name){if(!(e instanceof c._4j))throw new Error("Main material must be MeshStandardMaterial");',
+  },
 ];
 
 function applyPatches(file, patches) {
@@ -732,7 +891,54 @@ const garagePatches = [
       + 'save:()=>(0,i.gn)(this,Wn,"m",pe).call(this),dirty:()=>(0,i.gn)(this,oe,"f"),parked:()=>(0,i.gn)(this,Wn,"m",re).call(this),click:()=>a.playUIClick()})'
       + '}dispose(){' + LIVERY + '&&' + LIVERY + '.garage(null);',
   },
-  // each pattern, rims and exhaust shows its name and rarity, the rarest at the bottom (apex-rarity.js)
+  // the wing colour: a fifth picker under Paint, beside Primary and Secondary, following the pattern until it is
+  // moved (apex-livery.js keeps that state on the panel: apxWing, apxWingHex)
+  {
+    name: 'wing colour picker',
+    find: '(0,i.gn)(this,Yt,"m",bn).call(this,n.get("Rims"),g),',
+    replace: '(0,i.gn)(this,Yt,"m",bn).call(this,n.get("Rims"),g),(0,i.gn)(this,Yt,"m",bn).call(this,' + LIVERY + '?' + LIVERY + '.wingLabel():"Wing",d),' + LIVERY + '&&' + LIVERY + '.wingPicker(this,d.lastChild,(0,i.gn)(this,cn,"f")[4]),',
+  },
+  {
+    name: 'the car built by the panel has its wing',
+    find: '(0,i.gn)(this,cn,"f")[3].color.getHex());(0,i.gn)(this,rn,"f").call(this,t)}',
+    replace: '(0,i.gn)(this,cn,"f")[3].color.getHex());' + LIVERY + '&&' + LIVERY + '.wingStyle(this,t,(0,i.gn)(this,cn,"f")[4]),(0,i.gn)(this,rn,"f").call(this,t)}',
+  },
+  {
+    name: 'the panel shows the wing of the car',
+    find: 'setCarStyle(t){(0,i.GG)(this,Kt,t.pattern,"f"),',
+    replace: 'setCarStyle(t){this.apxWing=t.wing??0,this.apxWingHex=t.wingHex??null,this.apxWingShown=null,this.apxWingSelect&&this.apxWingSelect(),(0,i.GG)(this,Kt,t.pattern,"f"),',
+  },
+  {
+    name: 'the wing picker shows the wing colour',
+    find: '(0,i.gn)(this,cn,"f")[3].color=t.rimsColor}}',
+    replace: '(0,i.gn)(this,cn,"f")[3].color=t.rimsColor,' + LIVERY + '&&' + LIVERY + '.wingShow(this,t,(0,i.gn)(this,cn,"f")[4])}}',
+  },
+  {
+    // the Wing tab, made like the Exhaust one: dark car, light wings
+    name: 'Wing tab',
+    find: 'const f=[{title:n.get("Paint"),icon:"images/paint.svg",panel:h},',
+    replace: '{const W=document.createElement("div");W.className="panel options-panel hidden",(0,i.gn)(this,Jt,"f").appendChild(W),this.apxWingPanel=W,this.apxWingTiles=new Map;'
+      + 'for(let o=0;o<y.A.wings.length;o++){const l=document.createElement("button");l.addEventListener("click",(()=>{t.playUIClick(),this.apxWing=o,this.apxWingSelect(),(0,i.gn)(this,Yt,"m",dn).call(this)})),o==(this.apxWing??0)&&l.classList.add("selected"),W.appendChild(l),window.ApexRarity&&window.ApexRarity.item("wing",l,o);'
+      + 'const q=new y.A(y.A.defaultPattern,y.A.defaultRims,y.A.defaultExhaust,2236962,2236962,1250067,6710886);q.wing=o,q.wingHex=15658734;const m=document.createElement("img");m.className="loading",kt.F(q,(0,i.gn)(this,hn,"f"),{position:new s.Pq0(-1e3,900,-1e3),look:new s.Pq0(0,.1,0),zoom:.6}).then((t=>{m.src=t,m.classList.remove("loading")})),l.appendChild(m),this.apxWingTiles.set(o,l)}'
+      + 'this.apxWingSelect=()=>{for(const[t,n]of this.apxWingTiles)t==(this.apxWing??0)?n.classList.add("selected"):n.classList.remove("selected")},this.apxWingScroll=()=>{const t=this.apxWingTiles.get(this.apxWing??0);null!=t&&(0,i.gn)(_t,_t,"m",wn).call(_t,W,t)}}'
+      + 'const f=[{title:n.get("Paint"),icon:"images/paint.svg",panel:h},',
+  },
+  {
+    name: 'Wing tab button',
+    find: '{title:n.get("Exhaust"),icon:"images/exhaust.svg",panel:(0,i.gn)(this,an,"f")}]',
+    replace: '{title:n.get("Exhaust"),icon:"images/exhaust.svg",panel:(0,i.gn)(this,an,"f")},{title:' + LIVERY + '?' + LIVERY + '.wingLabel():"Wing",icon:"images/wing.svg",panel:this.apxWingPanel}]',
+  },
+  {
+    name: 'Wing tab hidden with the others',
+    find: '(0,i.gn)(this,an,"f").classList.add("hidden"),e.classList.add("selected")',
+    replace: '(0,i.gn)(this,an,"f").classList.add("hidden"),this.apxWingPanel.classList.add("hidden"),e.classList.add("selected")',
+  },
+  {
+    name: 'Wing tab camera',
+    find: 'n.panel==(0,i.gn)(this,an,"f")&&((0,i.gn)(this,Yt,"m",vn).call(this),c(new s.Pq0(2.874291197536667,.9837316369014955,-.7283975369068978)))',
+    replace: 'n.panel==(0,i.gn)(this,an,"f")?((0,i.gn)(this,Yt,"m",vn).call(this),c(new s.Pq0(2.874291197536667,.9837316369014955,-.7283975369068978))):n.panel==this.apxWingPanel&&(this.apxWingScroll(),c(new s.Pq0(3.6,2.2,1.5)))',
+  },
+  // each pattern, rims, exhaust and wing shows its name and rarity, the rarest at the bottom (apex-rarity.js)
   {
     name: 'pattern rarities',
     find: '(0,i.gn)(this,nn,"f").appendChild(a);',

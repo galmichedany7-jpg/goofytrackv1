@@ -15,6 +15,34 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.17 : ailerons, statistiques et cadres de profil
+
+Huit ailerons à choisir au garage, un onglet de statistiques sur votre carte, des cadres pour votre profil et la Piste de la semaine choisie par GoofyTrack.
+
+**Garage**
+- Nouvel onglet **Aileron** : huit ailerons avant et arrière, chacun avec son nom et sa rareté. *Communs* : **Standard** et **Basse traînée**. *Rares* : **DRS ouvert** et **Haut appui**. *Très rare* : **Cuillère**. *Épique* : **Années 70**. *Légendaire* : **Biplan**. *Mythique* : **Mouette**.
+- **Couleur d'aileron** : un nouveau sélecteur sous Peinture. Tant que vous n'y touchez pas, les ailerons gardent le motif et la couleur principale. Le bouton **Auto** les y ramène.
+- **Nom de livrée** : le crayon d'une livrée lui donne un nom (« Monaco », « Pluie »…).
+
+**Profil**
+- Onglet **Stats** sur votre carte de profil. *Au volant* : distance, temps au volant, vitesses moyenne et max, arrivées. *Mode Course en multijoueur* : courses, victoires, podiums, place moyenne. *Pistes* : pistes officielles, circuits du mod, pistes perso. Et votre place au classement de chaque circuit du mod.
+- La carte de profil montre aussi la **distance parcourue** et les **courses gagnées**. Ces compteurs démarrent avec cette version et se cumulent sur tous vos PC.
+- **Cadre de profil** (dans Modifier le profil) : sept couleurs au choix, plus des cadres à gagner. **Bronze**, **Argent** et **Or** viennent avec un badge de podium P3, P2 ou P1. Les cadres **Créateur** et **VIP** sont réservés. Vos amis voient votre cadre.
+- **Meilleure place affichée** : si vous êtes premier sur plusieurs circuits, choisissez lequel montrer sur votre carte.
+
+**Compte**
+- **Sécurité** : changez votre mot de passe, et créez un **code de secours**. Avec ce code, un mot de passe oublié se remplace sans perdre votre sauvegarde. Sans lui, il est perdu : créez-le !
+- Julio passe au numéro **#7777** et Shyn au **#0001**. Vos listes d'amis suivent toutes seules.
+
+**Pistes**
+- Les pistes communautaires rejoignent les pistes officielles, rangées par environnement (Été, Hiver, Désert, Riviera). L'onglet Communauté disparaît : les tournois prendront sa place.
+- La **Piste de la semaine** est maintenant choisie par le serveur GoofyTrack parmi toutes les pistes officielles, circuits du mod compris. Elle s'affiche en haut de l'onglet officiel.
+
+**Interface**
+- Le bouton **Patch notes** passe à droite, au-dessus de Conditions et confidentialité.
+
+**Mise à jour** : `git pull` puis `node build.js` (ou `Mettre a jour GoofyTrack.bat`). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.17. Le serveur (Render) doit être redéployé : Piste de la semaine, code de secours, cadres, nouveaux numéros. Sur Render, retirez `RESERVED_IDS` et `CREATOR_IDS` s'ils sont définis, ou mettez-les à `julio:7777,shyn:1` et `7777,1`.
+
 ## V2.16 : 18 nouveaux designs et des badges
 
 Dix-huit nouveaux motifs, des raretés pour les jantes et les échappements, et un profil qui se modifie sans quitter l'accueil, avec des badges à côté de votre pseudo.

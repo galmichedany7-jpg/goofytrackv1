@@ -3,7 +3,8 @@
 //
 // The save is encrypted here, with a key derived from the password: the server only keeps an opaque blob,
 // and never sees the password, the PolyTrack tokens or anything else of the save. The other half of the
-// derived key logs in. A forgotten password cannot be reset: the online copy is lost, not the PCs' own.
+// derived key logs in. The key stays the first password's: a new password, or a recovery code made in the
+// account's Security, keeps it wrapped (wrapKey), so a forgotten password is replaced with the code.
 //
 // The save is a set of entries, one per profile (by token), record (by player, mode and track), custom
 // track (by name) and setting, each with the time it last changed; a deleted one stays as a null entry
@@ -27,13 +28,17 @@
 
   const SERVER = String(window.GOOFY_SERVER || 'https://goofytrack.onrender.com/');
   const MOD_TRACKS = Array.isArray(window.GOOFY_MOD_TRACKS) ? window.GOOFY_MOD_TRACKS : [];   // [{ id, name }]
+  // the official tracks: the game's own (build.js reads them from the game) and the mod's circuits
+  const OFFICIAL_TRACKS = [...(Array.isArray(window.GOOFY_GAME_TRACKS) ? window.GOOFY_GAME_TRACKS : []), ...MOD_TRACKS.map(t => t.id)];
   const ACCOUNT_KEY = 'goofytrack.account';
   const THUMB_KEY = 'goofytrack.profile.thumbnail';   // { style, url } the badge's last car, shown at once on the next start
   const META_KEY = 'goofytrack.account.times';        // entry id -> time it last changed on this PC (negative: deleted), logged in or not
   const GAME = 'polytrack_v5_prod_';
   const PROFILES = 3;                                  // the game's slots
   const SETTINGS = [GAME + 'settings', GAME + 'key_bindings', GAME + 'is_music_enabled', GAME + 'unlocked_car_styles',
-    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries', 'goofytrack.badges'];   // not the keyboard layout: one per PC
+    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries', 'goofytrack.badges', 'goofytrack.bestPlace', 'goofytrack.frame'];   // not the keyboard layout: one per PC
+  const STATS_PREFIX = 'goofytrack.stats.';           // + this PC's id: what it counted (synced: one entry per PC, summed)
+  const PC_KEY = 'goofytrack.pc';                     // this PC's id (not synced)
   const KDF_ROUNDS = 310000;
   const BOOT_WAIT = 8000;
   const PUSH_DELAY = 4000;
@@ -61,7 +66,7 @@
 
   // game key (+ its value) -> entry id, or null when the key is not synced
   function idOf(key, value) {
-    if (SETTINGS.includes(key)) return 's:' + key;
+    if (SETTINGS.includes(key) || key.startsWith(STATS_PREFIX)) return 's:' + key;
     if (!key.startsWith(GAME)) return null;
     const rest = key.slice(GAME.length);
     if (rest.startsWith('track_')) return 't:' + rest.slice(6);
@@ -218,6 +223,27 @@
     return save && save.entries && typeof save.entries === 'object' ? save.entries : {};
   }
 
+  // The key of the save never changes (the one of the first password): a new password or a recovery code keeps
+  // it "wrapped", encrypted with their own derived key (server/accounts.js). wrap: base64 of iv + sealed key.
+  async function wrapKey(wrapper, key) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await aesKey(wrapper), fromBase64(key)));
+    const out = new Uint8Array(12 + sealed.length);
+    out.set(iv);
+    out.set(sealed, 12);
+    return toBase64(out);
+  }
+  async function unwrapKey(wrapper, wrap) {
+    const bytes = fromBase64(wrap);
+    return toBase64(new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(0, 12) }, await aesKey(wrapper), bytes.subarray(12))));
+  }
+  // recovery code: 20 characters easy to copy (no 0/O, 1/I/L), in five groups, about 100 bits
+  const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const newRecoveryCode = () => Array.from(crypto.getRandomValues(new Uint8Array(20)), b => CODE_LETTERS[b % CODE_LETTERS.length])
+    .join('').replace(/(.{4})(?!$)/g, '$1-');
+  const codeText = text => String(text || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const recoveryKeys = (name, code) => deriveKeys(name, 'goofytrack-recovery:' + codeText(code));
+
   // ---------------------------------------------------------------- server
   class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
   async function call(method, path, body, session) {
@@ -311,9 +337,24 @@
     name = name.trim();
     const keys = await deriveKeys(name, password);
     const out = await call('POST', create ? '/account/register' : '/account/login', { name, auth: keys.auth });
-    const cloudEntries = create ? {} : await decrypt(out.blob, keys.key);   // a wrong key fails here, before anything changes
+    // the save's key: the password's own, or the one it wraps since the password changed
+    await enter(out, out.wrap ? await unwrapKey(keys.key, out.wrap) : keys.key, create);
+  }
+  // a forgotten password replaced with the recovery code: its wrap gives the save's key, wrapped then with the new
+  // password; the account's other PCs are logged out
+  async function recoverAccount(name, code, password) {
+    name = name.trim();
+    const rk = await recoveryKeys(name, code);
+    const { wrap } = await call('POST', '/account/recover', { name, recoveryAuth: rk.auth });
+    const key = await unwrapKey(rk.key, wrap);
+    const keys = await deriveKeys(name, password);
+    const out = await call('POST', '/account/reset', { name, recoveryAuth: rk.auth, auth: keys.auth, wrap: await wrapKey(keys.key, key) });
+    await enter(out, key, false);
+  }
+  async function enter(out, key, create) {
+    const cloudEntries = create ? {} : await decrypt(out.blob, key);   // a wrong key fails here, before anything changes
     if (!create) await dropEmptyProfiles(cloudEntries);
-    account = { name: out.name, id: out.id, verified: out.verified, session: out.session, key: keys.key };
+    account = { name: out.name, id: out.id, verified: out.verified, session: out.session, key, recovery: !!out.recovery };
     cloud = { version: out.version, entries: cloudEntries };
     saveAccount();
     booting = true;                // no "reload" notice: it reloads right after
@@ -348,14 +389,15 @@
       const s = p && await profileStats(p);
       const out = await call('POST', '/account/presence', {
         profile: p && { nickname: p.nickname, countryCode: p.countryCode, carStyle: p.carStyle, tokenHash: s.hash,
-          stats: { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom }, badges: pickedBadges() },
+          stats: { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom }, badges: pickedBadges(), bestTrack: get(BEST_KEY), frame: pickedFrame().id },
         state: homeReady() ? 'menu' : 'playing',
         room: window.ApexLobby ? window.ApexLobby.currentRoom() : null,
       }, acc.session);
       if (account !== acc) return;
       const badges = Array.isArray(out.badges) ? out.badges : acc.badges;   // an older server has none
-      if (acc.id !== out.id || acc.verified !== out.verified || JSON.stringify(acc.badges) !== JSON.stringify(badges)) {
-        acc.id = out.id; acc.verified = out.verified; acc.badges = badges; saveAccount();
+      const recovery = typeof out.recovery === 'boolean' ? out.recovery : acc.recovery;   // an older server does not say
+      if (acc.id !== out.id || acc.verified !== out.verified || JSON.stringify(acc.badges) !== JSON.stringify(badges) || acc.recovery !== recovery) {
+        acc.id = out.id; acc.verified = out.verified; acc.badges = badges; acc.recovery = recovery; saveAccount();
       }
       social = { requests: out.requests, online: out.online };
     } catch (e) {
@@ -523,7 +565,8 @@
     carThumbnail(style, own).then(url => { if (url && img.dataset.style === style) img.src = url; });
   };
 
-  // stats of a profile, from this PC's save: tracks with a record, the mod's circuits among them, custom tracks
+  // stats of a profile, from this PC's save: tracks with a record, the official ones (the game's and the mod's)
+  // and the mod's circuits among them, custom tracks; and what the mod counts as it is played (driven, races)
   async function profileStats(p) {
     const hash = await sha256(p.token), prefix = GAME + 'record_' + p.slot + '_', tracks = new Set();
     for (const key of Object.keys(storage)) {
@@ -532,24 +575,121 @@
     return {
       hash,
       tracks: tracks.size,
+      official: OFFICIAL_TRACKS.filter(id => tracks.has(id)).length,
       circuits: MOD_TRACKS.filter(t => tracks.has(t.id)),
       custom: Object.keys(storage).filter(k => k.startsWith(GAME + 'track_')).length,
+      ...countedStats(p.token, hash),
     };
   }
-  // best place on the mod's circuits, from the GoofyTrack server's boards: { position, name } or null
+
+  // ---------------------------------------------------------------- counted stats
+  // The game keeps no distance and no race results: the mod counts them (apex-hud.js: metres driven, apex-room.js:
+  // races of the race mode against others), per profile (token hash). Each PC writes its own entry and the card
+  // shows the sum, so two PCs on the same account never undo each other's counts (the save keeps the latest entry).
+  // Kept in memory while driving, written at most every minute, and when the run ends or the game is left.
+  // Every count adds up, but the top speed (MAX_STATS), the highest of them. places: the sum of the race places.
+  // timedMetres: the metres driven while the time was counted too (the average speed), the time came after the distance
+  const STATS_EVERY = 60000;
+  const zero = () => ({ metres: 0, timedMetres: 0, seconds: 0, topKmh: 0, finishes: 0, races: 0, wins: 0, podiums: 0, places: 0 });
+  const MAX_STATS = ['topKmh'];
+  const addStat = (t, k, n) => { t[k] = MAX_STATS.includes(k) ? Math.max(t[k], n) : t[k] + n; };
+  const pending = new Map();      // profile token -> counts not written yet
+  const hashes = new Map();       // profile token -> its hash, worked out ahead: the last write (game left) cannot wait
+  let statsTimer = null;
+  let live = null;                // the counts of the profile driving, until the next write (60 calls a second)
+  const pcId = () => {
+    let id = get(PC_KEY);
+    if (!/^[0-9a-f]{16}$/.test(id || '')) { id = hex(crypto.getRandomValues(new Uint8Array(8))); try { rawSet.call(storage, PC_KEY, id); } catch (e) { /* storage full */ } }
+    return id;
+  };
+  function counting() {
+    const p = currentProfile();
+    if (p == null) return null;
+    if (!hashes.has(p.token)) { hashes.set(p.token, null); sha256(p.token).then(hash => hashes.set(p.token, hash)); }
+    if (!pending.has(p.token)) {
+      pending.set(p.token, zero());
+      clearTimeout(statsTimer);
+      statsTimer = setTimeout(flushStats, STATS_EVERY);   // a minute after the first count since the last write
+    }
+    return (live = pending.get(p.token));
+  }
+  function flushStats() {
+    clearTimeout(statsTimer);
+    live = null;
+    const key = STATS_PREFIX + pcId(), all = readJson(key) || {};
+    let changed = false;
+    for (const [token, c] of pending) {
+      const hash = hashes.get(token);
+      if (hash == null) continue;        // in a moment
+      const t = { ...zero(), ...all[hash] };
+      for (const k of Object.keys(c)) addStat(t, k, c[k]);
+      t.metres = Math.round(t.metres);
+      t.timedMetres = Math.round(t.timedMetres);
+      t.seconds = Math.round(t.seconds * 10) / 10;   // written often (every run's end): whole seconds would drop the short ones
+      t.topKmh = Math.round(t.topKmh);
+      all[hash] = t;
+      pending.delete(token);
+      changed = true;
+    }
+    if (changed) try { storage.setItem(key, JSON.stringify(all)); } catch (e) { /* storage full */ }   // watched: synced
+    if (pending.size) statsTimer = setTimeout(flushStats, 1000);
+  }
+  // the profile's counts, from every PC, with what is not written yet
+  function countedStats(token, hash) {
+    const sum = zero();
+    for (const key of Object.keys(storage)) {
+      if (!key.startsWith(STATS_PREFIX)) continue;
+      const t = readJson(key)?.[hash];
+      if (t) for (const k of Object.keys(sum)) addStat(sum, k, Number(t[k]) || 0);
+    }
+    const c = pending.get(token);
+    if (c) for (const k of Object.keys(sum)) addStat(sum, k, c[k]);
+    return sum;
+  }
+  window.ApexStats = {
+    // a frame driven (apex-hud.js): metres, seconds of race time, speed
+    drive(metres, seconds = 0, kmh = 0) {
+      if (!(metres > 0 && metres < 1000)) return;
+      const c = live ?? counting();
+      if (c == null) return;
+      c.metres += metres;
+      if (seconds > 0 && seconds < 1) { c.seconds += seconds; c.timedMetres += metres; }
+      if (kmh < 2000 && kmh > c.topKmh) c.topKmh = kmh;
+    },
+    // a run that crossed the finish line, solo or online
+    finish() { const c = counting(); if (c) c.finishes++; },
+    race(place) {
+      const c = counting();
+      if (c == null) return;
+      c.races++;
+      c.places += place;
+      if (place === 1) c.wins++;
+      if (place <= 3) c.podiums++;
+      flushStats();
+    },
+    flush: flushStats,
+  };
+  window.addEventListener('pagehide', () => flushStats());
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushStats(); });
+  // places on the mod's circuits, from the GoofyTrack server's boards: [{ position, id, name }], best first
   const places = new Map();       // token hash -> { time, promise }
-  function bestPlace(hash, circuits) {
+  function boardPlaces(hash, circuits) {
     const known = places.get(hash);
     if (known && Date.now() - known.time < 120000) return known.promise;
     const promise = Promise.all(circuits.map(t =>
       fetch(`${SERVER}leaderboardUserEntry?trackId=${t.id}&userTokenHash=${hash}`)
         .then(res => (res.ok ? res.json() : null))
-        .then(e => (e && e.position > 0 ? { position: e.position, name: t.name } : null))
+        .then(e => (e && e.position > 0 ? { position: e.position, id: t.id, name: t.name } : null))
         .catch(() => null)))
-      .then(all => all.filter(Boolean).sort((a, b) => a.position - b.position)[0] || null);
+      .then(all => all.filter(Boolean).sort((a, b) => a.position - b.position));
     places.set(hash, { time: Date.now(), promise });
     return promise;
   }
+  // the best place shown: the circuit the player picked when they hold that place on several (BEST_KEY), else the first
+  const BEST_KEY = 'goofytrack.bestPlace';      // id of the circuit picked (synced)
+  const tiedBest = list => list.filter(e => e.position === list[0]?.position);
+  const shownPlace = list => tiedBest(list).find(e => e.id === get(BEST_KEY)) || list[0] || null;
+  const bestPlace = (hash, circuits) => boardPlaces(hash, circuits).then(shownPlace);
 
   // ---------------------------------------------------------------- interface
   let overlay = null, toast = null;
@@ -576,6 +716,7 @@
     overlay = null;
     viewing = null;
     editing = false;
+    securing = null;
     draft = null;
     clearTimeout(friendsTimer);
     removing = null;
@@ -666,6 +807,43 @@
       pill.title = info.label;
     }
   }
+  // ---------------------------------------------------------------- profile frame
+  // The ring around the car (home screen, cards, friends list): a colour anyone picks, or a frame won with a badge,
+  // shown while the badge is owned (server/accounts.js checks the same: FRAMES there). Others see it through the presence.
+  const FRAME_KEY = 'goofytrack.frame';       // id of the frame picked (synced)
+  const metal = (a, b, c) => `linear-gradient(160deg, ${a} 0%, ${b} 45%, ${c} 100%)`;
+  const FRAMES = [
+    { id: 'red', label: ['Rouge', 'Red'], ring: '#f20d16' },
+    { id: 'white', label: ['Blanc', 'White'], ring: '#f3f5f8' },
+    { id: 'orange', label: ['Orange', 'Orange'], ring: '#ff8a1f' },
+    { id: 'blue', label: ['Bleu', 'Blue'], ring: '#2f7bff' },
+    { id: 'green', label: ['Vert', 'Green'], ring: '#2ecc71' },
+    { id: 'purple', label: ['Violet', 'Purple'], ring: '#9b5cff' },
+    { id: 'pink', label: ['Rose', 'Pink'], ring: '#ff5fa8' },
+    // won: a podium on a circuit of the mod (bronze for any, silver for P2 or P1, gold for P1), the creators', the VIPs'
+    { id: 'bronze', label: ['Bronze', 'Bronze'], ring: metal('#f6cfa6', '#cd8540', '#8c4f1c'), needs: ['p1', 'p2', 'p3'],
+      hint: ['Gagné avec un badge de podium P1, P2 ou P3', 'Won with a P1, P2 or P3 podium badge'] },
+    { id: 'silver', label: ['Argent', 'Silver'], ring: metal('#ffffff', '#cdd3dc', '#8b95a3'), needs: ['p1', 'p2'],
+      hint: ['Gagné avec un badge P1 ou P2', 'Won with a P1 or P2 badge'] },
+    { id: 'gold', label: ['Or', 'Gold'], ring: metal('#ffe58a', '#f2c230', '#c48f0a'), needs: ['p1'], glow: 'gold',
+      hint: ['Gagné avec un badge P1', 'Won with a P1 badge'] },
+    { id: 'creator', label: ['Créateur', 'Creator'], ring: 'conic-gradient(from 200deg, #f5c518, #f20d16, #f5c518, #f20d16, #f5c518)', needs: ['creator'], glow: 'gold',
+      hint: ['Réservé aux co-créateurs de GoofyTrack', 'For the GoofyTrack co-creators'] },
+    { id: 'vip', label: ['VIP', 'VIP'], ring: metal('#6a3dff', '#b45cff', '#ff5fa8'), needs: ['vip'], glow: 'vip',
+      hint: ['Réservé aux VIP de GoofyTrack', 'For the GoofyTrack VIPs'] },
+  ];
+  const frameLabel = f => tr(f.label[0], f.label[1]);
+  const frameAllowed = (f, owned) => !f.needs || owned.some(b => f.needs.includes(String(b).split(':')[0]));
+  // the frame picked, if still allowed (else the default, red); another player's comes checked by the server
+  const pickedFrame = (id = get(FRAME_KEY)) => FRAMES.find(f => f.id === id && frameAllowed(f, ownedBadges())) || FRAMES[0];
+  const frameById = id => FRAMES.find(f => f.id === id) || FRAMES[0];
+  function paintFrame(img, f) {
+    img.style.setProperty('--apx-frame', f.ring.startsWith('#') ? `linear-gradient(${f.ring}, ${f.ring})` : f.ring);
+    img.classList.add('framed');
+    img.classList.toggle('glow-gold', f.glow === 'gold');
+    img.classList.toggle('glow-vip', f.glow === 'vip');
+  }
+
   // the account's state, in a few words: [text, kind]
   const accountState = () => (account == null ? [tr('Se connecter', 'Log in'), 'out']
     : syncing ? [tr('Synchronisation…', 'Syncing…'), 'busy']
@@ -704,6 +882,7 @@
     for (const badge of document.querySelectorAll('#ui .apex-profile')) {
       // the game's car models are ready once the home screen's buttons are shown
       if (p && homeReady()) showCar(badge.querySelector('.car'), p.carStyle);
+      paintFrame(badge.querySelector('.car'), pickedFrame());
       const name = badge.querySelector('.name');
       name.textContent = '';
       flag(name, p?.countryCode);
@@ -717,16 +896,87 @@
     }
   }
 
+  // ---------------------------------------------------------------- stats
+  // a grid's tiles: label, value and its unit
+  const statTile = grid => (label, value, sub) => {
+    const t = el(grid, 'div', 'stat');
+    el(t, 'div', 'label', label);
+    const v = el(t, 'div', 'value', value);
+    if (sub != null) el(v, 'span', 'sub', sub);
+    return t;
+  };
+  function fill(t, value, sub) {
+    const v = t.querySelector('.value');
+    v.textContent = value;
+    if (sub) el(v, 'span', 'sub', sub);
+  }
+  const number = (n, digits = n < 100 ? 1 : 0) => n.toLocaleString(french() ? 'fr-FR' : 'en-US', { maximumFractionDigits: digits });
+  const percent = (n, of) => (of > 0 ? Math.round(n / of * 100) + ' %' : null);
+  const duration = seconds => {
+    const m = Math.floor(seconds / 60), h = Math.floor(m / 60);
+    return h > 0 ? [String(h), 'h ' + String(m % 60).padStart(2, '0')] : [String(m), 'min'];
+  };
+
+  // The Stats tab of one's own card: everything the save and the counts know, in sections
+  function renderStats(body, p) {
+    const wait = el(body, 'p', 'hint', '…');
+    profileStats(p).then(s => {
+      if (!body.isConnected) return;
+      wait.remove();
+      const section = title => { el(body, 'h3', null, title); return statTile(el(body, 'div', 'stats')); };
+
+      let tile = section(tr('Au volant', 'Driving'));
+      tile(tr('Distance parcourue', 'Distance driven'), number(s.metres / 1000), 'km');
+      tile(tr('Temps au volant', 'Time driving'), ...duration(s.seconds));
+      tile(tr('Vitesse moyenne', 'Average speed'), s.seconds > 0 ? number(s.timedMetres / s.seconds * 3.6, 0) : '—', s.seconds > 0 ? 'km/h' : null);
+      tile(tr('Vitesse max', 'Top speed'), s.topKmh > 0 ? number(s.topKmh, 0) : '—', s.topKmh > 0 ? 'km/h' : null);
+      tile(tr('Arrivées', 'Finishes'), String(s.finishes)).title = tr('Passages de la ligne d\'arrivée, en solo comme en ligne', 'Finish line crossings, solo or online');
+
+      tile = section(tr('Mode Course en multijoueur', 'Multiplayer race mode'));
+      tile(tr('Courses terminées', 'Races finished'), String(s.races));
+      tile(tr('Victoires', 'Wins'), String(s.wins), percent(s.wins, s.races));
+      tile(tr('Podiums', 'Podiums'), String(s.podiums), percent(s.podiums, s.races));
+      tile(tr('Place moyenne', 'Average place'), s.races > 0 ? 'P' + number(s.places / s.races, 1) : '—');
+
+      tile = section(tr('Pistes', 'Tracks'));
+      tile(tr('Pistes officielles', 'Official tracks'), `${s.official} / ${OFFICIAL_TRACKS.length}`).title = tr('Bouclées au moins une fois, circuits du mod compris', 'Finished at least once, the mod\'s circuits included');
+      tile(tr('Circuits du mod', 'Mod circuits'), `${s.circuits.length} / ${MOD_TRACKS.length}`);
+      tile(tr('Pistes avec un record', 'Tracks with a record'), String(s.tracks));
+      tile(tr('Pistes perso', 'Custom tracks'), String(s.custom));
+
+      // the place on each circuit's online board, best first
+      el(body, 'h3', null, tr('Classements des circuits du mod', 'Mod circuit boards'));
+      const list = el(body, 'div', 'board-places');
+      if (!s.circuits.length) el(list, 'p', 'hint', tr('Bouclez un circuit du mod pour entrer dans son classement.', 'Finish a mod circuit to get on its board.'));
+      else {
+        el(list, 'p', 'hint', '…');
+        boardPlaces(s.hash, s.circuits).then(all => {
+          list.textContent = '';
+          if (!all.length) el(list, 'p', 'hint', tr('Classements injoignables pour l\'instant.', 'The boards cannot be reached right now.'));
+          for (const e of all) {
+            const row = el(list, 'div', 'board-place' + (e.position <= 3 ? ' p' + e.position : ''));
+            el(row, 'span', 'pos', 'P' + e.position);
+            el(row, 'span', 'name', e.name);
+          }
+        });
+      }
+      el(body, 'p', 'hint', tr('Distance, temps, vitesse et courses : comptés par GoofyTrack depuis la version 2.17, sur tous vos PC.',
+        'Distance, time, speed and races: counted by GoofyTrack since version 2.17, on all your PCs.'));
+    });
+  }
+
   // ---------------------------------------------------------------- profile card
   let mode = 'login', tab = 'profile';
   let viewing = null;            // another player's card, shown instead of the profile (a track's author)
   let editing = false;           // the profile editor, shown instead of the profile
+  let securing = null;           // the account's security (password, recovery code), shown instead: { code } just made
   function render() {
     if (overlay == null) return;
     const panel = overlay.querySelector('.panel');
     panel.textContent = '';
     if (viewing) return renderPlayer(panel, viewing);
     if (editing) return renderEditor(panel);
+    if (securing) return renderSecurity(panel);
     overlay.dataset.view = account != null ? 'account' : 'login';
     const p = currentProfile();
 
@@ -735,6 +985,7 @@
     car.src = 'images/car_thumbnail_placeholder.png';
     car.draggable = false;
     if (p) showCar(car, p.carStyle);
+    paintFrame(car, pickedFrame());
     const who = el(header, 'div', 'who');
     const title = el(who, 'h2');
     el(title, 'span', null, p ? p.nickname : tr('Profil', 'Profile'));
@@ -755,7 +1006,8 @@
     closeButton.addEventListener('click', close);
 
     const tabs = el(panel, 'div', 'card-tabs');
-    for (const [t, label] of [['profile', tr('Profil', 'Profile')], ['friends', tr('Amis', 'Friends')]]) {
+    if (tab === 'stats' && !p) tab = 'profile';
+    for (const [t, label] of [['profile', tr('Profil', 'Profile')], ...(p ? [['stats', tr('Stats', 'Stats')]] : []), ['friends', tr('Amis', 'Friends')]]) {
       const button = el(tabs, 'button', t === tab ? 'active' : null, label);
       if (t === 'friends' && account && social.requests > 0) el(button, 'span', 'count', String(social.requests));
       button.addEventListener('click', () => { tab = t; render(); });
@@ -763,42 +1015,29 @@
 
     const body = el(panel, 'div', 'body');
     if (tab === 'friends') return renderFriends(body);
+    if (tab === 'stats') return renderStats(body, p);
     if (p) {
-      const grid = el(body, 'div', 'stats');
-      const tile = (label, value, sub) => {
-        const t = el(grid, 'div', 'stat');
-        el(t, 'div', 'label', label);
-        const v = el(t, 'div', 'value', value);
-        if (sub != null) el(v, 'span', 'sub', sub);
-        return t;
-      };
+      const tile = statTile(el(body, 'div', 'stats'));
       const tiles = {
-        tracks: tile(tr('Pistes bouclées', 'Tracks finished'), '…'),
-        circuits: tile(tr('Circuits du mod', 'Mod circuits'), '…'),
         place: tile(tr('Meilleure place', 'Best place'), '…'),
-        custom: tile(tr('Pistes perso', 'Custom tracks'), '…'),
-      };
-      const fill = (t, value, sub) => {
-        const v = t.querySelector('.value');
-        v.textContent = value;
-        if (sub) el(v, 'span', 'sub', sub);
+        official: tile(tr('Pistes officielles', 'Official tracks'), '…'),
+        distance: tile(tr('Distance parcourue', 'Distance driven'), '…'),
+        wins: tile(tr('Courses gagnées', 'Races won'), '…'),
       };
       profileStats(p).then(s => {
-        fill(tiles.tracks, String(s.tracks));
-        fill(tiles.circuits, `${s.circuits.length} / ${MOD_TRACKS.length}`);
-        fill(tiles.custom, String(s.custom));
+        fill(tiles.official, `${s.official} / ${OFFICIAL_TRACKS.length}`);
+        tiles.official.title = tr('Pistes officielles bouclées au moins une fois, circuits du mod compris', 'Official tracks finished at least once, the mod\'s circuits included');
+        fill(tiles.distance, number(s.metres / 1000), 'km');
+        tiles.distance.title = tr('Comptée depuis la version 2.17, sur tous vos PC', 'Counted since version 2.17, on all your PCs');
+        fill(tiles.wins, String(s.wins));
+        tiles.wins.title = tr(`Mode Course en multijoueur : ${s.races} course${s.races > 1 ? 's' : ''} terminée${s.races > 1 ? 's' : ''} contre d'autres joueurs`,
+          `Race mode in multiplayer: ${s.races} race${s.races === 1 ? '' : 's'} finished against other players`);
         tiles.place.title = tr('Sur les classements en ligne des circuits du mod', 'On the online boards of the mod\'s circuits');
         if (!s.circuits.length) return fill(tiles.place, '—');
         bestPlace(s.hash, s.circuits).then(best => fill(tiles.place, best ? 'P' + best.position : '—', best ? best.name : null));
       });
     }
     madeList(body, account?.name);
-
-    const garage = () => {
-      const button = document.querySelector('#ui .menu-ui > .main-buttons-container > .button-image');   // the first one
-      close();
-      button?.click();
-    };
 
     if (account != null) {
       const [state, kind] = accountState();
@@ -808,11 +1047,14 @@
       const row = el(body, 'div', 'row');
       el(row, 'button', null, tr('Modifier le profil', 'Edit profile')).addEventListener('click', editProfile);
       el(row, 'button', null, tr('Changer de profil', 'Switch profile')).addEventListener('click', switchProfile);
-      el(row, 'button', null, 'Garage').addEventListener('click', garage);
       const now = el(row, 'button', null, tr('Synchroniser', 'Sync now'));
       now.disabled = !!syncing;
       now.addEventListener('click', () => { sync().catch(() => {}); render(); });
+      const security = el(row, 'button', account.recovery ? null : 'warn', tr('Sécurité', 'Security'));
+      security.addEventListener('click', () => { securing = {}; render(); });
       el(row, 'button', null, tr('Se déconnecter', 'Log out')).addEventListener('click', () => logOut().then(render));
+      if (!account.recovery) el(body, 'p', 'hint warn', tr('Pas encore de code de secours : sans lui, un mot de passe oublié ne se remplace pas. Créez-le dans Sécurité.',
+        'No recovery code yet: without it, a forgotten password cannot be replaced. Make one in Security.'));
       el(body, 'p', 'hint', tr('Profils, records et fantômes, pistes perso et réglages suivent ce compte sur chaque PC où vous vous connectez. Se déconnecter garde tout sur ce PC.',
         'Profiles, records and ghosts, custom tracks and settings follow this account on every PC you log in on. Logging out keeps everything on this PC.'));
       return;
@@ -821,7 +1063,6 @@
     const row = el(body, 'div', 'row');
     el(row, 'button', null, tr('Modifier le profil', 'Edit profile')).addEventListener('click', editProfile);
     el(row, 'button', null, tr('Changer de profil', 'Switch profile')).addEventListener('click', switchProfile);
-    el(row, 'button', null, 'Garage').addEventListener('click', garage);
     el(body, 'h3', null, tr('Compte GoofyTrack', 'GoofyTrack account'));
     el(body, 'p', 'hint', tr('Connectez-vous pour retrouver vos profils, records, pistes perso et réglages sur tous vos PC.',
       'Log in to find your profiles, records, custom tracks and settings on all your PCs.'));
@@ -830,6 +1071,7 @@
       const button = el(modes, 'button', m === mode ? 'active' : null, label);
       button.addEventListener('click', () => { mode = m; render(); });
     }
+    if (mode === 'recover') return renderRecover(body);
     const form = el(body, 'form');
     const field = (label, type, autocomplete) => {
       const l = el(form, 'label', null, label);
@@ -842,13 +1084,18 @@
     const password = field(tr('Mot de passe', 'Password'), 'password', mode === 'create' ? 'new-password' : 'current-password');
     const confirm = mode === 'create' ? field(tr('Confirmer le mot de passe', 'Confirm password'), 'password', 'new-password') : null;
     el(form, 'p', 'hint', mode === 'create'
-      ? tr('3 à 20 lettres, chiffres, - _ ou point. La sauvegarde est chiffrée avec votre mot de passe : s\'il est oublié, la copie en ligne est perdue (pas celle de vos PC).',
-        '3 to 20 letters, digits, - _ or dot. The save is encrypted with your password: if it is forgotten, the online copy is lost (not the one on your PCs).')
+      ? tr('3 à 20 lettres, chiffres, - _ ou point. La sauvegarde est chiffrée avec votre mot de passe : créez ensuite un code de secours (Sécurité) pour pouvoir le remplacer si vous l\'oubliez.',
+        '3 to 20 letters, digits, - _ or dot. The save is encrypted with your password: then make a recovery code (Security) to replace it if you forget it.')
       : tr('Vos records, profils, pistes perso et réglages de ce PC sont fusionnés avec ceux du compte : rien n\'est perdu.',
         'This PC\'s records, profiles, custom tracks and settings are merged with the account\'s: nothing is lost.'));
     const status = el(form, 'p', 'state');
     const submit = el(form, 'button', 'primary', mode === 'create' ? tr('Créer le compte', 'Create account') : tr('Se connecter', 'Log in'));
     submit.type = 'submit';
+    if (mode === 'login') {
+      const forgot = el(form, 'button', 'link', tr('Mot de passe oublié ?', 'Forgot your password?'));
+      forgot.type = 'button';
+      forgot.addEventListener('click', () => { mode = 'recover'; render(); });
+    }
     form.addEventListener('submit', event => {
       event.preventDefault();
       status.classList.remove('error');
@@ -862,6 +1109,114 @@
         status.classList.add('error');
         status.textContent = e.message;
       });
+    });
+  }
+
+  // a form of the account's views: its fields (label, type, autocomplete), a status line and its button
+  function smallForm(parent, fields, label) {
+    const form = el(parent, 'form');
+    const inputs = fields.map(([text, type, autocomplete]) => {
+      const l = el(form, 'label', null, text);
+      const input = el(l, 'input');
+      Object.assign(input, { type, autocomplete, spellcheck: false, required: true });
+      return input;
+    });
+    const status = el(form, 'p', 'state');
+    const submit = el(form, 'button', 'primary', label);
+    submit.type = 'submit';
+    const fail = text => { submit.disabled = false; status.className = 'state error'; status.textContent = text; };
+    const busy = text => { submit.disabled = true; status.className = 'state'; status.textContent = text; };
+    return { form, inputs, status, submit, fail, busy };
+  }
+  const newPasswordProblem = (password, confirm) => (password.length < 8 ? tr('Mot de passe : 8 caractères au moins.', 'Password: 8 characters at least.')
+    : password !== confirm ? tr('Les mots de passe ne correspondent pas.', 'The passwords do not match.') : null);
+
+  // login screen: a forgotten password, replaced with the recovery code
+  function renderRecover(body) {
+    el(body, 'p', 'hint', tr('Entrez le code de secours créé dans Sécurité, puis un nouveau mot de passe. Les autres PC du compte seront déconnectés.',
+      'Enter the recovery code made in Security, then a new password. The account\'s other PCs will be logged out.'));
+    const f = smallForm(body, [[tr('Pseudo', 'Name'), 'text', 'username'], [tr('Code de secours', 'Recovery code'), 'text', 'off'],
+      [tr('Nouveau mot de passe', 'New password'), 'password', 'new-password'], [tr('Confirmer le mot de passe', 'Confirm password'), 'password', 'new-password']],
+    tr('Remplacer le mot de passe', 'Replace the password'));
+    const [name, code, password, confirm] = f.inputs;
+    name.maxLength = 20;
+    code.placeholder = 'XXXX-XXXX-XXXX-XXXX-XXXX';
+    const back = el(f.form, 'button', 'link', tr('Retour à la connexion', 'Back to login'));
+    back.type = 'button';
+    back.addEventListener('click', () => { mode = 'login'; render(); });
+    f.form.addEventListener('submit', event => {
+      event.preventDefault();
+      if (codeText(code.value).length !== 20) return f.fail(tr('Le code de secours a 20 lettres et chiffres.', 'The recovery code has 20 letters and digits.'));
+      const problem = newPasswordProblem(password.value, confirm.value);
+      if (problem) return f.fail(problem);
+      f.busy(tr('Vérification… (le serveur peut mettre 30 s à se réveiller)', 'Checking… (the server can take 30 s to wake up)'));
+      recoverAccount(name.value, code.value, password.value).catch(e => f.fail(e.status === 403 ? tr('Pseudo ou code de secours incorrect.', 'Wrong name or recovery code.') : e.message));
+    });
+  }
+
+  // the account's security: its recovery code (made here, shown once) and its password
+  function renderSecurity(panel) {
+    overlay.dataset.view = 'security';
+    const back = () => { securing = null; render(); };
+    const header = el(panel, 'div', 'header');
+    const who = el(header, 'div', 'who');
+    el(who, 'h2', null, tr('Sécurité du compte', 'Account security'));
+    el(who, 'div', 'country', account.name);
+    const x = el(header, 'button', 'close', '✕');
+    x.title = tr('Retour', 'Back');
+    x.addEventListener('click', back);
+    const body = el(panel, 'div', 'body');
+
+    el(body, 'h3', null, tr('Code de secours', 'Recovery code'));
+    if (securing.code) {
+      el(body, 'p', 'hint', tr('Notez ce code maintenant et gardez-le à l\'abri : il ne sera plus affiché. Avec votre pseudo, il permet de remplacer un mot de passe oublié.',
+        'Write this code down now and keep it safe: it will not be shown again. With your name, it replaces a forgotten password.'));
+      const box = el(body, 'div', 'recovery-code', securing.code);
+      box.title = tr('Cliquez pour copier', 'Click to copy');
+      const row = el(body, 'div', 'row');
+      const copyButton = el(row, 'button', null, tr('Copier', 'Copy'));
+      const copied = el(row, 'span', 'hint');
+      const copy = () => navigator.clipboard?.writeText(securing.code).then(() => { copied.textContent = tr('Copié !', 'Copied!'); }).catch(() => {});
+      box.addEventListener('click', copy);
+      copyButton.addEventListener('click', copy);
+    } else {
+      el(body, 'p', 'hint', account.recovery
+        ? tr('Un code de secours est enregistré. En créer un nouveau remplace l\'ancien, qui ne marchera plus.', 'A recovery code is set. Making a new one replaces the old one, which stops working.')
+        : tr('Aucun code de secours : si vous oubliez votre mot de passe, la copie en ligne de votre sauvegarde est perdue.', 'No recovery code: if you forget your password, the online copy of your save is lost.'));
+      const status = el(body, 'p', 'state');
+      const make = el(el(body, 'div', 'row'), 'button', account.recovery ? null : 'primary', account.recovery ? tr('Remplacer le code', 'Replace the code') : tr('Créer un code de secours', 'Make a recovery code'));
+      make.addEventListener('click', async () => {
+        make.disabled = true;
+        status.className = 'state';
+        status.textContent = tr('Création…', 'Making it…');
+        try {
+          const code = newRecoveryCode(), acc = account, rk = await recoveryKeys(acc.name, code);
+          await call('POST', '/account/recovery', { recoveryAuth: rk.auth, wrap: await wrapKey(rk.key, acc.key) }, acc.session);
+          acc.recovery = true;
+          saveAccount();
+          if (securing) { securing.code = code; render(); }
+        } catch (e) { make.disabled = false; status.className = 'state error'; status.textContent = e.message; }
+      });
+    }
+
+    el(body, 'h3', null, tr('Changer le mot de passe', 'Change the password'));
+    const f = smallForm(body, [[tr('Mot de passe actuel', 'Current password'), 'password', 'current-password'],
+      [tr('Nouveau mot de passe', 'New password'), 'password', 'new-password'], [tr('Confirmer le mot de passe', 'Confirm password'), 'password', 'new-password']],
+    tr('Changer le mot de passe', 'Change the password'));
+    const [current, password, confirm] = f.inputs;
+    f.form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const problem = newPasswordProblem(password.value, confirm.value);
+      if (problem) return f.fail(problem);
+      f.busy(tr('Changement…', 'Changing…'));
+      try {
+        const acc = account, now = await deriveKeys(acc.name, current.value), next = await deriveKeys(acc.name, password.value);
+        await call('POST', '/account/password', { auth: now.auth, newAuth: next.auth, wrap: await wrapKey(next.key, acc.key) }, acc.session);
+        f.form.reset();
+        f.submit.disabled = false;
+        f.status.className = 'state';
+        f.status.textContent = tr('Mot de passe changé. Vos autres PC restent connectés.', 'Password changed. Your other PCs stay logged in.');
+      } catch (e) { f.fail(e.status === 403 ? tr('Mot de passe actuel incorrect.', 'Wrong current password.') : e.message); }
     });
   }
 
@@ -891,7 +1246,7 @@
   // (window.GoofyGame, patch_bundle.js) and on to the PolyTrack server, as the game's own window would send
   // them: otherwise the server's older copy would come back at the next start.
   const COUNTRIES = 5569;        // webpack id of the game's country list (PolyTrack 0.6.3)
-  let draft = null;              // { nickname, countryCode, badges, search } being edited
+  let draft = null;              // { nickname, countryCode, badges, search, flagScroll, bodyScroll } being edited
   const norm = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   function countryList() {
     try { return gameModule(COUNTRIES).O().map(c => ({ code: c.code, name: c.name, local: countryName(c.code) })).sort((a, b) => a.local.localeCompare(b.local)); }
@@ -900,7 +1255,7 @@
   function renderEditor(panel) {
     const p = currentProfile();
     const first = draft == null;
-    draft ??= { nickname: p?.nickname || '', countryCode: p?.countryCode || null, badges: pickedBadges(), search: '' };
+    draft ??= { nickname: p?.nickname || '', countryCode: p?.countryCode || null, badges: pickedBadges(), bestTrack: get(BEST_KEY), frame: pickedFrame().id, search: '' };
     const back = () => { editing = false; draft = null; render(); };
 
     const header = el(panel, 'div', 'header');
@@ -908,6 +1263,7 @@
     car.src = 'images/car_thumbnail_placeholder.png';
     car.draggable = false;
     if (p) showCar(car, p.carStyle);
+    paintFrame(car, pickedFrame(draft.frame));     // the frame being picked, below
     const who = el(header, 'div', 'who');
     el(who, 'h2', null, tr('Modifier le profil', 'Edit profile'));
     el(who, 'div', 'country', tr('Pseudo, drapeau et badges', 'Name, flag and badges'));
@@ -943,26 +1299,75 @@
     };
     search.addEventListener('input', () => { draft.search = search.value; fill(); });
     fill();
-    // the flag picked in view, inside the list only (not the whole panel)
-    if (first) requestAnimationFrame(() => { const picked = grid.querySelector('.selected'); if (picked) grid.scrollTop = picked.offsetTop - grid.clientHeight / 2 + picked.offsetHeight / 2; });
+    // the flag picked in view, inside the list only (not the whole panel); then where the player left it, as the
+    // panel is drawn again (presence, sync)
+    const picked = grid.querySelector('.selected');
+    if (draft.flagScroll != null) grid.scrollTop = draft.flagScroll;
+    else if (picked) grid.scrollTop = picked.offsetTop - grid.clientHeight / 2 + picked.offsetHeight / 2;
+    const kept = draft;          // still there once the editor is closed (draft = null), as the list scrolls one last time
+    grid.addEventListener('scroll', () => { kept.flagScroll = grid.scrollTop; });
 
-    el(body, 'h3', null, tr('Badges', 'Badges') + ' · ' + draft.badges.length + ' / ' + MAX_BADGES);
+    const badgesTitle = el(body, 'h3');
     const owned = ownedBadges();
     if (account == null) el(body, 'p', 'hint', tr('Connectez-vous à un compte GoofyTrack pour gagner des badges.', 'Log in to a GoofyTrack account to earn badges.'));
     else if (!owned.length) el(body, 'p', 'hint', tr('Pas encore de badge : montez sur le podium d\'un circuit du mod pour gagner son badge P1, P2 ou P3.', 'No badge yet: make the podium on a mod circuit to earn its P1, P2 or P3 badge.'));
-    else {
-      const list = el(body, 'div', 'badge-list');
+    // redrawn in place, not with the whole panel: the flag list keeps its scroll and the flag picked in view
+    const list = owned.length ? el(body, 'div', 'badge-list') : null;
+    const fillBadges = () => {
+      badgesTitle.textContent = tr('Badges', 'Badges') + ' · ' + draft.badges.length + ' / ' + MAX_BADGES;
+      if (list == null) return;
+      list.textContent = '';
       for (const id of owned) {
         const on = draft.badges.includes(id);
         const b = el(list, 'button', 'badge-option' + (on ? ' selected' : ''));
         badgeMarks(b, [id]);
         el(b, 'span', 'label', badgeInfo(id)?.label || id);
         b.disabled = !on && draft.badges.length >= MAX_BADGES;
-        b.addEventListener('click', () => { draft.badges = on ? draft.badges.filter(other => other !== id) : [...draft.badges, id]; render(); });
+        b.addEventListener('click', () => { draft.badges = on ? draft.badges.filter(other => other !== id) : [...draft.badges, id]; fillBadges(); });
       }
-      el(body, 'p', 'hint', tr('Deux au plus, à côté de votre pseudo. Un badge P1, P2 ou P3 dure tant que vous gardez votre place sur le podium.',
-        'Two at most, next to your name. A P1, P2 or P3 badge lasts as long as you keep your place on the podium.'));
-    }
+    };
+    fillBadges();
+    if (list) el(body, 'p', 'hint', tr('Deux au plus, à côté de votre pseudo. Un badge P1, P2 ou P3 dure tant que vous gardez votre place sur le podium.',
+      'Two at most, next to your name. A P1, P2 or P3 badge lasts as long as you keep your place on the podium.'));
+
+    // the frame: the colours for everyone, the frames won while their badge is owned (locked otherwise, with how to win them)
+    const frameTitle = el(body, 'h3', null, tr('Cadre', 'Frame'));
+    const framePicked = el(frameTitle, 'span', 'picked');
+    const frames = el(body, 'div', 'frame-list');
+    const fillFrames = () => {
+      framePicked.textContent = ' · ' + frameLabel(pickedFrame(draft.frame));
+      frames.textContent = '';
+      for (const f of FRAMES) {
+        const allowed = frameAllowed(f, owned);
+        const b = el(frames, 'button', 'frame-option' + (f.id === pickedFrame(draft.frame).id ? ' selected' : '') + (allowed ? '' : ' locked'));
+        b.style.setProperty('--apx-frame', f.ring.startsWith('#') ? `linear-gradient(${f.ring}, ${f.ring})` : f.ring);
+        b.title = frameLabel(f) + (f.hint ? ' · ' + tr(f.hint[0], f.hint[1]) : '');
+        b.disabled = !allowed;
+        b.addEventListener('click', () => { draft.frame = f.id; fillFrames(); paintFrame(car, pickedFrame(draft.frame)); });
+      }
+    };
+    fillFrames();
+
+    // the best place shown on the card, when the player holds it on several circuits (the boards come a moment later)
+    const placeBox = el(body, 'div');
+    if (p) profileStats(p).then(s => boardPlaces(s.hash, s.circuits)).then(all => {
+      const tied = tiedBest(all);
+      if (tied.length < 2 || !placeBox.isConnected) return;
+      el(placeBox, 'h3', null, tr('Meilleure place affichée', 'Best place shown'));
+      const options = el(placeBox, 'div', 'badge-list');
+      const fillPlaces = () => {
+        options.textContent = '';
+        const picked = tied.find(e => e.id === draft.bestTrack) || tied[0];
+        for (const e of tied) {
+          const b = el(options, 'button', 'badge-option' + (e === picked ? ' selected' : ''));
+          el(b, 'span', 'label', 'P' + e.position + tr(' sur ', ' at ') + e.name);
+          b.addEventListener('click', () => { draft.bestTrack = e.id; fillPlaces(); });
+        }
+      };
+      fillPlaces();
+      el(placeBox, 'p', 'hint', tr('Vous tenez cette place sur plusieurs circuits : choisissez celui que votre profil montre.',
+        'You hold this place on several circuits: pick the one your profile shows.'));
+    });
 
     const status = el(body, 'p', 'state');
     const actions = el(body, 'div', 'actions');
@@ -971,22 +1376,31 @@
     save.addEventListener('click', () => {
       const nickname = draft.nickname.trim() || 'Anonymous';
       if (new TextEncoder().encode(nickname).length >= 50) { status.className = 'state error'; status.textContent = tr('Pseudo trop long.', 'Name too long.'); return; }
-      saveProfile(nickname, draft.countryCode, draft.badges);
+      saveProfile(nickname, draft.countryCode, draft.badges, draft.bestTrack, draft.frame);
       back();
     });
+    if (draft.bodyScroll != null) body.scrollTop = draft.bodyScroll;
+    body.addEventListener('scroll', () => { kept.bodyScroll = body.scrollTop; });
     if (first) name.focus();
   }
 
-  function saveProfile(nickname, countryCode, badges) {
-    const game = window.GoofyGame;
-    const before = game.profiles.getCurrentUserProfile();
-    if (before.nickname !== nickname || before.countryCode !== countryCode) {
-      game.profiles.setNickname(nickname);
-      game.profiles.setCountryCode(countryCode);
-      const p = game.profiles.getCurrentUserProfile();
-      game.api?.submitUserProfile(p.token, p.nickname, p.countryCode, p.carStyle).catch(e => console.warn('GoofyTrack profile: PolyTrack server', e));
-    }
-    try { storage.setItem(BADGES_KEY, JSON.stringify(badges)); } catch (e) { /* storage full */ }   // watched: synced
+  function saveProfile(nickname, countryCode, badges, bestTrack, frame) {
+    // the badges first: a game that fails on the name or flag must not lose them
+    try {
+      storage.setItem(BADGES_KEY, JSON.stringify(badges));      // watched: synced
+      if (bestTrack && bestTrack !== get(BEST_KEY)) storage.setItem(BEST_KEY, bestTrack);
+      if (frame && frame !== get(FRAME_KEY)) storage.setItem(FRAME_KEY, frame);
+    } catch (e) { /* storage full */ }
+    try {
+      const game = window.GoofyGame;
+      const before = game.profiles.getCurrentUserProfile();
+      if (before.nickname !== nickname || before.countryCode !== countryCode) {
+        game.profiles.setNickname(nickname);
+        game.profiles.setCountryCode(countryCode);
+        const p = game.profiles.getCurrentUserProfile();
+        Promise.resolve(game.api?.submitUserProfile(p.token, p.nickname, p.countryCode, p.carStyle)).catch(e => console.warn('GoofyTrack profile: PolyTrack server', e));
+      }
+    } catch (e) { console.warn('GoofyTrack profile: name and flag', e); }
     scheduleBadge();
     sendPresence();      // friends see the new name, flag and badges at once
   }
@@ -998,6 +1412,7 @@
     car.src = 'images/car_thumbnail_placeholder.png';
     car.draggable = false;
     if (v.carStyle) showCar(car, v.carStyle, false);
+    paintFrame(car, v.self ? pickedFrame() : frameById(v.frame));
     const who = el(header, 'div', 'who');
     const title = el(who, 'h2');
     el(title, 'span', null, v.nickname);
@@ -1134,6 +1549,7 @@
     car.src = 'images/car_thumbnail_placeholder.png';
     car.draggable = false;
     if (f.carStyle && homeReady()) showCar(car, f.carStyle, false);
+    if (f.frame && f.frame !== FRAMES[0].id) paintFrame(car, frameById(f.frame));   // the friends list rings only a frame picked
     const text = el(row, 'div', 'text');
     const name = el(text, 'div', 'name');
     flag(name, f.countryCode);
@@ -1187,6 +1603,32 @@
   flex: none; width: 56px; height: 56px; border-radius: 50%; object-fit: cover;
   background: radial-gradient(circle at 50% 45%, #4a5266, #1c2029 75%); box-shadow: 0 0 0 2px var(--apx-accent, #f20d16);
 }
+/* the frame picked (paintFrame): a ring drawn by the border, which takes gradients */
+#ui .apex-profile img.car.framed, #ui .apex-account img.car.framed {
+  margin: -2px; border: 2px solid transparent; box-shadow: none;
+  background: radial-gradient(circle at 50% 45%, #4a5266, #1c2029 75%) padding-box, var(--apx-frame) border-box;
+}
+#ui .apex-profile img.car.glow-gold, #ui .apex-account img.car.glow-gold { box-shadow: 0 0 10px rgba(242, 194, 48, 0.55); }
+#ui .apex-profile img.car.glow-vip, #ui .apex-account img.car.glow-vip { animation: apx-frame-vip 2.8s ease-in-out infinite; }
+@keyframes apx-frame-vip { 0%, 100% { box-shadow: 0 0 6px rgba(180, 92, 255, 0.55); } 50% { box-shadow: 0 0 14px rgba(255, 95, 168, 0.85); } }
+@media (prefers-reduced-motion: reduce) { #ui .car.glow-vip { animation: none; box-shadow: 0 0 8px rgba(180, 92, 255, 0.6); } }
+#ui .apex-account button.warn { box-shadow: inset 0 0 0 1px var(--apx-warn, #f5a524); }
+#ui .apex-account .hint.warn { color: var(--apx-warn, #f5a524); }
+#ui .apex-account button.link { align-self: flex-start; padding: 2px 0; background: none; font-size: 13px; text-decoration: underline; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); }
+#ui .apex-account button.link:hover:not(:disabled) { background: none; color: var(--apx-fg, #f3f5f8); }
+#ui .apex-account .recovery-code {
+  margin: 4px 0 10px 0; padding: 14px; border-radius: var(--apx-r-md, 12px); text-align: center; cursor: copy; user-select: all;
+  font-family: ui-monospace, Consolas, monospace; font-size: 20px; font-weight: 700; letter-spacing: 0.08em;
+  background-color: var(--apx-fill, rgba(255, 255, 255, 0.055)); box-shadow: inset 0 0 0 1px var(--apx-line, rgba(255, 255, 255, 0.09));
+}
+#ui .apex-account .frame-list { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+#ui .apex-account .frame-option {
+  width: 38px; height: 38px; padding: 0; border-radius: 50%; border: 4px solid transparent;
+  background: linear-gradient(#1c2029, #1c2029) padding-box, var(--apx-frame) border-box;   /* a plain colour is only allowed in the last layer */
+}
+#ui .apex-account .frame-option:hover:not(:disabled) { background: linear-gradient(#2a3040, #2a3040) padding-box, var(--apx-frame) border-box; }
+#ui .apex-account .frame-option.selected { outline: 2px solid var(--apx-fg, #f3f5f8); outline-offset: 3px; }
+#ui .apex-account button.frame-option.locked { opacity: 0.3; cursor: not-allowed; }
 #ui .apex-profile .text { min-width: 0; }
 #ui .apex-profile .name { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
 #ui .apex-profile .name > span { overflow: hidden; text-overflow: ellipsis; }
@@ -1221,6 +1663,12 @@
 #ui .apex-account .stat .label { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); }
 #ui .apex-account .stat .value { margin-top: 2px; font-size: 22px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #ui .apex-account .stat .sub { margin-left: 8px; font-size: 13px; font-weight: 400; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); }
+#ui .apex-account .board-places { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+#ui .apex-account .board-place { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--apx-r-md, 12px); background-color: var(--apx-fill, rgba(255, 255, 255, 0.055)); }
+#ui .apex-account .board-place .pos { min-width: 44px; font-weight: 700; }
+#ui .apex-account .board-place.p1 .pos { color: #f2c230; }
+#ui .apex-account .board-place.p2 .pos { color: #cdd3dc; }
+#ui .apex-account .board-place.p3 .pos { color: #cd8540; }
 #ui .apex-account button {
   padding: 9px 16px; border: none; border-radius: var(--apx-r-pill, 999px); cursor: pointer; font: inherit; font-size: 14px;
   color: var(--apx-fg, #f3f5f8); background-color: var(--apx-fill, rgba(255, 255, 255, 0.055));

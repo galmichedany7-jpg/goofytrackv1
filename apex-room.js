@@ -675,6 +675,12 @@
 
   function renderHud(now) {
     if (race == null || run == null) { setHud(''); return; }
+    // the profile card counts the races finished against others, the wins and the podiums (apex-account.js);
+    // the last car in may only learn its place with the results
+    if ((race.phase === 'race' || race.phase === 'results') && run.finished && !run.counted && race.grid != null && race.grid.length >= 2) {
+      const position = race.results.findIndex(r => r.id === selfId);
+      if (position >= 0) { run.counted = true; window.ApexStats?.race(position + 1); }
+    }
     if (race.phase === 'quali') setHud(T.qualiHud, run.best != null ? T.best + '  ' + formatTime(run.best) : null);
     else if (race.phase === 'formation') setHud(T.formationHud, run.sentDone ? T.waitGrid : null);
     else if (race.phase === 'race') {

@@ -195,11 +195,12 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
   }
 
   // a player's best place on the mod's boards: { position, trackId } or null (profile cards, accounts.js)
-  function bestOf(userId) {
+  // (the circuit the player picked, among those where they hold that place: accounts.js, profile.bestTrack)
+  function bestOf(userId, preferred) {
     let best = null;
     for (const [trackId, entries] of Object.entries(data.tracks)) {
       const position = positionOf(entries, userId);
-      if (position > 0 && (best == null || position < best.position)) best = { position, trackId };
+      if (position > 0 && (best == null || position < best.position || (position === best.position && trackId === preferred))) best = { position, trackId };
     }
     return best;
   }

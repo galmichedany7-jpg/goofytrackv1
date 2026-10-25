@@ -1,10 +1,10 @@
-// Car part rarities: each pattern, rims and exhaust of the garage has a name and a rarity, shown on its tile,
+// Car part rarities: each pattern, rims, exhaust and wing of the garage has a name and a rarity, shown on its tile,
 // whose frame takes the rarity's colour (common grey to mythic red); each tab lists the most common first,
 // the rarest at the bottom. Display only for now: every part stays free (crates to unlock them may come
 // later). The liveries (apex-livery.js) show the name of their pattern.
 //
-// patch_bundle.js has the garage call item(kind, button, index) for each tile of its Pattern, Rims and
-// Exhaust tabs, kind being 'pattern', 'rims' or 'exhaust'.
+// patch_bundle.js has the garage call item(kind, button, index) for each tile of its Pattern, Rims, Exhaust
+// and Wing tabs, kind being 'pattern', 'rims', 'exhaust' or 'wing'.
 (() => {
   'use strict';
 
@@ -83,7 +83,18 @@
     { fr: 'Double canon',      en: 'Twin barrel',       rarity: 'veryRare' },
     { fr: 'Canon XXL',         en: 'XXL barrel',        rarity: 'legendary' },
   ];
-  const ITEMS = { pattern: PATTERNS, rims: RIMS, exhaust: EXHAUSTS };
+  // by the mod's model index (Wing0..7, build_car.js draws them in this order)
+  const WINGS = [
+    { fr: 'Standard',          en: 'Standard',          rarity: 'common' },
+    { fr: 'Basse traînée',     en: 'Low drag',          rarity: 'common' },
+    { fr: 'DRS ouvert',        en: 'DRS open',          rarity: 'rare' },
+    { fr: 'Haut appui',        en: 'High downforce',    rarity: 'rare' },
+    { fr: 'Cuillère',          en: 'Spoon',             rarity: 'veryRare' },
+    { fr: 'Années 70',         en: 'Seventies',         rarity: 'epic' },
+    { fr: 'Biplan',            en: 'Biplane',           rarity: 'legendary' },
+    { fr: 'Mouette',           en: 'Gull wing',         rarity: 'mythic' },
+  ];
+  const ITEMS = { pattern: PATTERNS, rims: RIMS, exhaust: EXHAUSTS, wing: WINGS };
   const RANK = Object.keys(RARITIES);   // common first
 
   function info(index, kind = 'pattern') {
@@ -147,7 +158,7 @@
   window.ApexRarity = {
     info,
     ofStyle,
-    // a tile of the garage's Pattern, Rims or Exhaust tab, sorted by rarity (the tabs are flex columns)
+    // a tile of the garage's Pattern, Rims, Exhaust or Wing tab, sorted by rarity (the tabs are flex columns)
     item(kind, button, index) {
       const i = info(index, kind);
       if (i == null) return;

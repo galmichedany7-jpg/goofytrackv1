@@ -550,6 +550,13 @@ html body {
 	font-size: 40px;
 	font-weight: 700;
 	letter-spacing: 0.01em;
+	white-space: normal;   /* a long name goes on two lines rather than being cut */
+	line-height: 1.1;
+}
+/* above the official tracks, on as few as three rows of cards: a narrower picture leaves room for the name */
+#ui .track-selection-ui .track.track-of-the-week > .button > .thumbnail,
+#ui .track-selection-ui .track.track-of-the-week > .button > .thumbnail-background {
+	width: 384px;
 }
 #ui .track-selection-ui .track.track-of-the-week button .track-of-the-week-info > .author,
 #ui .track-selection-ui .track.track-of-the-week button .track-of-the-week-info > .date-range {

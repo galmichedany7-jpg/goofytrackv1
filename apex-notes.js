@@ -136,7 +136,9 @@
     bar.insertBefore(button, bar.querySelector('.right'));
   }
 
+  // the button stands on the right, just above "Terms & Privacy" (the bar's .right: floated, 6px from the bar's padding)
   const STYLE = `
+#ui .menu-ui > .button-bar > .apex-notes-button { position: absolute; right: 22px; bottom: calc(100% - 4px); margin: 0; }
 #ui .apex-notes-button > .dot { display: none; }
 #ui .apex-notes-button.unread > .dot {
   display: inline-block; width: 8px; height: 8px; margin-left: 8px; border-radius: 50%; vertical-align: middle;

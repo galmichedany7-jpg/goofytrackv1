@@ -52,8 +52,20 @@ const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-reco
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
 // The account keeps its save on our server, whose address it is handed in front of its script, with the mod's
 // tracks (the profile card counts the circuits finished and asks the server for their boards; the P1 badges
-// draw their outline, track_outlines.js)
+// draw their outline, track_outlines.js), and the game's own official tracks, read from its code (the card counts
+// the official tracks finished)
+// (with the community tracks, listed with them since 2.17: patch_bundle.js)
+const gameTracks = [...fs.readFileSync(path.join(ORIGINALS, 'main.bundle.js'), 'utf8').matchAll(/\{id:"([0-9a-f]{64})",(?:trackMetadata:\{name:"[^"]+",author:"Kodub"|group:"[^"]+",trackMetadata:\{name:"[^"]+",author:)/g)].map(m => m[1]);
+if (gameTracks.length === 0) throw new Error('main.bundle.js: the official tracks were not found');
+// The server draws the Track of the Week among the same tracks (server/weekly.js): their ids, rewritten only when
+// they change (the file is committed, and the update script pulls over it)
+const weeklyFile = path.join(__dirname, 'server', 'official_tracks.json');
+const weeklyTracks = [...gameTracks, ...require('./tracks').map(t => t.id)];
+let weeklyKept = null;
+try { weeklyKept = JSON.parse(fs.readFileSync(weeklyFile, 'utf8')); } catch {}
+if (JSON.stringify(weeklyKept) !== JSON.stringify(weeklyTracks)) fs.writeFileSync(weeklyFile, JSON.stringify(weeklyTracks, null, 1) + '\n');
 fs.writeFileSync(path.join(APP, 'apex-account.js'), 'window.GOOFY_SERVER = ' + JSON.stringify(SERVER_URL) + ';\n'
+  + 'window.GOOFY_GAME_TRACKS = ' + JSON.stringify(gameTracks) + ';\n'
   + 'window.GOOFY_MOD_TRACKS = ' + JSON.stringify(require('./tracks').map(t => ({ id: t.id, name: t.name, author: t.author, outline: require('./track_outlines').outline(t) }))) + ';\n'
   + fs.readFileSync(path.join(__dirname, 'apex-account.js'), 'utf8'));
 // The room list asks the server for the rooms of this very build: the one the patched game connects with
@@ -67,6 +79,7 @@ fs.copyFileSync(path.join(__dirname, 'goofytrack-logo.svg'), path.join(APP, 'ima
 fs.copyFileSync(path.join(__dirname, 'audio', 'goofytrack_music.mp3'), path.join(APP, 'audio', 'goofytrack_music.mp3'));   // "Vroum Vroum" by Teknah
 fs.copyFileSync(path.join(__dirname, 'audio', 'goofytrack_waiting.mp3'), path.join(APP, 'audio', 'goofytrack_waiting.mp3'));   // "WAITING" by Teknah (track selection menu)
 for (const icon of ['riviera.svg', 'riviera_colored.svg']) fs.copyFileSync(path.join(__dirname, 'images', icon), path.join(APP, 'images', icon));   // Riviera environment
+fs.copyFileSync(path.join(__dirname, 'images', 'wing.svg'), path.join(APP, 'images', 'wing.svg'));   // the garage's Wing tab
 // App icon: the window (taskbar, Alt+Tab) uses the .ico (patched into electron/main.js), the web manifest the .svg
 fs.copyFileSync(path.join(__dirname, 'images', 'goofytrack_icon.ico'), path.join(APP, 'images', 'goofytrack_icon.ico'));
 fs.copyFileSync(path.join(__dirname, 'images', 'goofytrack_icon.svg'), path.join(APP, 'images', 'icons', 'icon.svg'));

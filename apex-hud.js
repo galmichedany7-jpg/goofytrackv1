@@ -33,6 +33,8 @@
   let refIndex = 0;
   let frame = 0;
   let lastDelta = null;
+  let statFrames = -1;            // race time of the last distance counted (profile stats)
+  let statFinished = false;       // the run counted as finished (profile stats)
   let mapHidden = false;
   const loadMapHidden = () => { try { mapHidden = localStorage.getItem(MAP_HIDDEN_KEY) === 'true'; } catch (e) { /* storage unavailable */ } };
   loadMapHidden();
@@ -266,6 +268,13 @@
         if (map) { ui().appendChild(map.canvas); showMapState(); }
       }
       const state = sample(self);
+      // the distance driven, for the profile card (apex-account.js): the speed over the race time gone by, so
+      // nothing while paused, and nothing across a restart (the time goes back) or after the finish; and the finishes
+      const dt = state.frames - statFrames, kmh = Math.abs(state.speedKmh);
+      statFrames = state.frames;
+      if (dt > 0 && dt < 500 && state.finishFrames == null) window.ApexStats?.drive(kmh / 3.6 * dt / 1000, dt / 1000, kmh);
+      if (state.finishFrames != null && !statFinished) window.ApexStats?.finish();
+      statFinished = state.finishFrames != null;
       if (++frame % 2 === 0) {                 // 30 redraws per second are plenty for both widgets
         if (map) drawMap(self);
         showDelta(state, self);
@@ -329,7 +338,8 @@
       if (owner !== undefined && ctx != null && ctx.owner !== owner) return;
       if (map) map.canvas.remove();
       if (delta != null) { delta.remove(); delta = null; }
-      ctx = null; map = null; remotes = new Map(); run = []; best = null; lastFrames = -1; refIndex = 0; lastDelta = null;
+      ctx = null; map = null; remotes = new Map(); run = []; best = null; lastFrames = -1; refIndex = 0; lastDelta = null; statFrames = -1; statFinished = false;
+      window.ApexStats?.flush();
     },
   };
 })();
