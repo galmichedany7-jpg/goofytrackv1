@@ -24,7 +24,7 @@
 // Each account also has a public number (#0001, #0002... in the order they were made), by which players add
 // each other as friends. Friends see each other's profile (name, flag, car), whether they are playing, and
 // the invite code of the room they are in (hosting it or not), to join it in one click:
-//   POST /account/presence  { profile: { nickname, countryCode, carStyle, badges, distance }, state: 'menu' | 'playing', room: code | null }
+//   POST /account/presence  { profile: { nickname, countryCode, carStyle, badges, distance, driving }, state: 'menu' | 'playing', room: code | null }
 //                           -> { id, verified, badges, requests, online }     every 30 s while the game runs
 //   GET  /account/friends                            -> { me, friends, requests, sent }
 //   POST /account/friends   { action: 'add' | 'accept' | 'decline' | 'cancel' | 'remove', id }
@@ -41,11 +41,11 @@
 // (Julio was #0001 until 2.17, Shyn #0002). CREATOR_IDS ("7777,1") are shown with the "creator" check mark.
 //
 // Badges, shown next to a player's name: 'creator' (CREATOR_IDS), 'vip' (VIP_IDS), 'p1:<trackId>', 'p2:…', 'p3:…' while the
-// player holds that place on a circuit of the mod (records.js), and 'km:<km>' once they have driven that far
-// (DISTANCE_BADGES: the game counts the distance, in the encrypted save, and gives the longest of its profiles with
-// the presence, profile.distance; the account keeps the longest it heard, so a badge won stays). A player picks up to
-// two of the badges they own (the presence's profile.badges); others see those they still own. The presence answers
-// with all they own.
+// player holds that place on a circuit of the mod (records.js), and the counted badges, 'km:<km>' and 'h:<hours>', once
+// they have driven that far or that long (COUNTED_BADGES: the game counts them, in the encrypted save, and gives the
+// most of its profiles with the presence, profile.distance in metres and profile.driving in seconds; the account keeps
+// the most it heard, so a badge won stays). A player picks up to two of the badges they own (the presence's
+// profile.badges); others see those they still own. The presence answers with all they own.
 //
 // Storage: one file per account in a secret GitHub Gist when GITHUB_TOKEN is set, a local JSON file otherwise.
 const fs = require('fs');
@@ -65,8 +65,12 @@ const REGISTRATIONS = 5;                // per address, every hour
 const MAX_FRIENDS = 100;
 const MAX_REQUESTS = 50;                // waiting for an answer, per account
 const MAX_BADGES = 2;                   // shown next to a name
-const DISTANCE_BADGES = [500, 1000, 2500, 5000, 10000, 40075];   // km (apex-account.js, DISTANCE_BADGES there)
-const MAX_DISTANCE = 1e10;              // metres a game may say it drove: above, it is not believed
+// the counted badges (apex-account.js, COUNTED_BADGES there): id prefix -> the account's count, its unit, the tiers,
+// and the most a game may say (above, it is not believed)
+const COUNTED_BADGES = {
+  km: { count: 'distance', unit: 1000, tiers: [500, 1000, 2500, 5000, 10000, 40075], max: 1e10 },   // metres
+  h: { count: 'driving', unit: 3600, tiers: [5, 10, 25, 50, 100, 250], max: 1e9 },                   // seconds
+};
 const ONLINE = 75 * 1000;               // since the last presence: the game sends one every 30 s
 const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:7777,shyn:1').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([name, id]) => [name.normalize('NFC').toLowerCase(), Number(id)]));
@@ -356,7 +360,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   const verifiedOf = id => (CREATOR_IDS.has(id) ? 'creator' : null);
   // the badges a player owns now
   const badgesOf = a => [...(CREATOR_IDS.has(a.id) ? ['creator'] : []), ...(VIP_IDS.has(a.id) ? ['vip'] : []), ...(a.profile?.tokenHash ? podium(a.profile.tokenHash).map(p => 'p' + p.position + ':' + p.trackId) : []),
-    ...DISTANCE_BADGES.filter(km => (a.distance || 0) >= km * 1000).map(km => 'km:' + km)];
+    ...Object.entries(COUNTED_BADGES).flatMap(([kind, c]) => c.tiers.filter(n => (a[c.count] || 0) >= n * c.unit).map(n => kind + ':' + n))];
   // the frame picked, if the badges it needs are still owned (else none: the game shows its default)
   const frameOf = a => {
     const needs = FRAMES[a.profile?.frame];
@@ -401,9 +405,11 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
         stats: { tracks: count(stats.tracks), circuits: count(stats.circuits), custom: count(stats.custom) },
       };
       if (JSON.stringify(profile) !== JSON.stringify(s.account.profile)) { s.account.profile = profile; changed(s.key); }
-      // the distance badges: the longest distance the game gave, kept
-      const distance = Number(p.distance);
-      if (Number.isFinite(distance) && distance > (s.account.distance || 0) && distance < MAX_DISTANCE) { s.account.distance = Math.floor(distance); changed(s.key); }
+      // the counted badges: the most the game gave, kept
+      for (const c of Object.values(COUNTED_BADGES)) {
+        const n = Number(p[c.count]);
+        if (Number.isFinite(n) && n > (s.account[c.count] || 0) && n < c.max) { s.account[c.count] = Math.floor(n); changed(s.key); }
+      }
     }
     const a = s.account;
     return [200, { id: a.id, verified: verifiedOf(a.id), badges: badgesOf(a), requests: a.requests.length, online: keysOf(a.friends).filter(isOnline).length, recovery: a.recovery != null }];

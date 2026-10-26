@@ -15,15 +15,16 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
-## V2.18 : badges de distance, chargement 4 fois plus rapide
+## V2.18 : badges de distance et de temps, chargement 4 fois plus rapide
 
-Six nouveaux badges à gagner en roulant, un mur pour voir tous les badges du jeu, un démarrage bien plus court et un dossier GoofyTrack enfin rangé.
+Douze nouveaux badges à gagner en roulant, un mur pour voir tous les badges du jeu, un démarrage bien plus court et un dossier GoofyTrack enfin rangé.
 
 **Badges**
-- **Badges de distance** : gagnés pour de bon quand l'un de vos profils a roulé assez loin, tous vos PC compris. **Baroudeur** (500 km, vert), **Routard** (1 000 km, bleu), **Grand voyageur** (2 500 km, violet), **Globe-trotteur** (5 000 km, or), **Légende du bitume** (10 000 km, rouge) et **Tour du monde** (40 075 km, le tour de la Terre, arc-en-ciel).
-- **Notification** : un bandeau « Nouveau badge ! » s'affiche en haut de l'écran dès qu'un palier est franchi, même en pleine course. Un clic dessus ouvre vos badges. Chaque badge n'est annoncé qu'une fois, même sur vos autres PC.
-- **Onglet Badges** sur votre carte de profil : tous les badges du jeu, distance, podiums des circuits et badges spéciaux. Ceux qui vous manquent sont grisés, avec une jauge jusqu'au prochain palier de distance. Un clic sur un badge gagné le met à côté de votre pseudo, ou l'enlève (deux au plus).
-- La distance est comptée depuis la V2.17 : les kilomètres faits avant ne comptent pas.
+- **Badges de distance**, gagnés pour de bon quand l'un de vos profils a roulé assez loin, tous vos PC compris : **Baroudeur** (500 km, vert), **Routard** (1 000 km, bleu), **Grand voyageur** (2 500 km, violet), **Globe-trotteur** (5 000 km, or), **Légende du bitume** (10 000 km, rouge) et **Tour du monde** (40 075 km, le tour de la Terre, arc-en-ciel).
+- **Badges de temps au volant**, sur le même principe : **Pilote du dimanche** (5 h), **Habitué** (10 h), **Passionné** (25 h), **Accro du volant** (50 h), **Pilote d'endurance** (100 h) et **Une vie au volant** (250 h). Seul compte le temps passé à rouler, pas les menus.
+- **Notification** : un bandeau « Nouveau badge ! » s'affiche en haut de l'écran dès qu'un palier est franchi, même en pleine course. Deux badges gagnés en même temps s'affichent l'un après l'autre. Un clic sur le bandeau ouvre vos badges. Chaque badge n'est annoncé qu'une fois, même sur vos autres PC.
+- **Onglet Badges** sur votre carte de profil : tous les badges du jeu, distance, temps au volant, podiums des circuits et badges spéciaux. Ceux qui vous manquent sont grisés, avec une jauge jusqu'au palier. Un clic sur un badge gagné le met à côté de votre pseudo, ou l'enlève (deux au plus).
+- La distance et le temps au volant sont comptés depuis la V2.17 : ce qui a été fait avant ne compte pas.
 
 **Performances**
 - **Chargement du jeu environ 4 fois plus rapide** (de 20 s à 5 s environ sur le même PC) : les pièces des circuits du mod se préparent sans tous les calculs inutiles d'avant, et leurs versions Hiver et Désert ne sont construites que si une piste en a besoin. Le rendu et la physique ne changent pas.
@@ -37,7 +38,7 @@ Six nouveaux badges à gagner en roulant, un mur pour voir tous les badges du je
 **Corrections**
 - Crédits du menu principal : « Musics by Teknah ».
 
-**Mise à jour** : « Mettre a jour GoofyTrack.bat » (ou `git pull` puis « Construire GoofyTrack.bat »). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.18. Le serveur (Render) doit être redéployé pour les badges de distance, avec son dossier racine (Root Directory) à `sources/server`.
+**Mise à jour** : « Mettre a jour GoofyTrack.bat » (ou `git pull` puis « Construire GoofyTrack.bat »). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.18. Le serveur (Render) doit être redéployé pour les badges de distance et de temps, avec son dossier racine (Root Directory) à `sources/server`.
 
 ## V2.17 : ailerons, statistiques et cadres de profil
 

@@ -392,7 +392,7 @@
       const out = await call('POST', '/account/presence', {
         profile: p && { nickname: p.nickname, countryCode: p.countryCode, carStyle: p.carStyle, tokenHash: s.hash,
           stats: { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom }, badges: pickedBadges(), bestTrack: get(BEST_KEY), frame: pickedFrame().id,
-          distance: Math.round(bestDistance()) },   // the distance badges (the server keeps the longest)
+          distance: Math.round(bestCount('metres')), driving: Math.round(bestCount('seconds')) },   // the counted badges (the server keeps the most)
         state: homeReady() ? 'menu' : 'playing',
         room: window.ApexLobby ? window.ApexLobby.currentRoom() : null,
       }, acc.session);
@@ -637,17 +637,18 @@
     }
     if (changed) try { storage.setItem(key, JSON.stringify(all)); } catch (e) { /* storage full */ }   // watched: synced
     if (pending.size) statsTimer = setTimeout(flushStats, 1000);
-    if (changed) checkDistanceBadges();
+    if (changed) checkCountedBadges();
   }
-  // the longest distance among the profiles counted on this PC, all PCs together, with what is not written yet (metres)
-  function bestDistance() {
+  // the most among the profiles counted on this PC of one count (metres, seconds), all PCs together, with what is
+  // not written yet (the counted badges)
+  function bestCount(stat) {
     const byHash = new Map();
     for (const key of Object.keys(storage)) {
       if (!key.startsWith(STATS_PREFIX)) continue;
       const all = readJson(key);
-      if (all && typeof all === 'object') for (const [hash, t] of Object.entries(all)) byHash.set(hash, (byHash.get(hash) || 0) + (Number(t?.metres) || 0));
+      if (all && typeof all === 'object') for (const [hash, t] of Object.entries(all)) byHash.set(hash, (byHash.get(hash) || 0) + (Number(t?.[stat]) || 0));
     }
-    for (const [token, c] of pending) { const hash = hashes.get(token); if (hash) byHash.set(hash, (byHash.get(hash) || 0) + c.metres); }
+    for (const [token, c] of pending) { const hash = hashes.get(token); if (hash) byHash.set(hash, (byHash.get(hash) || 0) + (c[stat] || 0)); }
     return Math.max(0, ...byHash.values());
   }
   // the profile's counts, from every PC, with what is not written yet
@@ -671,7 +672,7 @@
       c.metres += metres;
       if (seconds > 0 && seconds < 1) { c.seconds += seconds; c.timedMetres += metres; }
       if (kmh < 2000 && kmh > c.topKmh) c.topKmh = kmh;
-      if (++drivenFrames % 600 === 0) checkDistanceBadges();   // every ten seconds or so: a badge is announced as it is won
+      if (++drivenFrames % 600 === 0) checkCountedBadges();   // every ten seconds or so: a badge is announced as it is won
     },
     // a run that crossed the finish line, solo or online
     finish() { const c = counting(); if (c) c.finishes++; },
@@ -768,9 +769,11 @@
   // the check mark of the game's creators, next to their name
   const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.5l2.5 2.1 3.3-.4.9 3.2 2.9 1.6-1.2 3.1 1.2 3.1-2.9 1.6-.9 3.2-3.3-.4L12 22.5l-2.5-2.1-3.3.4-.9-3.2-2.9-1.6 1.2-3.1-1.2-3.1 2.9-1.6.9-3.2 3.3.4z"/>'
     + '<path d="M7.6 12.2l3 3 5.8-6" fill="none" stroke="#14100a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  // the VIP diamond: a cut gem in a violet to pink gradient, its facets in light lines
   // the distance badges: a road running away, its edges and its centre line
   const ROAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 4 21M15 3l5 18"/><path d="M12 4v3M12 10.5v3M12 17v3.5" stroke-width="2.6"/></svg>';
+  // the time badges: a stopwatch, its button and its hand
+  const CLOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M10 2.5h4M12 2.5v3.5M12 13.5V9.5M18.5 6.5l1.5-1.5"/></svg>';
+  // the VIP diamond: a cut gem in a violet to pink gradient, its facets in light lines
   const DIAMOND = '<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="apx-vip" x1="0" y1="0" x2="1" y2="1">'
     + '<stop offset="0" stop-color="#6a3dff"/><stop offset="0.45" stop-color="#b45cff"/><stop offset="1" stop-color="#ff5fa8"/></linearGradient></defs>'
     + '<path d="M6.5 3.5h11l4 5.5L12 21 2.5 9z" fill="url(#apx-vip)"/>'
@@ -779,28 +782,45 @@
   // ---------------------------------------------------------------- badges
   // Shown next to a name, two at most: 'creator' (the check mark), 'vip' (the diamond: friends and the first
   // players), 'p1:<trackId>', 'p2:…', 'p3:…' while
-  // first, second or third on that circuit of the mod (gold, silver and bronze), and 'km:<km>' once a profile has
-  // driven that far (DISTANCE_BADGES). The server knows who owns what (server/accounts.js); the player picks theirs in
-  // the profile editor or on the Badges tab, and the others see them on their cards, in their friends list, on a track's page.
+  // first, second or third on that circuit of the mod (gold, silver and bronze), and the counted badges once a profile
+  // has driven that far or that long: 'km:<km>', 'h:<hours>' (COUNTED_BADGES). The server knows who owns what
+  // (server/accounts.js); the player picks theirs in the profile editor or on the Badges tab, and the others see them
+  // on their cards, in their friends list, on a track's page.
   const BADGES_KEY = 'goofytrack.badges';     // the badges picked (synced): ids, or nothing for the default
   const MAX_BADGES = 2;
-  // Distance badges, won for good once one of the profiles has driven that far (on all PCs together): this PC
-  // knows at once (bestDistance), the server from the presence, which keeps the longest (DISTANCE_BADGES there too)
-  const DISTANCE_BADGES = [
-    { km: 500, short: '500', name: ['Baroudeur', 'Wanderer'], tone: 'green' },
-    { km: 1000, short: '1K', name: ['Routard', 'Road tripper'], tone: 'blue' },
-    { km: 2500, short: '2.5K', name: ['Grand voyageur', 'Voyager'], tone: 'purple' },
-    { km: 5000, short: '5K', name: ['Globe-trotteur', 'Globetrotter'], tone: 'gold' },
-    { km: 10000, short: '10K', name: ['Légende du bitume', 'Tarmac legend'], tone: 'red' },
-    { km: 40075, short: '40K', name: ['Tour du monde', 'Round the world'], tone: 'world' },   // the Equator
+  // Counted badges, won for good once one of the profiles has driven that far or that long (on all PCs together,
+  // the counts of the Stats tab): this PC knows at once (bestCount), the server from the presence, which keeps the
+  // most it heard (COUNTED_BADGES there too). Each family: its id prefix, the count it reads and its unit, its icon.
+  const COUNTED_BADGES = [
+    { kind: 'km', stat: 'metres', unit: 1000, icon: ROAD, title: ['Distance', 'Distance'], tiers: [
+      { n: 500, short: '500', name: ['Baroudeur', 'Wanderer'], tone: 'green' },
+      { n: 1000, short: '1K', name: ['Routard', 'Road tripper'], tone: 'blue' },
+      { n: 2500, short: '2.5K', name: ['Grand voyageur', 'Voyager'], tone: 'purple' },
+      { n: 5000, short: '5K', name: ['Globe-trotteur', 'Globetrotter'], tone: 'gold' },
+      { n: 10000, short: '10K', name: ['Légende du bitume', 'Tarmac legend'], tone: 'red' },
+      { n: 40075, short: '40K', name: ['Tour du monde', 'Round the world'], tone: 'world' },   // the Equator
+    ] },
+    { kind: 'h', stat: 'seconds', unit: 3600, icon: CLOCK, title: ['Temps au volant', 'Time driving'], tiers: [
+      { n: 5, short: '5h', name: ['Pilote du dimanche', 'Sunday driver'], tone: 'green' },
+      { n: 10, short: '10h', name: ['Habitué', 'Regular'], tone: 'blue' },
+      { n: 25, short: '25h', name: ['Passionné', 'Enthusiast'], tone: 'purple' },
+      { n: 50, short: '50h', name: ['Accro du volant', 'Wheel addict'], tone: 'gold' },
+      { n: 100, short: '100h', name: ['Pilote d\'endurance', 'Endurance driver'], tone: 'red' },
+      { n: 250, short: '250h', name: ['Une vie au volant', 'A life at the wheel'], tone: 'world' },
+    ] },
   ];
-  const kmText = km => km.toLocaleString(french() ? 'fr-FR' : 'en-US') + ' km';  const earnedDistance = (metres = bestDistance()) => DISTANCE_BADGES.filter(t => metres >= t.km * 1000).map(t => 'km:' + t.km);
+  const countText = (family, n) => n.toLocaleString(french() ? 'fr-FR' : 'en-US', { maximumFractionDigits: n < 10 && family.kind === 'h' ? 1 : 0 }) + (family.kind === 'km' ? ' km' : ' h');
+  const doneText = (family, n) => (family.kind === 'km' ? tr(`${countText(family, n)} parcourus`, `${countText(family, n)} driven`) : tr(`${countText(family, n)} au volant`, `${countText(family, n)} at the wheel`));
+  const goalText = (family, n) => (family.kind === 'km' ? tr(`Parcourir ${countText(family, n)}`, `Drive ${countText(family, n)}`) : tr(`Rouler ${countText(family, n)}`, `Drive for ${countText(family, n)}`));
+  const earnedCounted = () => COUNTED_BADGES.flatMap(f => { const best = bestCount(f.stat); return f.tiers.filter(t => best >= t.n * f.unit).map(t => f.kind + ':' + t.n); });
   const trackName = id => MOD_TRACKS.find(t => t.id === id)?.name || tr('un circuit du mod', 'a mod circuit');
   function badgeInfo(id) {
     if (id === 'creator') return { label: tr('Co-créateur de GoofyTrack', 'GoofyTrack co-creator') };
     if (id === 'vip') return { label: tr('VIP de GoofyTrack', 'GoofyTrack VIP') };
-    const tier = DISTANCE_BADGES.find(t => 'km:' + t.km === id);
-    if (tier) return { label: tr(tier.name[0], tier.name[1]) + ' · ' + kmText(tier.km), name: tr(tier.name[0], tier.name[1]), tier };
+    for (const family of COUNTED_BADGES) {
+      const tier = family.tiers.find(t => family.kind + ':' + t.n === id);
+      if (tier) return { label: tr(tier.name[0], tier.name[1]) + ' · ' + countText(family, tier.n), name: tr(tier.name[0], tier.name[1]), tier, family };
+    }
     const podium = /^p([123]):(.+)$/.exec(typeof id === 'string' ? id : '');
     if (podium) {
       const place = 'P' + podium[1], track = MOD_TRACKS.find(t => t.id === podium[2]);
@@ -809,11 +829,11 @@
     return null;
   }
   // the badges this player owns: the server's last word (the check mark alone, before it knew of badges), and the
-  // distance badges this PC has seen won, before the server hears of them
+  // counted badges this PC has seen won, before the server hears of them
   const ownedBadges = () => {
     if (account == null) return [];
     const server = Array.isArray(account.badges) ? account.badges : account.verified === 'creator' ? ['creator'] : [];
-    return [...new Set([...server, ...earnedDistance()])];
+    return [...new Set([...server, ...earnedCounted()])];
   };
   // those picked and still owned; by default the check mark of the creators
   function pickedBadges() {
@@ -832,10 +852,10 @@
         mark.title = info.label;
         continue;
       }
-      // a distance: a road and the km, in the tier's colour
+      // a count: its icon (a road, a stopwatch) and the number, in the tier's colour
       if (info.tier) {
         const pill = el(parent, 'span', 'badge-km ' + info.tier.tone);
-        pill.innerHTML = ROAD;
+        pill.innerHTML = info.family.icon;
         el(pill, 'b', null, info.tier.short);
         pill.title = info.label;
         continue;
@@ -854,17 +874,22 @@
     }
   }
   // ---------------------------------------------------------------- badge won
-  // A distance badge just won is announced once, at the top of the screen, even in a race. Those announced are kept
+  // A counted badge just won is announced once, at the top of the screen, even in a race. Those announced are kept
   // (synced): another PC of the account does not announce them again. A click on the notice opens the Badges tab.
   const SEEN_KEY = 'goofytrack.badgesSeen';
   const ANNOUNCE_MS = 6500;
-  let badgeToast = null;
-  function checkDistanceBadges() {
+  let badgeToast = null, announcing = [];
+  function checkCountedBadges() {
     const seen = readJson(SEEN_KEY), known = Array.isArray(seen) ? seen : [];
-    const fresh = earnedDistance().filter(id => !known.includes(id));
+    const fresh = earnedCounted().filter(id => !known.includes(id));
     if (!fresh.length) return;
     try { storage.setItem(SEEN_KEY, JSON.stringify([...known, ...fresh])); } catch (e) { /* storage full */ }
-    announceBadge(fresh[fresh.length - 1]);      // several at once (counts from before this version): the highest
+    // several of a family at once (counts from before this version): its highest; one family after the other
+    for (const family of COUNTED_BADGES) {
+      const mine = fresh.filter(id => id.startsWith(family.kind + ':'));
+      if (mine.length) announcing.push(mine[mine.length - 1]);
+    }
+    if (badgeToast == null) announceBadge(announcing.shift());
     scheduleBadge();
     if (account != null) sendPresence();           // the server and the friends hear of it now
   }
@@ -879,11 +904,19 @@
     const text = el(toast, 'div', 'text');
     el(text, 'div', 'title', tr('Nouveau badge !', 'New badge!'));
     el(text, 'div', 'name', info.name);
+    const done = doneText(info.family, info.tier.n);
     el(text, 'div', 'sub', account != null
-      ? tr(`${kmText(info.tier.km)} parcourus : mettez-le sur votre profil`, `${kmText(info.tier.km)} driven: put it on your profile`)
-      : tr(`${kmText(info.tier.km)} parcourus : connectez-vous à un compte pour l'afficher`, `${kmText(info.tier.km)} driven: log in to an account to show it`));
-    const dismiss = () => { toast.remove(); if (badgeToast === toast) badgeToast = null; };
+      ? tr(`${done} : mettez-le sur votre profil`, `${done}: put it on your profile`)
+      : tr(`${done} : connectez-vous à un compte pour l'afficher`, `${done}: log in to an account to show it`));
+    // the next one waiting, once this one is gone
+    const dismiss = () => {
+      toast.remove();
+      if (badgeToast !== toast) return;
+      badgeToast = null;
+      if (announcing.length) announceBadge(announcing.shift());
+    };
     toast.addEventListener('click', () => {
+      announcing = [];
       dismiss();
       if (homeReady()) { close(); tab = 'badges'; open(); }
     });
@@ -1005,8 +1038,8 @@
   // The Badges tab: every badge of the game, won or not, and how to win it. A click on one won puts it next to the
   // name, or takes it away (two at most: the one shown longest makes way).
   function renderBadgeWall(body) {
-    const owned = ownedBadges(), picked = pickedBadges(), metres = bestDistance();
-    const all = [...DISTANCE_BADGES.map(t => 'km:' + t.km), ...MOD_TRACKS.flatMap(t => [1, 2, 3].map(n => 'p' + n + ':' + t.id)), 'creator', 'vip'];
+    const owned = ownedBadges(), picked = pickedBadges();
+    const all = [...COUNTED_BADGES.flatMap(f => f.tiers.map(t => f.kind + ':' + t.n)), ...MOD_TRACKS.flatMap(t => [1, 2, 3].map(n => 'p' + n + ':' + t.id)), 'creator', 'vip'];
     el(body, 'p', 'hint', account == null
       ? tr('Connectez-vous à un compte GoofyTrack pour gagner des badges et les afficher à côté de votre pseudo.', 'Log in to a GoofyTrack account to earn badges and show them next to your name.')
       : tr(`${all.filter(id => owned.includes(id)).length} badge(s) gagné(s) sur ${all.length}. Cliquez sur un badge gagné pour l'afficher à côté de votre pseudo (deux au plus).`,
@@ -1027,19 +1060,23 @@
       return { b, won, on };
     };
 
-    el(body, 'h3', null, tr('Distance', 'Distance'));
-    const distance = el(body, 'div', 'badge-wall');
-    for (const t of DISTANCE_BADGES) {
-      const id = 'km:' + t.km, { b, won, on } = slot(distance, id, 'badge-tile');
-      badgeMarks(el(b, 'div', 'mark'), [id]);
-      const text = el(b, 'div', 'text');
-      el(text, 'div', 'name', badgeInfo(id).name);
-      el(text, 'div', 'how', tr(`Parcourir ${kmText(t.km)}`, `Drive ${kmText(t.km)}`));
-      if (!won) {
-        el(el(text, 'div', 'progress'), 'span').style.width = Math.min(100, metres / (t.km * 10)) + '%';
-        el(text, 'div', 'how', `${number(metres / 1000, 0)} / ${kmText(t.km)}`);
+    // the counted badges, a section per family, with a gauge up to each tier not won yet
+    for (const family of COUNTED_BADGES) {
+      const best = bestCount(family.stat) / family.unit;
+      el(body, 'h3', null, tr(family.title[0], family.title[1]));
+      const wall = el(body, 'div', 'badge-wall');
+      for (const t of family.tiers) {
+        const id = family.kind + ':' + t.n, { b, won, on } = slot(wall, id, 'badge-tile');
+        badgeMarks(el(b, 'div', 'mark'), [id]);
+        const text = el(b, 'div', 'text');
+        el(text, 'div', 'name', badgeInfo(id).name);
+        el(text, 'div', 'how', goalText(family, t.n));
+        if (!won) {
+          el(el(text, 'div', 'progress'), 'span').style.width = Math.min(100, best / t.n * 100) + '%';
+          el(text, 'div', 'how', `${number(best, family.kind === 'h' && best < 10 ? 1 : 0)} / ${countText(family, t.n)}`);
+        }
+        if (on) el(text, 'div', 'shown', tr('Sur votre profil', 'On your profile'));
       }
-      if (on) el(text, 'div', 'shown', tr('Sur votre profil', 'On your profile'));
     }
 
     el(body, 'h3', null, tr('Podiums des circuits', 'Circuit podiums'));
