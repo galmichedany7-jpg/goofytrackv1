@@ -7,6 +7,8 @@
 //   - track models: smooth shading on curved surfaces (turns, slopes, loops, barriers, pillars)
 //     instead of visible facets. Only the shading normals change, computed once when the game
 //     loads: the geometry is the one the physics collides with and is left exactly as it is.
+//   - loading: the track parts' vertices smoothed and merged with integer keys (no string per vertex),
+//     and the circuits' Winter and Desert colours only built when a track asks for them.
 //
 // Nothing here adds per-pixel work besides the shadow filter.
 // The game calls into window.ApexGfx from the hooks added by patch_bundle.js.
@@ -180,34 +182,45 @@
       if (key != null && smoothed.has(key)) { N.set(smoothed.get(key)); normal.needsUpdate = true; return; }
       const cosLimit = Math.cos(LOOK.smoothAngle * Math.PI / 180);
 
-      // Area-weighted face normal of every triangle
-      const face = new Float32Array(count * 3);
-      for (let v = 0; v < count; v += 3) {
-        const a = v * 3, b = a + 3, c = a + 6;
+      // Area-weighted normal of every triangle (one per triangle), and its length
+      const triangles = count / 3 | 0;
+      const face = new Float32Array(triangles * 3), faceLength = new Float32Array(triangles);
+      for (let t = 0; t < triangles; t++) {
+        const a = t * 9, b = a + 3, c = a + 6;
         const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
         const vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
         const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-        for (let k = 0; k < 3; k++) { face[(v + k) * 3] = nx; face[(v + k) * 3 + 1] = ny; face[(v + k) * 3 + 2] = nz; }
+        face[t * 3] = nx; face[t * 3 + 1] = ny; face[t * 3 + 2] = nz;
+        faceLength[t] = (nx * nx + ny * ny + nz * nz) ** 0.5;
       }
 
-      // Vertices at the same place (to the millimetre)
-      const groups = new Map();
+      // Vertices at the same place (to the millimetre), as linked lists: head of each group, next vertex in it.
+      // Integers in a hash table rather than strings in a Map: the circuits have hundreds of thousands of
+      // vertices, and the strings kept the garbage collector busy for seconds as the game loaded.
+      const mm = x => { const r = x * 1000; return r >= 0 ? (r + 0.5) | 0 : -((0.5 - r) | 0); };
+      const qx = new Int32Array(count), qy = new Int32Array(count), qz = new Int32Array(count);
+      let size = 1;
+      while (size < count * 2) size *= 2;
+      const table = new Int32Array(size).fill(-1), next = new Int32Array(count).fill(-1), heads = [];
       for (let v = 0; v < count; v++) {
-        const key = Math.round(P[v * 3] * 1000) + ',' + Math.round(P[v * 3 + 1] * 1000) + ',' + Math.round(P[v * 3 + 2] * 1000);
-        const g = groups.get(key);
-        if (g) g.push(v); else groups.set(key, [v]);
+        const x = qx[v] = mm(P[v * 3]), y = qy[v] = mm(P[v * 3 + 1]), z = qz[v] = mm(P[v * 3 + 2]);
+        let slot = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791)) & (size - 1);
+        for (;;) {
+          const h = table[slot];
+          if (h < 0) { table[slot] = v; heads.push(v); break; }
+          if (qx[h] === x && qy[h] === y && qz[h] === z) { next[v] = next[h]; next[h] = v; break; }
+          slot = (slot + 1) & (size - 1);
+        }
       }
 
       const out = new Float32Array(N.length);
-      for (const group of groups.values()) {
-        for (const v of group) {
-          const fx = face[v * 3], fy = face[v * 3 + 1], fz = face[v * 3 + 2];
-          const fl = (fx * fx + fy * fy + fz * fz) ** 0.5;
+      for (const head of heads) {
+        for (let v = head; v >= 0; v = next[v]) {
+          const f = v / 3 | 0, fx = face[f * 3], fy = face[f * 3 + 1], fz = face[f * 3 + 2], fl = faceLength[f];
           let sx = 0, sy = 0, sz = 0;
           if (fl > 0) {
-            for (const w of group) {
-              const gx = face[w * 3], gy = face[w * 3 + 1], gz = face[w * 3 + 2];
-              const gl = (gx * gx + gy * gy + gz * gz) ** 0.5;
+            for (let w = head; w >= 0; w = next[w]) {
+              const g = w / 3 | 0, gx = face[g * 3], gy = face[g * 3 + 1], gz = face[g * 3 + 2], gl = faceLength[g];
               if (gl > 0 && (fx * gx + fy * gy + fz * gz) / (fl * gl) >= cosLimit) { sx += gx; sy += gy; sz += gz; }
             }
           }
@@ -219,6 +232,72 @@
       N.set(out);
       normal.needsUpdate = true;
       if (key != null) smoothed.set(key, out);
+    },
+
+    // The colours of a part (colour id -> its mesh) that can be built later: defer(id, build) keeps the function,
+    // and get() builds the mesh the first time it is asked for (patch_bundle.js). Parts as big as a circuit wait.
+    LazyMap: class extends Map {
+      defer(key, build) { this.set(key, null); (this.builds ??= new Map()).set(key, build); }
+      get(key) {
+        const build = this.builds?.get(key);
+        if (build != null) { this.builds.delete(key); this.set(key, build()); }
+        return super.get(key);
+      }
+      *values() { for (const key of this.keys()) yield this.get(key); }
+      *entries() { for (const key of this.keys()) yield [key, this.get(key)]; }
+      [Symbol.iterator]() { return this.entries(); }
+      forEach(f, self) { for (const [key, value] of this.entries()) f.call(self, value, key, this); }
+    },
+    deferColour: geometry => geometry.attributes.position.count > 100000,
+
+    // Track part geometry, smoothed above, made indexed for drawing: the same as three.js's mergeVertices
+    // (tolerance 1e-4: every component rounded the same way, vertices kept in the order they first come, the
+    // values of the first one kept), with integer keys in a hash table instead of a string per vertex.
+    // Geometries it was not written for (indexed, interleaved, normalized, morphed) go to three.js's own.
+    merge(geometry, original) {
+      const names = Object.keys(geometry.attributes);
+      const attributes = names.map(n => geometry.attributes[n]);
+      if (geometry.index != null || Object.keys(geometry.morphAttributes).length > 0
+        || attributes.some(a => a.isInterleavedBufferAttribute || a.normalized || a.array == null || a.itemSize > 4)) return original(geometry);
+      const count = geometry.attributes.position.count;
+      if (attributes.some(a => a.count !== count)) return original(geometry);
+      // ~~(value * 1e4 + 0.5), as three.js does
+      const width = attributes.reduce((s, a) => s + a.itemSize, 0), q = new Int32Array(count * width);
+      for (let v = 0, o = 0; v < count; v++) {
+        for (const a of attributes) {
+          const A = a.array, s = a.itemSize;
+          for (let k = 0; k < s; k++) q[o++] = ~~(A[v * s + k] * 1e4 + 0.5);
+        }
+      }
+      let size = 1;
+      while (size < count * 2) size *= 2;
+      const table = new Int32Array(size).fill(-1);   // slot -> new vertex
+      const first = new Int32Array(count);           // new vertex -> the old one it comes from
+      const index = new Array(count);
+      let unique = 0;
+      for (let v = 0; v < count; v++) {
+        const o = v * width;
+        let h = 0x811c9dc5;
+        for (let k = 0; k < width; k++) h = Math.imul(h ^ q[o + k], 16777619);
+        let slot = h & (size - 1);
+        for (;;) {
+          const u = table[slot];
+          if (u < 0) { table[slot] = unique; first[unique] = v; index[v] = unique++; break; }
+          const p = first[u] * width;
+          let same = true;
+          for (let k = 0; k < width; k++) if (q[p + k] !== q[o + k]) { same = false; break; }
+          if (same) { index[v] = u; break; }
+          slot = (slot + 1) & (size - 1);
+        }
+      }
+      const result = geometry.clone();
+      names.forEach((n, i) => {
+        const a = attributes[i], s = a.itemSize, A = a.array, out = new A.constructor(unique * s);
+        for (let u = 0; u < unique; u++) for (let k = 0; k < s; k++) out[u * s + k] = A[first[u] * s + k];
+        result.setAttribute(n, new a.constructor(out, s, a.normalized));
+      });
+      result.setIndex(index);
+      return result;
     },
   };
 })();

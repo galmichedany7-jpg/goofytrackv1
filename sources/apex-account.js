@@ -36,11 +36,13 @@
   const GAME = 'polytrack_v5_prod_';
   const PROFILES = 3;                                  // the game's slots
   const SETTINGS = [GAME + 'settings', GAME + 'key_bindings', GAME + 'is_music_enabled', GAME + 'unlocked_car_styles',
-    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries', 'goofytrack.badges', 'goofytrack.bestPlace', 'goofytrack.frame'];   // not the keyboard layout: one per PC
+    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries', 'goofytrack.badges', 'goofytrack.badgesSeen', 'goofytrack.bestPlace', 'goofytrack.frame'];   // not the keyboard layout: one per PC
   const STATS_PREFIX = 'goofytrack.stats.';           // + this PC's id: what it counted (synced: one entry per PC, summed)
   const PC_KEY = 'goofytrack.pc';                     // this PC's id (not synced)
   const KDF_ROUNDS = 310000;
-  const BOOT_WAIT = 8000;
+  // the game waits this long for the account's save as it starts: the free server sleeps and takes far longer to
+  // wake, so past this the game starts on this PC's save, and a save that comes later offers to reload
+  const BOOT_WAIT = 3000;
   const PUSH_DELAY = 4000;
 
   const french = () => String(window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr');
@@ -389,7 +391,8 @@
       const s = p && await profileStats(p);
       const out = await call('POST', '/account/presence', {
         profile: p && { nickname: p.nickname, countryCode: p.countryCode, carStyle: p.carStyle, tokenHash: s.hash,
-          stats: { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom }, badges: pickedBadges(), bestTrack: get(BEST_KEY), frame: pickedFrame().id },
+          stats: { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom }, badges: pickedBadges(), bestTrack: get(BEST_KEY), frame: pickedFrame().id,
+          distance: Math.round(bestDistance()) },   // the distance badges (the server keeps the longest)
         state: homeReady() ? 'menu' : 'playing',
         room: window.ApexLobby ? window.ApexLobby.currentRoom() : null,
       }, acc.session);
@@ -597,6 +600,7 @@
   const hashes = new Map();       // profile token -> its hash, worked out ahead: the last write (game left) cannot wait
   let statsTimer = null;
   let live = null;                // the counts of the profile driving, until the next write (60 calls a second)
+  let drivenFrames = 0;
   const pcId = () => {
     let id = get(PC_KEY);
     if (!/^[0-9a-f]{16}$/.test(id || '')) { id = hex(crypto.getRandomValues(new Uint8Array(8))); try { rawSet.call(storage, PC_KEY, id); } catch (e) { /* storage full */ } }
@@ -633,6 +637,18 @@
     }
     if (changed) try { storage.setItem(key, JSON.stringify(all)); } catch (e) { /* storage full */ }   // watched: synced
     if (pending.size) statsTimer = setTimeout(flushStats, 1000);
+    if (changed) checkDistanceBadges();
+  }
+  // the longest distance among the profiles counted on this PC, all PCs together, with what is not written yet (metres)
+  function bestDistance() {
+    const byHash = new Map();
+    for (const key of Object.keys(storage)) {
+      if (!key.startsWith(STATS_PREFIX)) continue;
+      const all = readJson(key);
+      if (all && typeof all === 'object') for (const [hash, t] of Object.entries(all)) byHash.set(hash, (byHash.get(hash) || 0) + (Number(t?.metres) || 0));
+    }
+    for (const [token, c] of pending) { const hash = hashes.get(token); if (hash) byHash.set(hash, (byHash.get(hash) || 0) + c.metres); }
+    return Math.max(0, ...byHash.values());
   }
   // the profile's counts, from every PC, with what is not written yet
   function countedStats(token, hash) {
@@ -655,6 +671,7 @@
       c.metres += metres;
       if (seconds > 0 && seconds < 1) { c.seconds += seconds; c.timedMetres += metres; }
       if (kmh < 2000 && kmh > c.topKmh) c.topKmh = kmh;
+      if (++drivenFrames % 600 === 0) checkDistanceBadges();   // every ten seconds or so: a badge is announced as it is won
     },
     // a run that crossed the finish line, solo or online
     finish() { const c = counting(); if (c) c.finishes++; },
@@ -752,6 +769,8 @@
   const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.5l2.5 2.1 3.3-.4.9 3.2 2.9 1.6-1.2 3.1 1.2 3.1-2.9 1.6-.9 3.2-3.3-.4L12 22.5l-2.5-2.1-3.3.4-.9-3.2-2.9-1.6 1.2-3.1-1.2-3.1 2.9-1.6.9-3.2 3.3.4z"/>'
     + '<path d="M7.6 12.2l3 3 5.8-6" fill="none" stroke="#14100a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   // the VIP diamond: a cut gem in a violet to pink gradient, its facets in light lines
+  // the distance badges: a road running away, its edges and its centre line
+  const ROAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 4 21M15 3l5 18"/><path d="M12 4v3M12 10.5v3M12 17v3.5" stroke-width="2.6"/></svg>';
   const DIAMOND = '<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="apx-vip" x1="0" y1="0" x2="1" y2="1">'
     + '<stop offset="0" stop-color="#6a3dff"/><stop offset="0.45" stop-color="#b45cff"/><stop offset="1" stop-color="#ff5fa8"/></linearGradient></defs>'
     + '<path d="M6.5 3.5h11l4 5.5L12 21 2.5 9z" fill="url(#apx-vip)"/>'
@@ -759,15 +778,29 @@
     + '<path d="M6.5 3.5h11l4 5.5L12 21 2.5 9z" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="0.8" stroke-linejoin="round"/></svg>';
   // ---------------------------------------------------------------- badges
   // Shown next to a name, two at most: 'creator' (the check mark), 'vip' (the diamond: friends and the first
-  // players), and 'p1:<trackId>', 'p2:…', 'p3:…' while
-  // first, second or third on that circuit of the mod (gold, silver and bronze). The server knows who owns what (server/accounts.js); the player picks theirs in the
-  // profile editor, and the others see them on their cards, in their friends list, on a track's page.
+  // players), 'p1:<trackId>', 'p2:…', 'p3:…' while
+  // first, second or third on that circuit of the mod (gold, silver and bronze), and 'km:<km>' once a profile has
+  // driven that far (DISTANCE_BADGES). The server knows who owns what (server/accounts.js); the player picks theirs in
+  // the profile editor or on the Badges tab, and the others see them on their cards, in their friends list, on a track's page.
   const BADGES_KEY = 'goofytrack.badges';     // the badges picked (synced): ids, or nothing for the default
   const MAX_BADGES = 2;
+  // Distance badges, won for good once one of the profiles has driven that far (on all PCs together): this PC
+  // knows at once (bestDistance), the server from the presence, which keeps the longest (DISTANCE_BADGES there too)
+  const DISTANCE_BADGES = [
+    { km: 500, short: '500', name: ['Baroudeur', 'Wanderer'], tone: 'green' },
+    { km: 1000, short: '1K', name: ['Routard', 'Road tripper'], tone: 'blue' },
+    { km: 2500, short: '2.5K', name: ['Grand voyageur', 'Voyager'], tone: 'purple' },
+    { km: 5000, short: '5K', name: ['Globe-trotteur', 'Globetrotter'], tone: 'gold' },
+    { km: 10000, short: '10K', name: ['Légende du bitume', 'Tarmac legend'], tone: 'red' },
+    { km: 40075, short: '40K', name: ['Tour du monde', 'Round the world'], tone: 'world' },   // the Equator
+  ];
+  const kmText = km => km.toLocaleString(french() ? 'fr-FR' : 'en-US') + ' km';  const earnedDistance = (metres = bestDistance()) => DISTANCE_BADGES.filter(t => metres >= t.km * 1000).map(t => 'km:' + t.km);
   const trackName = id => MOD_TRACKS.find(t => t.id === id)?.name || tr('un circuit du mod', 'a mod circuit');
   function badgeInfo(id) {
     if (id === 'creator') return { label: tr('Co-créateur de GoofyTrack', 'GoofyTrack co-creator') };
     if (id === 'vip') return { label: tr('VIP de GoofyTrack', 'GoofyTrack VIP') };
+    const tier = DISTANCE_BADGES.find(t => 'km:' + t.km === id);
+    if (tier) return { label: tr(tier.name[0], tier.name[1]) + ' · ' + kmText(tier.km), name: tr(tier.name[0], tier.name[1]), tier };
     const podium = /^p([123]):(.+)$/.exec(typeof id === 'string' ? id : '');
     if (podium) {
       const place = 'P' + podium[1], track = MOD_TRACKS.find(t => t.id === podium[2]);
@@ -775,8 +808,13 @@
     }
     return null;
   }
-  // the badges this player owns: the server's last word (the check mark alone, before it knew of badges)
-  const ownedBadges = () => (account == null ? [] : Array.isArray(account.badges) ? account.badges : account.verified === 'creator' ? ['creator'] : []);
+  // the badges this player owns: the server's last word (the check mark alone, before it knew of badges), and the
+  // distance badges this PC has seen won, before the server hears of them
+  const ownedBadges = () => {
+    if (account == null) return [];
+    const server = Array.isArray(account.badges) ? account.badges : account.verified === 'creator' ? ['creator'] : [];
+    return [...new Set([...server, ...earnedDistance()])];
+  };
   // those picked and still owned; by default the check mark of the creators
   function pickedBadges() {
     const owned = ownedBadges(), picked = readJson(BADGES_KEY);
@@ -794,6 +832,14 @@
         mark.title = info.label;
         continue;
       }
+      // a distance: a road and the km, in the tier's colour
+      if (info.tier) {
+        const pill = el(parent, 'span', 'badge-km ' + info.tier.tone);
+        pill.innerHTML = ROAD;
+        el(pill, 'b', null, info.tier.short);
+        pill.title = info.label;
+        continue;
+      }
       // a gold, silver or bronze button: the circuit's outline (track_outlines.js) and the place
       const pill = el(parent, 'span', 'badge-podium ' + info.place.toLowerCase());
       if (info.outline) {
@@ -807,6 +853,45 @@
       pill.title = info.label;
     }
   }
+  // ---------------------------------------------------------------- badge won
+  // A distance badge just won is announced once, at the top of the screen, even in a race. Those announced are kept
+  // (synced): another PC of the account does not announce them again. A click on the notice opens the Badges tab.
+  const SEEN_KEY = 'goofytrack.badgesSeen';
+  const ANNOUNCE_MS = 6500;
+  let badgeToast = null;
+  function checkDistanceBadges() {
+    const seen = readJson(SEEN_KEY), known = Array.isArray(seen) ? seen : [];
+    const fresh = earnedDistance().filter(id => !known.includes(id));
+    if (!fresh.length) return;
+    try { storage.setItem(SEEN_KEY, JSON.stringify([...known, ...fresh])); } catch (e) { /* storage full */ }
+    announceBadge(fresh[fresh.length - 1]);      // several at once (counts from before this version): the highest
+    scheduleBadge();
+    if (account != null) sendPresence();           // the server and the friends hear of it now
+  }
+  function announceBadge(id) {
+    const info = badgeInfo(id);
+    if (info == null) return;
+    badgeToast?.remove();
+    const toast = badgeToast = document.createElement('div');
+    toast.className = 'apex-badge-toast';
+    toast.setAttribute('role', 'status');
+    badgeMarks(el(toast, 'div', 'mark'), [id]);
+    const text = el(toast, 'div', 'text');
+    el(text, 'div', 'title', tr('Nouveau badge !', 'New badge!'));
+    el(text, 'div', 'name', info.name);
+    el(text, 'div', 'sub', account != null
+      ? tr(`${kmText(info.tier.km)} parcourus : mettez-le sur votre profil`, `${kmText(info.tier.km)} driven: put it on your profile`)
+      : tr(`${kmText(info.tier.km)} parcourus : connectez-vous à un compte pour l'afficher`, `${kmText(info.tier.km)} driven: log in to an account to show it`));
+    const dismiss = () => { toast.remove(); if (badgeToast === toast) badgeToast = null; };
+    toast.addEventListener('click', () => {
+      dismiss();
+      if (homeReady()) { close(); tab = 'badges'; open(); }
+    });
+    document.getElementById('ui')?.appendChild(toast);
+    setTimeout(() => toast.classList.add('gone'), ANNOUNCE_MS);
+    setTimeout(dismiss, ANNOUNCE_MS + 600);
+  }
+
   // ---------------------------------------------------------------- profile frame
   // The ring around the car (home screen, cards, friends list): a colour anyone picks, or a frame won with a badge,
   // shown while the badge is owned (server/accounts.js checks the same: FRAMES there). Others see it through the presence.
@@ -917,6 +1002,69 @@
     return h > 0 ? [String(h), 'h ' + String(m % 60).padStart(2, '0')] : [String(m), 'min'];
   };
 
+  // The Badges tab: every badge of the game, won or not, and how to win it. A click on one won puts it next to the
+  // name, or takes it away (two at most: the one shown longest makes way).
+  function renderBadgeWall(body) {
+    const owned = ownedBadges(), picked = pickedBadges(), metres = bestDistance();
+    const all = [...DISTANCE_BADGES.map(t => 'km:' + t.km), ...MOD_TRACKS.flatMap(t => [1, 2, 3].map(n => 'p' + n + ':' + t.id)), 'creator', 'vip'];
+    el(body, 'p', 'hint', account == null
+      ? tr('Connectez-vous à un compte GoofyTrack pour gagner des badges et les afficher à côté de votre pseudo.', 'Log in to a GoofyTrack account to earn badges and show them next to your name.')
+      : tr(`${all.filter(id => owned.includes(id)).length} badge(s) gagné(s) sur ${all.length}. Cliquez sur un badge gagné pour l'afficher à côté de votre pseudo (deux au plus).`,
+        `${all.filter(id => owned.includes(id)).length} of ${all.length} badges won. Click a badge you won to show it next to your name (two at most).`));
+    const pick = id => {
+      const now = pickedBadges();
+      const next = now.includes(id) ? now.filter(b => b !== id) : [...now, id].slice(-MAX_BADGES);
+      try { storage.setItem(BADGES_KEY, JSON.stringify(next)); } catch (e) { /* storage full */ }   // watched: synced
+      scheduleBadge();
+      sendPresence();
+      render();
+    };
+    // a badge: won and pickable (a button), or locked; on (shown on the profile) when picked
+    const slot = (parent, id, className) => {
+      const won = owned.includes(id), on = picked.includes(id);
+      const b = el(parent, won ? 'button' : 'div', className + (won ? ' won' : ' locked') + (on ? ' selected' : ''));
+      if (won) b.addEventListener('click', () => pick(id));
+      return { b, won, on };
+    };
+
+    el(body, 'h3', null, tr('Distance', 'Distance'));
+    const distance = el(body, 'div', 'badge-wall');
+    for (const t of DISTANCE_BADGES) {
+      const id = 'km:' + t.km, { b, won, on } = slot(distance, id, 'badge-tile');
+      badgeMarks(el(b, 'div', 'mark'), [id]);
+      const text = el(b, 'div', 'text');
+      el(text, 'div', 'name', badgeInfo(id).name);
+      el(text, 'div', 'how', tr(`Parcourir ${kmText(t.km)}`, `Drive ${kmText(t.km)}`));
+      if (!won) {
+        el(el(text, 'div', 'progress'), 'span').style.width = Math.min(100, metres / (t.km * 10)) + '%';
+        el(text, 'div', 'how', `${number(metres / 1000, 0)} / ${kmText(t.km)}`);
+      }
+      if (on) el(text, 'div', 'shown', tr('Sur votre profil', 'On your profile'));
+    }
+
+    el(body, 'h3', null, tr('Podiums des circuits', 'Circuit podiums'));
+    el(body, 'p', 'hint', tr('Entrez dans le top 3 du classement en ligne d\'un circuit du mod : le badge dure tant que vous gardez la place.',
+      'Get into the top 3 of a mod circuit\'s online board: the badge lasts as long as you keep the place.'));
+    const circuits = el(body, 'div', 'badge-circuits');
+    for (const t of MOD_TRACKS) {
+      const row = el(circuits, 'div', 'badge-circuit');
+      el(row, 'span', 'name', t.name);
+      for (const n of [1, 2, 3]) badgeMarks(slot(row, 'p' + n + ':' + t.id, 'place').b, ['p' + n + ':' + t.id]);
+    }
+
+    el(body, 'h3', null, tr('Spéciaux', 'Special'));
+    const special = el(body, 'div', 'badge-wall');
+    for (const [id, how] of [['creator', tr('Réservé aux co-créateurs de GoofyTrack', 'For the GoofyTrack co-creators')],
+      ['vip', tr('Offert aux amis des créateurs et aux premiers joueurs', 'Given to the creators\' friends and the first players')]]) {
+      const { b, on } = slot(special, id, 'badge-tile');
+      badgeMarks(el(b, 'div', 'mark'), [id]);
+      const text = el(b, 'div', 'text');
+      el(text, 'div', 'name', badgeInfo(id).label);
+      el(text, 'div', 'how', how);
+      if (on) el(text, 'div', 'shown', tr('Sur votre profil', 'On your profile'));
+    }
+  }
+
   // The Stats tab of one's own card: everything the save and the counts know, in sections
   function renderStats(body, p) {
     const wait = el(body, 'p', 'hint', '…');
@@ -1007,7 +1155,7 @@
 
     const tabs = el(panel, 'div', 'card-tabs');
     if (tab === 'stats' && !p) tab = 'profile';
-    for (const [t, label] of [['profile', tr('Profil', 'Profile')], ...(p ? [['stats', tr('Stats', 'Stats')]] : []), ['friends', tr('Amis', 'Friends')]]) {
+    for (const [t, label] of [['profile', tr('Profil', 'Profile')], ...(p ? [['stats', tr('Stats', 'Stats')]] : []), ['badges', tr('Badges', 'Badges')], ['friends', tr('Amis', 'Friends')]]) {
       const button = el(tabs, 'button', t === tab ? 'active' : null, label);
       if (t === 'friends' && account && social.requests > 0) el(button, 'span', 'count', String(social.requests));
       button.addEventListener('click', () => { tab = t; render(); });
@@ -1016,6 +1164,7 @@
     const body = el(panel, 'div', 'body');
     if (tab === 'friends') return renderFriends(body);
     if (tab === 'stats') return renderStats(body, p);
+    if (tab === 'badges') return renderBadgeWall(body);
     if (p) {
       const tile = statTile(el(body, 'div', 'stats'));
       const tiles = {
@@ -1310,7 +1459,8 @@
     const badgesTitle = el(body, 'h3');
     const owned = ownedBadges();
     if (account == null) el(body, 'p', 'hint', tr('Connectez-vous à un compte GoofyTrack pour gagner des badges.', 'Log in to a GoofyTrack account to earn badges.'));
-    else if (!owned.length) el(body, 'p', 'hint', tr('Pas encore de badge : montez sur le podium d\'un circuit du mod pour gagner son badge P1, P2 ou P3.', 'No badge yet: make the podium on a mod circuit to earn its P1, P2 or P3 badge.'));
+    else if (!owned.length) el(body, 'p', 'hint', tr('Pas encore de badge : roulez 500 km, ou montez sur le podium d\'un circuit du mod. Tous les badges sont dans l\'onglet Badges de votre carte.',
+      'No badge yet: drive 500 km, or make the podium on a mod circuit. Every badge is on the Badges tab of your card.'));
     // redrawn in place, not with the whole panel: the flag list keeps its scroll and the flag picked in view
     const list = owned.length ? el(body, 'div', 'badge-list') : null;
     const fillBadges = () => {
@@ -1725,6 +1875,72 @@
 }
 #ui .apex-account h2 .badge-podium { height: 24px; padding: 0 8px 0 5px; font-size: 14px; }
 #ui .apex-account h2 .badge-podium svg { width: 19px; height: 19px; }
+/* distance badges (badgeMarks): the podium's shape, a road, the tier's colour */
+#ui .apex-profile .badge-km, #ui .apex-account .badge-km, #ui .track-info-ui .badge-km, #ui .apex-badge-toast .badge-km {
+  flex: none; display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 7px 0 4px; box-sizing: border-box;
+  border-radius: 6px; color: #fff; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.4);
+  font-size: 12px; font-weight: 800; letter-spacing: 0.03em; line-height: 1; white-space: nowrap; text-transform: none; cursor: default;
+}
+#ui .badge-km svg { width: 15px; height: 15px; flex: none; }
+#ui .badge-km path { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+#ui .badge-km.green { background: linear-gradient(160deg, #8ef5ae 0%, #2ecc71 45%, #13813f 100%); color: #03200e; text-shadow: none; }
+#ui .badge-km.blue { background: linear-gradient(160deg, #a9cdff 0%, #2f7bff 45%, #1546a8 100%); }
+#ui .badge-km.purple { background: linear-gradient(160deg, #d6bcff 0%, #9b5cff 45%, #5a2bb3 100%); }
+#ui .badge-km.gold { background: linear-gradient(160deg, #ffe58a 0%, #f2c230 45%, #c48f0a 100%); color: #2a1d02; text-shadow: none; }
+#ui .badge-km.red { background: linear-gradient(160deg, #ffa3a3 0%, #f20d16 45%, #8f070c 100%); }
+#ui .badge-km.world { background: linear-gradient(120deg, #2ecc71, #2f7bff 35%, #9b5cff 60%, #ff5fa8 80%, #f5c518); animation: apx-world-glow 2.8s ease-in-out infinite; }
+@keyframes apx-world-glow { 50% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 0 9px rgba(155, 92, 255, 0.85); } }
+@media (prefers-reduced-motion: reduce) { #ui .badge-km.world { animation: none; } }
+#ui .apex-account h2 .badge-km { height: 24px; padding: 0 8px 0 5px; font-size: 14px; }
+#ui .apex-account h2 .badge-km svg { width: 19px; height: 19px; }
+/* the Badges tab (renderBadgeWall) */
+#ui .apex-account .badge-wall { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+#ui .apex-account .badge-tile {
+  display: flex; align-items: flex-start; gap: 12px; width: 100%; box-sizing: border-box; padding: 10px 12px; border: none;
+  border-radius: var(--apx-r-md, 12px); text-align: left; font: inherit; color: var(--apx-fg, #f3f5f8);
+  background-color: var(--apx-fill, rgba(255, 255, 255, 0.055));
+}
+#ui .apex-account button.badge-tile { cursor: pointer; }
+#ui .apex-account button.badge-tile:hover { background-color: var(--apx-ink-700, #222835); }
+#ui .apex-account .badge-tile .mark { flex: none; display: flex; min-width: 58px; padding-top: 1px; }
+#ui .apex-account .badge-tile .text { flex: 1; min-width: 0; }
+#ui .apex-account .badge-tile .name { font-size: 15px; font-weight: 700; }
+#ui .apex-account .badge-tile .how { font-size: 12px; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); }
+#ui .apex-account .badge-tile .progress { height: 4px; margin: 6px 0 3px 0; border-radius: 2px; overflow: hidden; background-color: rgba(255, 255, 255, 0.1); }
+#ui .apex-account .badge-tile .progress span { display: block; height: 100%; border-radius: 2px; background-color: var(--apx-accent, #f20d16); }
+#ui .apex-account .badge-tile .shown { margin-top: 3px; font-size: 12px; font-weight: 700; color: var(--apx-accent, #f20d16); }
+#ui .apex-account .badge-tile.locked .mark, #ui .apex-account .badge-circuit .place.locked { filter: grayscale(1); opacity: 0.35; }
+#ui .apex-account .badge-tile.selected, #ui .apex-account .badge-circuit .place.selected {
+  background-color: var(--apx-accent-soft, rgba(242, 13, 22, 0.18)); box-shadow: inset 0 0 0 2px var(--apx-accent, #f20d16);
+}
+#ui .apex-account .badge-circuits { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+#ui .apex-account .badge-circuit {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 12px; border-radius: var(--apx-r-md, 12px);
+  background-color: var(--apx-fill, rgba(255, 255, 255, 0.055));
+}
+#ui .apex-account .badge-circuit .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; color: var(--apx-fg, #f3f5f8); }
+#ui .apex-account .badge-circuit .place { display: inline-flex; padding: 4px; border: none; border-radius: 8px; background: none; }
+#ui .apex-account .badge-circuit button.place { cursor: pointer; }
+#ui .apex-account .badge-circuit button.place:hover { background-color: var(--apx-ink-700, #222835); }
+#ui .apex-account .badge-tile .badge-podium, #ui .apex-account .badge-tile .badge-km, #ui .apex-account .badge-tile .verified,
+#ui .apex-account .badge-circuit .badge-podium { cursor: inherit; }
+/* a badge just won (announceBadge): at the top of the screen, a few seconds */
+#ui .apex-badge-toast {
+  position: absolute; top: 22px; left: 50%; z-index: 102; transform: translateX(-50%); display: flex; align-items: center; gap: 16px;
+  padding: 12px 22px 12px 16px; border-radius: 16px; pointer-events: auto; cursor: pointer; font-family: var(--apx-font, sans-serif);
+  color: var(--apx-fg, #f3f5f8); background-color: var(--apx-glass-strong, rgba(12, 14, 19, 0.92));
+  box-shadow: inset 0 0 0 1px var(--apx-line, rgba(255, 255, 255, 0.09)), 0 0 0 2px var(--apx-accent, #f20d16), var(--apx-shadow, 0 18px 50px rgba(0, 0, 0, 0.45));
+  animation: apx-badge-in 0.5s cubic-bezier(0.2, 1.4, 0.4, 1); transition: opacity 0.5s, transform 0.5s;
+}
+#ui .apex-badge-toast.gone { opacity: 0; transform: translate(-50%, -14px); }
+@keyframes apx-badge-in { from { opacity: 0; transform: translate(-50%, -18px) scale(0.92); } }
+@media (prefers-reduced-motion: reduce) { #ui .apex-badge-toast { animation: none; transition: none; } }
+#ui .apex-badge-toast .mark { display: flex; padding: 0 12px; }
+#ui .apex-badge-toast .mark .badge-km { transform: scale(1.7); }
+#ui .apex-badge-toast .title { font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--apx-accent, #f20d16); }
+#ui .apex-badge-toast .name { font-size: 19px; font-weight: 800; }
+#ui .apex-badge-toast .sub { font-size: 13px; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); }
 #ui .apex-account .editor h3 { margin-top: 16px; }
 #ui .apex-account .editor .flag-search { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
 #ui .apex-account .editor h3 .picked { font-weight: 400; letter-spacing: 0.04em; text-transform: none; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); }

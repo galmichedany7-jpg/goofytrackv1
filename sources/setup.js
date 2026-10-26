@@ -1,6 +1,6 @@
-// Turns a PolyTrack 0.6.3 desktop install into the GoofyTrack game, inside this folder: the game's files are
-// copied here (never committed, see .gitignore), PolyTrack.exe becoming GoofyTrack.exe with the GoofyTrack icon
-// and name. The PolyTrack folder itself is left as it was. build.js runs this when the game is not here yet.
+// Turns a PolyTrack 0.6.3 desktop install into the GoofyTrack game, inside the GoofyTrack folder (above sources/): the game's files are
+// copied there (never committed, see .gitignore), PolyTrack.exe becoming GoofyTrack.exe with the GoofyTrack icon
+// and name. The PolyTrack folder itself is left as it was. build.js runs this when the game is not there yet.
 //
 //   node setup.js "C:\path\to\PolyTrack-v0.6.3-win32-x64" [--move]
 //
@@ -13,7 +13,7 @@ const { GAME, EXE, ARCHIVE_BACKUP, MOD_NAME, MOD_VERSION } = require('./config')
 const POLYTRACK_EXE = 'PolyTrack.exe';
 const isPolyTrack = dir => !!dir && fs.existsSync(path.join(dir, POLYTRACK_EXE)) && fs.existsSync(path.join(dir, 'resources'));
 
-// A PolyTrack install next to this folder (or next to its parent: a ZIP unpacks into a folder of its own)
+// A PolyTrack install next to the GoofyTrack folder (or next to its parent: a ZIP unpacks into a folder of its own)
 function findPolyTrack() {
   for (const base of [path.join(GAME, '..'), path.join(GAME, '..', '..')]) {
     let entries = [];

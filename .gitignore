@@ -1,12 +1,14 @@
 ﻿# Pristine game files extracted from your own install by build.js (never commit these)
 original/
 node_modules/
-server/records.json
-server/accounts.json
-update-settings.json
+sources/server/records.json
+sources/server/accounts.json
+sources/update-settings.json
+# where the updater of 2.17 and older kept its settings (moved to sources/ by update.js)
+/update-settings.json
 
 # points handed to tools/heights.js (tools/make_circuit.js <circuit> --points)
-tools/*_points.json
+sources/tools/*_points.json
 
 # The game itself, copied from PolyTrack by setup.js (never commit these)
 /GoofyTrack.exe

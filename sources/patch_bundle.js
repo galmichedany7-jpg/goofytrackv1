@@ -45,7 +45,7 @@ const SERVER_QUERY = '?mod=' + encodeURIComponent(BUILD_ID);
 const FOOTER = [
   '"PolyTrack" Game Remastered by Julio & Shyn',
   'All Credits to © 2026 kodub.com',
-  'Music : "Vroum Vroum" & "WAITING" by Teknah',
+  'Musics by Teknah',
 ];
 
 const HOOK = 'window.ApexRoom&&window.ApexRoom.';
@@ -474,6 +474,32 @@ const patches = [
     name: 'track parts are shaded smooth across shallow edges',
     find: 'const r=vu.pP(i,!0).toNonIndexed();r.computeVertexNormals();',
     replace: 'const r=vu.pP(i,!0).toNonIndexed();r.computeVertexNormals(),window.ApexGfx&&window.ApexGfx.smooth(r);',
+  },
+  {
+    // three.js's mergeVertices keys every vertex with a string: on the circuits' hundreds of thousands of vertices,
+    // three times each (one per part colour), most of the loading time went into it. ApexGfx.merge gives the same
+    // geometry with integer keys, and hands the original the geometries it does not handle.
+    name: 'track parts merge their vertices quickly',
+    find: 'const o=vu.ec(r),c=new M.eaF(o,a);',
+    replace: 'const o=window.ApexGfx?window.ApexGfx.merge(r,vu.ec):vu.ec(r),c=new M.eaF(o,a);',
+  },
+  // Each part is built once per part colour (Summer, Winter, Desert) as the game loads. The circuits are huge and
+  // only ever placed in one: their other colours are built the first time a track asks for them (ApexGfx.LazyMap:
+  // a Map whose get() builds what was deferred). The game only gets a colour's mesh for parts placed in it.
+  {
+    name: 'part colours are kept in a map that can build them later',
+    find: 'colors:new Map(e.colors.map((({id:e})=>[e,null]))),physicsShapeVertices:null};',
+    replace: 'colors:new(window.ApexGfx&&window.ApexGfx.LazyMap||Map)(e.colors.map((({id:e})=>[e,null]))),physicsShapeVertices:null};',
+  },
+  {
+    name: 'a part colour is built by a function of its own',
+    find: 'let l=null;for(const n of e.colors){const i=[];',
+    replace: 'let l=null;const apexColour=n=>{const i=[];',
+  },
+  {
+    name: 'the circuits\' other colours are built when a track needs them',
+    find: 'c=new M.eaF(o,a);t.colors.set(n.id,c),l??(l=r)}if(null==l)',
+    replace: 'c=new M.eaF(o,a);return[c,r]};for(const n of e.colors){if(null!=l&&t.colors.defer&&window.ApexGfx.deferColour(l)){t.colors.defer(n.id,()=>apexColour(n)[0]);continue}const[c,r]=apexColour(n);t.colors.set(n.id,c),l??(l=r)}if(null==l)',
   },
 
   // ---------------------------------------------------------------- scenery (apex-scenery.js)

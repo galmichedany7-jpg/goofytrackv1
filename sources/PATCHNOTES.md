@@ -15,6 +15,30 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.18 : badges de distance, chargement 4 fois plus rapide
+
+Six nouveaux badges à gagner en roulant, un mur pour voir tous les badges du jeu, un démarrage bien plus court et un dossier GoofyTrack enfin rangé.
+
+**Badges**
+- **Badges de distance** : gagnés pour de bon quand l'un de vos profils a roulé assez loin, tous vos PC compris. **Baroudeur** (500 km, vert), **Routard** (1 000 km, bleu), **Grand voyageur** (2 500 km, violet), **Globe-trotteur** (5 000 km, or), **Légende du bitume** (10 000 km, rouge) et **Tour du monde** (40 075 km, le tour de la Terre, arc-en-ciel).
+- **Notification** : un bandeau « Nouveau badge ! » s'affiche en haut de l'écran dès qu'un palier est franchi, même en pleine course. Un clic dessus ouvre vos badges. Chaque badge n'est annoncé qu'une fois, même sur vos autres PC.
+- **Onglet Badges** sur votre carte de profil : tous les badges du jeu, distance, podiums des circuits et badges spéciaux. Ceux qui vous manquent sont grisés, avec une jauge jusqu'au prochain palier de distance. Un clic sur un badge gagné le met à côté de votre pseudo, ou l'enlève (deux au plus).
+- La distance est comptée depuis la V2.17 : les kilomètres faits avant ne comptent pas.
+
+**Performances**
+- **Chargement du jeu environ 4 fois plus rapide** (de 20 s à 5 s environ sur le même PC) : les pièces des circuits du mod se préparent sans tous les calculs inutiles d'avant, et leurs versions Hiver et Désert ne sont construites que si une piste en a besoin. Le rendu et la physique ne changent pas.
+- Connecté à un compte, le jeu n'attend plus que **3 s** au lieu de 8 votre sauvegarde en ligne au démarrage. Le serveur gratuit met souvent plus longtemps à se réveiller : le jeu démarre alors avec la sauvegarde du PC, et vous propose de recharger si une sauvegarde plus récente arrive ensuite.
+
+**Dossier GoofyTrack**
+- Le dossier ne montre plus que **`GoofyTrack.exe`**, **`Mettre a jour GoofyTrack.bat`**, **`Construire GoofyTrack.bat`** (reconstruit le jeu) et **`sources`** (tout le code du mod). Les fichiers du jeu sont masqués, comme `.git`.
+- « Jouer a GoofyTrack.bat » disparaît : lancez directement `GoofyTrack.exe`, et mettez à jour avec « Mettre a jour GoofyTrack.bat ».
+- La mise à jour depuis la V2.17 range le dossier toute seule : les anciens fichiers sont retirés, votre token GitHub est gardé.
+
+**Corrections**
+- Crédits du menu principal : « Musics by Teknah ».
+
+**Mise à jour** : « Mettre a jour GoofyTrack.bat » (ou `git pull` puis « Construire GoofyTrack.bat »). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.18. Le serveur (Render) doit être redéployé pour les badges de distance, avec son dossier racine (Root Directory) à `sources/server`.
+
 ## V2.17 : ailerons, statistiques et cadres de profil
 
 Huit ailerons à choisir au garage, un onglet de statistiques sur votre carte, des cadres pour votre profil et la Piste de la semaine choisie par GoofyTrack.

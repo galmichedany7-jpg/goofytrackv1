@@ -1,34 +1,39 @@
-// Checks GitHub for a newer GoofyTrack, downloads it into this folder and rebuilds the game (GoofyTrack.exe).
+// Checks GitHub for a newer GoofyTrack, downloads it into the GoofyTrack folder and rebuilds the game (GoofyTrack.exe).
 //
-//   node update.js [--play] [--check] [--force] ["C:\path\to\PolyTrack-v0.6.3-win32-x64"]
+//   node sources/update.js [--play] [--check] [--force] ["C:\path\to\PolyTrack-v0.6.3-win32-x64"]
 //
 //   --play   start the game afterwards (whether or not there was an update)
 //   --check  only say whether an update is available
 //   --force  rebuild the game even when everything is up to date
 //
-// Or double-click "Mettre a jour GoofyTrack.bat" / "Jouer a GoofyTrack.bat".
+// Or double-click "Mettre a jour GoofyTrack.bat".
 //
 // - Folder cloned with git: `git pull`, i.e. the latest commits, with your own git credentials (refused if
 //   you have local changes).
 // - Folder downloaded as a ZIP: the latest release's source code is downloaded from GitHub and copied over
-//   this folder (files you added are kept). The repository being private, the first run asks for a GitHub
-//   token, kept in update-settings.json (never committed).
+//   the GoofyTrack folder (files you added are kept). The repository being private, the first run asks for a
+//   GitHub token, kept in sources/update-settings.json (never committed).
 // Then build.js runs if the game does not have this version yet. The very first time, the game is made from
-// a PolyTrack 0.6.3 install (given as argument, found next to this folder, or asked), copied into this folder.
+// a PolyTrack 0.6.3 install (given as argument, found next to the folder, or asked), copied into the folder.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline/promises');
 const { execFileSync, spawn } = require('child_process');
-const { EXE, installedVersion } = require('./config');
+const { ROOT, EXE, installedVersion } = require('./config');
 const { findPolyTrack, isPolyTrack } = require('./setup');
+const layout = require('./layout');
 
 const REPO = 'galmichedany7-jpg/goofytrackv1';
 const SETTINGS = path.join(__dirname, 'update-settings.json');
+const OLD_SETTINGS = path.join(ROOT, 'update-settings.json');    // where 2.17 and older kept them
 const flags = new Set(process.argv.slice(2).filter(a => a.startsWith('--')));
 const polyTrackArg = process.argv.slice(2).find(a => !a.startsWith('--'));
 
-const loadSettings = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, 'utf8')); } catch { return {}; } };
+const loadSettings = () => {
+  if (!fs.existsSync(SETTINGS) && fs.existsSync(OLD_SETTINGS)) fs.renameSync(OLD_SETTINGS, SETTINGS);
+  try { return JSON.parse(fs.readFileSync(SETTINGS, 'utf8')); } catch { return {}; }
+};
 const saveSettings = s => fs.writeFileSync(SETTINGS, JSON.stringify(s, null, 2) + '\n');
 // The mod version of this folder, read fresh (config.js changes during an update)
 const sourceVersion = () => /MOD_VERSION:\s*'([^']+)'/.exec(fs.readFileSync(path.join(__dirname, 'config.js'), 'utf8'))[1];
@@ -94,8 +99,9 @@ async function updateFromRelease(settings) {
     execFileSync('tar', ['-xf', path.join(temp, 'release.zip'), '-C', out]);   // tar ships with Windows 10 and later
     // GitHub puts everything in one folder named after the repository and the commit
     const [root] = fs.readdirSync(out);
-    if (!root || !fs.existsSync(path.join(out, root, 'build.js'))) throw new Error("L'archive téléchargée ne ressemble pas à GoofyTrack.");
-    fs.cpSync(path.join(out, root), __dirname, { recursive: true, force: true });
+    if (!root || !fs.existsSync(path.join(out, root, 'sources', 'build.js'))) throw new Error("L'archive téléchargée ne ressemble pas à GoofyTrack.");
+    layout.reveal();   // a hidden file cannot be overwritten: the build hides them again
+    fs.cpSync(path.join(out, root), ROOT, { recursive: true, force: true });
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -105,7 +111,7 @@ async function updateFromRelease(settings) {
 
 // Folder cloned with git: pull, as the README says
 function updateFromGit() {
-  const git = (...args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8' }).trim();
+  const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
   if (git('status', '--porcelain', '--untracked-files=no')) {
     console.log('Ce dossier a des modifications locales : pas de mise à jour automatique, faites `git pull` vous-même.');
     return false;
@@ -123,7 +129,7 @@ function updateFromGit() {
 
 async function main() {
   const settings = loadSettings();
-  const isGit = fs.existsSync(path.join(__dirname, '.git'));
+  const isGit = fs.existsSync(path.join(ROOT, '.git'));
   try {
     isGit ? updateFromGit() : await updateFromRelease(settings);
   } catch (e) {
@@ -143,10 +149,11 @@ async function main() {
     // a fresh process, so the build runs the scripts just downloaded
     execFileSync(process.execPath, [path.join(__dirname, 'build.js'), ...(source ? [source] : [])], { stdio: 'inherit' });
     if (source && 'game' in settings) { delete settings.game; saveSettings(settings); }
-    if (source) console.log(`\nLe jeu est maintenant dans ce dossier : ${EXE}\nL'ancien dossier de PolyTrack n'est plus utilisé par GoofyTrack.`);
+    if (source) console.log(`\nLe jeu est maintenant dans le dossier GoofyTrack : ${EXE}\nL'ancien dossier de PolyTrack n'est plus utilisé par GoofyTrack.`);
   } else {
     console.log(`Le jeu a déjà GoofyTrack ${version}.`);
   }
+  layout.hide();   // a file git or the release just wrote is no longer hidden (the build hides them too)
 
   if (flags.has('--play')) {
     spawn(EXE, [], { cwd: path.dirname(EXE), detached: true, stdio: 'ignore' }).unref();

@@ -5,9 +5,9 @@ Jeu de course pour Windows, construit sur [PolyTrack](https://www.kodub.com) 0.6
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation copie votre propre PolyTrack dans ce dossier et le transforme en GoofyTrack.
 
 **Version actuelle : 2.14** 
-Le détail de chaque version est dans les [patch notes](PATCHNOTES.md).
+Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 
-![Menu principal](docs/menu.jpg)
+![Menu principal](sources/docs/menu.jpg)
 
 ## Ce que ça change
 
@@ -15,7 +15,7 @@ Le détail de chaque version est dans les [patch notes](PATCHNOTES.md).
 - Nouvelles Carrosseries de F1
 - Nouvelles personnalisations : 16 livrées redessinées pour la nouvelle carrosserie
 
-![Garage](docs/garage.jpg)
+![Garage](sources/docs/garage.jpg)
 
 **Interface « Apex »**
 - Interfaces améliorées
@@ -59,12 +59,12 @@ Le détail de chaque version est dans les [patch notes](PATCHNOTES.md).
 - Depuis cette carte, avec un pseudo et un mot de passe, vos profils, records et fantômes, pistes perso et réglages vous suivent sur chaque PC où vous vous connectez.
 - Chaque compte a un numéro de joueur (#0001, #0002…). Onglet **Amis** : ajoutez vos amis par leur numéro, voyez qui est en ligne, et rejoignez en un clic la room où se trouve un ami, qu'il l'héberge ou qu'il l'ait rejointe.
 - Sur la page d'une map, le nom du créateur ouvre sa fiche de joueur quand un compte porte ce nom : stats, meilleure place, circuits créés, ajout en ami.
-- La sauvegarde est fusionnée à la connexion (le meilleur temps de chaque piste est gardé), puis synchronisée toute seule. Elle est chiffrée avec votre mot de passe : le serveur ne peut pas la lire, et un mot de passe oublié ne se réinitialise pas. Détails dans les [patch notes V2.13](PATCHNOTES.md) et dans [Comptes](#comptes).
+- La sauvegarde est fusionnée à la connexion (le meilleur temps de chaque piste est gardé), puis synchronisée toute seule. Elle est chiffrée avec votre mot de passe : le serveur ne peut pas la lire, et un mot de passe oublié ne se réinitialise pas. Détails dans les [patch notes V2.13](sources/PATCHNOTES.md) et dans [Comptes](#comptes).
 
 **Collisions entre voitures**
 - Dans une room « Course », les voitures sont solides les unes pour les autres, en permanence : essais libres, qualifications, tour de formation et course. On se pousse, on se bloque, un choc à l'arrière propulse la voiture de devant, un choc de côté fait tourner.
 - « Collisions activées » s'affiche sous le classement de la room. Pas de collisions dans les rooms Casual et Compétitif.
-- Détails et limites dans les patch notes [V2.4](PATCHNOTES.md#v24--collisions-entre-voitures) et dans les [limites connues](#limites-connues).
+- Détails et limites dans les patch notes [V2.4](sources/PATCHNOTES.md#v24--collisions-entre-voitures) et dans les [limites connues](#limites-connues).
 
 **Mode course**
 
@@ -76,13 +76,13 @@ Sur l'écran « Héberger », un troisième mode **Course** s'ajoute à Casual e
 4. **Course** : grille dans l'ordre des qualifications (ou des temps de la room), où chaque voiture part réellement de son emplacement, cinq feux rouges, puis N tours. Le tableau donne le classement en direct (tour en cours, écarts) et un bandeau affiche votre tour et votre dernier temps au tour.
 5. **Résultats** : classement final, puis retour à l'entraînement.
 
-Les courses en plusieurs tours demandent un **circuit** : une piste dont la ligne d'arrivée est posée juste derrière le départ (à moins de 50 m), avec ses checkpoints sur le tour. Sur une piste qui ne boucle pas, la course se fait en un seul tour. Le mod ajoute une catégorie **Circuits** en tête des pistes officielles, avec le circuit « Killer Loop », un rectangle en route large ([`tracks/killer_loop.track`](tracks/killer_loop.track), généré par [`tracks/make_loop_track.js`](tracks/make_loop_track.js)). Les pistes du mod sont déclarées dans [`tracks/index.js`](tracks/index.js) ; le classement en ligne du jeu ne les connaît pas, leurs records vont donc au [serveur GoofyTrack](#classements-des-circuits-du-mod).
+Les courses en plusieurs tours demandent un **circuit** : une piste dont la ligne d'arrivée est posée juste derrière le départ (à moins de 50 m), avec ses checkpoints sur le tour. Sur une piste qui ne boucle pas, la course se fait en un seul tour. Le mod ajoute une catégorie **Circuits** en tête des pistes officielles, avec le circuit « Killer Loop », un rectangle en route large ([`tracks/killer_loop.track`](sources/tracks/killer_loop.track), généré par [`tracks/make_loop_track.js`](sources/tracks/make_loop_track.js)). Les pistes du mod sont déclarées dans [`tracks/index.js`](sources/tracks/index.js) ; le classement en ligne du jeu ne les connaît pas, leurs records vont donc au [serveur GoofyTrack](#classements-des-circuits-du-mod).
 
-![Départ d'une course](docs/race.jpg)
+![Départ d'une course](sources/docs/race.jpg)
 
 ## Patch notes
 
-Le détail de chaque version est dans [PATCHNOTES.md](PATCHNOTES.md), et dans le jeu avec le bouton **Patch notes** du menu principal.
+Le détail de chaque version est dans [PATCHNOTES.md](sources/PATCHNOTES.md), et dans le jeu avec le bouton **Patch notes** du menu principal.
 
 ## Installation
 
@@ -91,31 +91,44 @@ Il faut [Node.js](https://nodejs.org) 18 ou plus récent et PolyTrack 0.6.3 pour
 ```bash
 git clone https://github.com/galmichedany7-jpg/goofytrackv1.git GoofyTrack
 cd GoofyTrack
-node build.js "C:\chemin\vers\PolyTrack-v0.6.3-win32-x64"
+node sources/build.js "C:\chemin\vers\PolyTrack-v0.6.3-win32-x64"
 ```
 
-Ensuite, lancez **`GoofyTrack.exe`**, dans ce même dossier.
+(ou double-cliquez sur **`Construire GoofyTrack.bat`** : il trouve tout seul un dossier PolyTrack posé à côté.) Ensuite, lancez **`GoofyTrack.exe`**.
 
-La première fois, PolyTrack est copié dans ce dossier (fichiers ignorés par git) : `PolyTrack.exe` devient `GoofyTrack.exe`, avec l'icône et le nom de GoofyTrack ([`setup.js`](setup.js)). Le dossier de PolyTrack n'est plus utilisé ensuite, vous pouvez le supprimer. S'il est à côté de ce dossier, il est trouvé tout seul et `node build.js` suffit. Vos sauvegardes (temps, pistes, réglages) restent celles de PolyTrack.
+### Le dossier GoofyTrack
 
-L'archive d'origine du jeu est gardée sous le nom `resources/app.asar.original` et décompressée dans `resources/app`, que le jeu charge à la place. Relancer `node build.js` reconstruit tout à partir de l'archive d'origine : c'est aussi la commande à utiliser après avoir modifié le code (jeu fermé).
+Dans l'explorateur, on ne voit que quatre choses :
+
+| | |
+|---|---|
+| `GoofyTrack.exe` | Le jeu |
+| `Mettre a jour GoofyTrack.bat` | Récupère la nouvelle version s'il y en a une et reconstruit le jeu |
+| `Construire GoofyTrack.bat` | Reconstruit le jeu à partir du code (après une modification, jeu fermé) |
+| `sources/` | Tout le code du mod, ses pistes, son serveur et ses outils |
+
+Le reste est masqué (attribut « caché » de Windows, comme `.git`) par [`sources/layout.js`](sources/layout.js) à chaque build : les fichiers du jeu, qui doivent rester à côté de `GoofyTrack.exe` (`*.dll`, `*.pak`, `locales/`, `resources/`…), et quelques fichiers qui doivent être en haut du dépôt (`README.md`, `LICENSE`, `.gitignore`, `render.yaml`). Restent aussi, masqués, `build.js` et `config.js` : ils relaient vers `sources/` pour l'updater de la 2.17 et des versions précédentes, qui lit la version dans `./config.js` puis lance `./build.js` (le build les tient à jour, puis retire les fichiers de l'ancienne organisation).
+
+La première fois, PolyTrack est copié dans le dossier GoofyTrack (fichiers ignorés par git) : `PolyTrack.exe` devient `GoofyTrack.exe`, avec l'icône et le nom de GoofyTrack ([`setup.js`](sources/setup.js)). Le dossier de PolyTrack n'est plus utilisé ensuite, vous pouvez le supprimer. S'il est à côté du dossier GoofyTrack, il est trouvé tout seul et `node sources/build.js` suffit. Vos sauvegardes (temps, pistes, réglages) restent celles de PolyTrack.
+
+L'archive d'origine du jeu est gardée sous le nom `resources/app.asar.original` et décompressée dans `resources/app`, que le jeu charge à la place. Relancer le build reconstruit tout à partir de l'archive d'origine : c'est aussi ce qu'il faut faire après avoir modifié le code (jeu fermé).
 
 Pour désinstaller, supprimez le dossier.
 
 ### Mises à jour automatiques
 
-Double-cliquez sur **`Jouer a GoofyTrack.bat`** au lieu de `GoofyTrack.exe` : il récupère la nouvelle version s'il y en a une, reconstruit le jeu si besoin, puis le lance. **`Mettre a jour GoofyTrack.bat`** fait la même chose sans lancer le jeu. En ligne de commande :
+Double-cliquez sur **`Mettre a jour GoofyTrack.bat`** : il récupère la nouvelle version s'il y en a une et reconstruit le jeu si besoin. En ligne de commande :
 
 ```bash
-node update.js [--check] [--play] [--force]
+node sources/update.js [--check] [--play] [--force]
 ```
 
 - Dossier cloné avec git : `git pull` (les derniers commits) avec vos identifiants git, refusé s'il y a des modifications locales.
-- Dossier téléchargé en ZIP : le code de la dernière release est copié par-dessus le dossier. Le dépôt étant privé, le premier lancement demande un token GitHub en lecture seule (Contents > Read-only sur ce dépôt), gardé dans `update-settings.json`.
-- Sans connexion, le jeu se lance quand même.
-- Venant d'une version où le mod était installé dans le dossier de PolyTrack : la mise à jour copie le jeu dans ce dossier la première fois (le dossier de PolyTrack est retrouvé ou demandé).
+- Dossier téléchargé en ZIP : le code de la dernière release est copié par-dessus le dossier. Le dépôt étant privé, le premier lancement demande un token GitHub en lecture seule (Contents > Read-only sur ce dépôt), gardé dans `sources/update-settings.json`.
+- Sans connexion, le jeu se lance quand même (`--play`).
+- Venant d'une version où le mod était installé dans le dossier de PolyTrack : la mise à jour copie le jeu dans le dossier GoofyTrack la première fois (le dossier de PolyTrack est retrouvé ou demandé).
 
-Pour les releases : le tag doit être `V` + `MOD_VERSION` de `config.js` (`V2.7` pour `2.7`), c'est lui qui est comparé à la version installée.
+Pour les releases : le tag doit être `V` + `MOD_VERSION` de `sources/config.js` (`V2.7` pour `2.7`), c'est lui qui est comparé à la version installée. Lancez le build après avoir changé `MOD_VERSION` et avant de commiter : il recopie la version dans le relais `config.js` du haut du dossier, que l'updater de la 2.17 et des versions précédentes lit pour savoir s'il doit reconstruire le jeu.
 
 ## Compatibilité en ligne
 
@@ -126,24 +139,24 @@ Pour les releases : le tag doit être `V` + `MOD_VERSION` de `config.js` (`V2.7`
 
 ## Serveur multijoueur
 
-La partie elle-même se joue en pair-à-pair (WebRTC entre l'hôte et chaque joueur). Un serveur ne sert qu'à distribuer les codes d'invitation et à mettre en relation l'hôte et les joueurs qui le rejoignent. Le mod utilise le sien, dans [`server/`](server/server.js) : un petit programme Node qui parle le même protocole que celui de PolyTrack.
+La partie elle-même se joue en pair-à-pair (WebRTC entre l'hôte et chaque joueur). Un serveur ne sert qu'à distribuer les codes d'invitation et à mettre en relation l'hôte et les joueurs qui le rejoignent. Le mod utilise le sien, dans [`server/`](sources/server/server.js) : un petit programme Node qui parle le même protocole que celui de PolyTrack.
 
 - **Codes** : six caractères (sans 0/O ni 1/I), valables tant que l'hôte reste connecté. Minuscules, espaces et tirets sont acceptés à la saisie.
-- **Liste des rooms** ([`apex-lobby.js`](apex-lobby.js)) : le jeu qui héberge envoie toutes les 3 s, sur sa connexion au serveur, ce que la liste montre de la room (`roomInfo` : hôte, piste, mode, joueurs, phase de course, visible ou non). `GET /rooms?mod=<build>` rend les rooms visibles de ce build ; l'écran Multijoueur l'interroge toutes les 4 s et rejoint une room en remplissant son code à la place du joueur.
-- **Build** : à chaque `node build.js`, une empreinte des fichiers du mod est calculée (affichée par le build, et dans l'infobulle de la première ligne en bas du menu). Le serveur refuse un joueur dont l'empreinte diffère de celle de l'hôte, avec un message clair dans le jeu. Après une modification, tout le monde doit donc refaire `node build.js` avec les mêmes fichiers.
-- **Adresse** : `SERVER_URL` dans [`config.js`](config.js). La variable d'environnement `GOOFY_SERVER` la remplace le temps d'un build (par exemple `http://localhost:8787/` pour un test local).
+- **Liste des rooms** ([`apex-lobby.js`](sources/apex-lobby.js)) : le jeu qui héberge envoie toutes les 3 s, sur sa connexion au serveur, ce que la liste montre de la room (`roomInfo` : hôte, piste, mode, joueurs, phase de course, visible ou non). `GET /rooms?mod=<build>` rend les rooms visibles de ce build ; l'écran Multijoueur l'interroge toutes les 4 s et rejoint une room en remplissant son code à la place du joueur.
+- **Build** : à chaque `node sources/build.js`, une empreinte des fichiers du mod est calculée (affichée par le build, et dans l'infobulle de la première ligne en bas du menu). Le serveur refuse un joueur dont l'empreinte diffère de celle de l'hôte, avec un message clair dans le jeu. Après une modification, tout le monde doit donc refaire `node sources/build.js` avec les mêmes fichiers.
+- **Adresse** : `SERVER_URL` dans [`config.js`](sources/config.js). La variable d'environnement `GOOFY_SERVER` la remplace le temps d'un build (par exemple `http://localhost:8787/` pour un test local).
 
 ### Mettre le serveur en ligne (Render, gratuit)
 
 1. Poussez ce dépôt sur GitHub.
-2. Sur [render.com](https://render.com), créez un compte, puis **New > Blueprint** et choisissez le dépôt : le fichier [`render.yaml`](render.yaml) décrit le service (dossier `server/`, offre gratuite).
-3. Une fois le service déployé, copiez son adresse (`https://<nom>.onrender.com/`, avec la barre oblique finale) dans `SERVER_URL` de `config.js`, puis relancez `node build.js` chez chaque joueur.
+2. Sur [render.com](https://render.com), créez un compte, puis **New > Blueprint** et choisissez le dépôt : le fichier [`render.yaml`](render.yaml) décrit le service (dossier `sources/server/`, offre gratuite).
+3. Une fois le service déployé, copiez son adresse (`https://<nom>.onrender.com/`, avec la barre oblique finale) dans `SERVER_URL` de `sources/config.js`, puis relancez `node sources/build.js` chez chaque joueur.
 
 Sur l'offre gratuite, le serveur s'endort après 15 minutes sans connexion et met jusqu'à une minute à se réveiller. Le jeu l'appelle dès son lancement pour qu'il soit prêt quand vous ouvrez le multijoueur. Une room déjà ouverte n'est pas concernée : la connexion de l'hôte le garde éveillé.
 
 ### Classements des circuits du mod
 
-Le serveur tient aussi les classements des pistes du mod ([`server/records.js`](server/records.js)) : un record par joueur et par piste, son meilleur temps, avec le replay. Le jeu les interroge avec les mêmes requêtes que le classement officiel ; un record ne compte que s'il vient du même joueur que les précédents (signature tirée de son jeton PolyTrack).
+Le serveur tient aussi les classements des pistes du mod ([`server/records.js`](sources/server/records.js)) : un record par joueur et par piste, son meilleur temps, avec le replay. Le jeu les interroge avec les mêmes requêtes que le classement officiel ; un record ne compte que s'il vient du même joueur que les précédents (signature tirée de son jeton PolyTrack).
 
 Sur l'offre gratuite de Render, le disque est effacé à chaque redémarrage. Pour garder les records, le serveur les écrit dans un **Gist secret** de votre compte GitHub :
 
@@ -154,13 +167,13 @@ Au démarrage, le serveur retrouve son Gist (« GoofyTrack records », fichier `
 
 ### Comptes
 
-Le serveur garde aussi la sauvegarde de chaque compte ([`server/accounts.js`](server/accounts.js), côté jeu [`apex-account.js`](apex-account.js)), avec le même `GITHUB_TOKEN`, dans un second Gist secret (« GoofyTrack accounts », un fichier par compte). Sans `GITHUB_TOKEN`, ils vont dans `server/accounts.json`. **Sur Render, sans `GITHUB_TOKEN`, les comptes sont effacés à chaque mise en veille** (la page `/health` dit où ils sont gardés).
+Le serveur garde aussi la sauvegarde de chaque compte ([`server/accounts.js`](sources/server/accounts.js), côté jeu [`apex-account.js`](sources/apex-account.js)), avec le même `GITHUB_TOKEN`, dans un second Gist secret (« GoofyTrack accounts », un fichier par compte). Sans `GITHUB_TOKEN`, ils vont dans `server/accounts.json`. **Sur Render, sans `GITHUB_TOKEN`, les comptes sont effacés à chaque mise en veille** (la page `/health` dit où ils sont gardés).
 
 - **Mot de passe** : il ne quitte jamais le PC. Le jeu en tire deux clés (PBKDF2, 310 000 tours) : l'une chiffre la sauvegarde (AES-GCM, après compression), l'autre sert à se connecter et le serveur n'en garde qu'une empreinte (scrypt). Le serveur ne stocke donc qu'un bloc illisible, et ne peut pas réinitialiser un mot de passe.
 - **Sauvegarde** : une liste d'entrées (profil, record, piste perso, réglage), chacune avec l'heure de sa dernière modification. Une suppression reste dans la liste, pour être reportée sur les autres PC. Deux sauvegardes se fusionnent entrée par entrée : le meilleur temps pour un record, la plus récente pour le reste.
 - **Synchronisation** : au lancement, le jeu attend la sauvegarde du compte (8 secondes au plus) avant de lire la sienne. Ensuite, elle est envoyée 4 secondes après chaque changement. Chaque envoi porte le numéro de la version de départ : si un autre PC a envoyé entre-temps, le serveur répond 409 avec la version plus récente, que le jeu fusionne avant de renvoyer.
 - **Amis** : chaque compte reçoit un numéro public dans l'ordre de création (#0001, #0002…). `RESERVED_IDS` garde des numéros pour certains pseudos (`julio:7777,shyn:1` par défaut : le #7777 reste à Julio et le #0001 à Shyn même si un autre compte est créé avant ; un compte de ce pseudo qui a un autre numéro prend le sien au démarrage du serveur, ses amis suivent), `CREATOR_IDS` (`7777,1` par défaut) donne la coche « créateur ». Le jeu envoie sa présence toutes les 30 s (profil affiché, au menu ou en jeu). Un joueur est en ligne pendant 75 s après la dernière. Le jeu qui héberge une room ajoute la session du compte à l'adresse du serveur multijoueur (`&account=`) : le serveur sait ainsi à qui est la room. Un joueur qui a rejoint une room en donne le code avec sa présence ; il ne compte que tant que la room est ouverte. Le code n'est montré qu'aux amis du joueur. La présence et les rooms restent en mémoire, sans être enregistrées.
-- **Fiches de joueur** : avec sa présence, le jeu envoie les stats de la carte de profil (pistes bouclées, circuits du mod, pistes perso) et l'identifiant public du joueur sur les classements. `/account/player?name=` les rend à n'importe qui, avec sa meilleure place sur les classements du serveur. Le nom du créateur d'une map est relié au compte de même nom (les noms de compte sont uniques). L'auteur des circuits du mod est donné dans [`tracks/index.js`](tracks/index.js).
+- **Fiches de joueur** : avec sa présence, le jeu envoie les stats de la carte de profil (pistes bouclées, circuits du mod, pistes perso) et l'identifiant public du joueur sur les classements. `/account/player?name=` les rend à n'importe qui, avec sa meilleure place sur les classements du serveur. Le nom du créateur d'une map est relié au compte de même nom (les noms de compte sont uniques). L'auteur des circuits du mod est donné dans [`tracks/index.js`](sources/tracks/index.js).
 - **Limites** : 10 connexions ratées par pseudo toutes les 15 minutes, 5 créations de compte par adresse et par heure, 10 sessions (PC) par compte, 500 comptes, 8 Mo par sauvegarde, 100 amis et 50 demandes en attente par compte.
 
 ### Connexion entre joueurs
@@ -170,10 +183,10 @@ Le serveur fournit des serveurs STUN publics (Google, Cloudflare), qui suffisent
 ### Tester en local
 
 ```bash
-cd server && npm install && node server.js
+cd sources/server && npm install && node server.js
 ```
 
-Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`GOOFYTRACK_DIR="C:\chemin\vers\copie" GOOFY_SERVER=http://localhost:8787/ node build.js`, le premier build y copie PolyTrack), servez-la avec `node serve.js "C:\chemin\vers\copie"`, et ouvrez-la deux fois : `http://localhost:8765` et `http://127.0.0.1:8765` (deux adresses différentes donnent deux profils de joueur différents).
+Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`GOOFYTRACK_DIR="C:\chemin\vers\copie" GOOFY_SERVER=http://localhost:8787/ node sources/build.js`, le premier build y copie PolyTrack), servez-la avec `node sources/serve.js "C:\chemin\vers\copie"`, et ouvrez-la deux fois : `http://localhost:8765` et `http://127.0.0.1:8765` (deux adresses différentes donnent deux profils de joueur différents).
 
 ## Limites connues
 
@@ -188,11 +201,14 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 
 ## Organisation du code
 
+Tout est dans `sources/`, sauf les deux `.bat` et les fichiers masqués du haut du dossier (voir [Le dossier GoofyTrack](#le-dossier-goofytrack)).
+
 | Fichier | Rôle |
 |---|---|
-| `build.js` | Construction du jeu |
-| `setup.js`, `tools/rebrand_exe.ps1` | Première installation : copie de PolyTrack dans ce dossier, `GoofyTrack.exe` avec son icône et son nom |
-| `update.js`, `Jouer a GoofyTrack.bat`, `Mettre a jour GoofyTrack.bat` | Mises à jour automatiques |
+| `build.js`, `Construire GoofyTrack.bat` | Construction du jeu |
+| `setup.js`, `tools/rebrand_exe.ps1` | Première installation : copie de PolyTrack dans le dossier GoofyTrack, `GoofyTrack.exe` avec son icône et son nom |
+| `update.js`, `Mettre a jour GoofyTrack.bat` | Mises à jour automatiques |
+| `layout.js` | Le dossier GoofyTrack : fichiers masqués, relais pour les anciens updaters, rangement après la mise à jour depuis la 2.17 |
 | `config.js`, `asar.js` | Emplacement du jeu, lecture de l'archive |
 | `build_car.js`, `meshlib.js` | Génération procédurale du modèle 3D de la voiture |
 | `build_patterns.js` | Génération des 16 livrées |
@@ -217,13 +233,13 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 | `goofytrack-logo.svg` | Logo du menu principal |
 | `audio/` | Musiques du jeu (« Vroum Vroum » et, dans le menu des courses, « WAITING », Teknah) |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |
-| `server/`, `render.yaml` | Serveur multijoueur (codes d'invitation, mise en relation, classements des pistes du mod, comptes) et son déploiement sur Render |
-| `serve.js` | Développement : sert le jeu modé en http pour le tester dans un navigateur (`node serve.js`, ou `node serve.js "C:\chemin\vers\copie"`) |
+| `server/`, `render.yaml` (en haut du dépôt) | Serveur multijoueur (codes d'invitation, mise en relation, classements des pistes du mod, comptes) et son déploiement sur Render |
+| `serve.js` | Développement : sert le jeu modé en http pour le tester dans un navigateur (`node sources/serve.js`, ou `node sources/serve.js "C:\chemin\vers\copie"`) |
 
 ## Licence
 
-Le code de ce dépôt est sous licence MIT (voir `LICENSE`). PolyTrack et ses contenus appartiennent à Kodub.
+Le code de ce dépôt est sous licence MIT (voir [`LICENSE`](LICENSE)). PolyTrack et ses contenus appartiennent à Kodub.
 
-La musique [`audio/goofytrack_music.mp3`](audio/goofytrack_music.mp3) (« Vroum Vroum ») et [`audio/goofytrack_waiting.mp3`](audio/goofytrack_waiting.mp3) (« WAITING ») sont de Teknah.
+La musique [`audio/goofytrack_music.mp3`](sources/audio/goofytrack_music.mp3) (« Vroum Vroum ») et [`audio/goofytrack_waiting.mp3`](sources/audio/goofytrack_waiting.mp3) (« WAITING ») sont de Teknah.
 
-Le tracé du Circuit de Monaco ([`tools/monaco_gps.json`](tools/monaco_gps.json)) vient de [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits), sous licence MIT, Copyright (c) 2019-2025 Tomislav Bacinger.
+Le tracé du Circuit de Monaco ([`tools/monaco_gps.json`](sources/tools/monaco_gps.json)) vient de [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits), sous licence MIT, Copyright (c) 2019-2025 Tomislav Bacinger.

@@ -1,4 +1,4 @@
-// Development helper: serves the built game (this folder, or another copy) over http so it can be tested in a browser.
+// Development helper: serves the built game (the GoofyTrack folder, or another copy) over http so it can be tested in a browser.
 //
 //   node serve.js ["C:\path\to\another\copy"] [port]
 const http = require('http');
