@@ -399,8 +399,11 @@
       if (account !== acc) return;
       const badges = Array.isArray(out.badges) ? out.badges : acc.badges;   // an older server has none
       const recovery = typeof out.recovery === 'boolean' ? out.recovery : acc.recovery;   // an older server does not say
-      if (acc.id !== out.id || acc.verified !== out.verified || JSON.stringify(acc.badges) !== JSON.stringify(badges) || acc.recovery !== recovery) {
-        acc.id = out.id; acc.verified = out.verified; acc.badges = badges; acc.recovery = recovery; saveAccount();
+      // the garage's items it unlocked (apex-rarity.js); a server older than 2.19 does not say: the owners its
+      // UNLOCKS gives by default (server/accounts.js)
+      const unlocks = Array.isArray(out.unlocks) ? out.unlocks : [7777, 1].includes(out.id) ? ['mp4_7a'] : [];
+      if (acc.id !== out.id || acc.verified !== out.verified || JSON.stringify(acc.badges) !== JSON.stringify(badges) || acc.recovery !== recovery || JSON.stringify(acc.unlocks) !== JSON.stringify(unlocks)) {
+        acc.id = out.id; acc.verified = out.verified; acc.badges = badges; acc.recovery = recovery; acc.unlocks = unlocks; saveAccount();
       }
       social = { requests: out.requests, online: out.online };
     } catch (e) {
@@ -2075,6 +2078,16 @@
     ready, sync, open,
     presence: () => sendPresence(),          // the room changed (apex-lobby.js): friends see it at once
     get name() { return account?.name ?? null; },
+    // the garage's unlockable items this account owns (apex-rarity.js), as the server last said
+    get unlocks() { return Array.isArray(account?.unlocks) ? account.unlocks : []; },
+    // a creator gives an unlockable item to a player by number, or takes it back (from the console:
+    // ApexAccount.unlock('mp4_7a', 42) or ApexAccount.unlock('mp4_7a', 42, false)); the server checks who asks
+    unlock: async (item, id, give = true) => {
+      if (account == null) throw new Error('not logged in');
+      const out = await call('POST', '/account/unlock', { item, id, give }, account.session);
+      if (out.id === account.id) sendPresence();
+      return out;
+    },
     // added to the multiplayer server's address when hosting a room (patch_bundle.js): friends see the room
     hostQuery: () => (account ? '&account=' + account.session : ''),
   };

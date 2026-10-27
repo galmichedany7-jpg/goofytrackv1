@@ -8,7 +8,7 @@
 //                                     from which apex-town.js draws them
 //
 // The line is either a lap on real streets (tools/<circuit>_osm.json, made from OpenStreetMap by
-// tools/town_osm.js) or a surveyed racing line (cfg.line, longitudes and latitudes). It is rounded, then
+// tools/town_osm.js) or a surveyed racing line (cfg.line, longitudes and latitudes, or metres for a circuit drawn by hand). It is rounded, then
 // relaxed just enough for a 15 m road with a barrier on each side. Heights come from
 // tools/<circuit>_heights.json when the circuit has one (tools/heights.js), else the road is level.
 //
@@ -27,7 +27,7 @@ const NAME = cfg.mesh;       // prefix of the model's meshes: <NAME>Road, <NAME>
 const OUT = path.join(__dirname, '..', 'tracks', KEY);
 fs.mkdirSync(OUT, { recursive: true });
 
-const ROAD_HALF = 7.5;        // half width of the asphalt
+const ROAD_HALF = cfg.roadHalf || 7.5;   // half width of the asphalt
 const KERB = 0.8;             // kerb width
 const WALL = 0.6, WALL_H = 1.3;
 const SPACING = 3;            // metres between two cross-sections of the ribbon
@@ -51,7 +51,10 @@ const ORIGIN = cfg.origin;
 // nearest to cfg.startLonLat, and reversed if cfg.reverse) or the lap found on the streets
 const rawLap = (() => {
   if (!cfg.line) return town.lap;
-  let pts = JSON.parse(fs.readFileSync(path.join(__dirname, cfg.line), 'utf8')).lonLat.slice();
+  const file = JSON.parse(fs.readFileSync(path.join(__dirname, cfg.line), 'utf8'));
+  // a line drawn in metres (x east, z south of the origin) is turned into longitudes and latitudes round the origin
+  const M_DEG = Math.PI / 180 * 6371000;
+  let pts = file.metres ? file.metres.map(([x, z]) => [ORIGIN[0] + x / (M_DEG * Math.cos(ORIGIN[1] * Math.PI / 180)), ORIGIN[1] - z / M_DEG]) : file.lonLat.slice();
   const d = (a, b) => Math.hypot((a[0] - b[0]) * Math.cos(b[1] * Math.PI / 180), a[1] - b[1]);
   if (d(pts[0], pts[pts.length - 1]) < 1e-6) pts.pop();
   if (cfg.reverse) pts.reverse();
@@ -69,7 +72,16 @@ const lonLat = (() => {
 const heightsFile = path.join(__dirname, KEY + '_heights.json');
 const surveyed = fs.existsSync(heightsFile) ? JSON.parse(fs.readFileSync(heightsFile, 'utf8')) : null;
 if (surveyed && surveyed.lap.length !== lonLat.length) throw new Error(KEY + '_heights.json was made for another line: run tools/heights.js again');
-const PROFILE = surveyed ? [...surveyed.lap.map((h, i) => [i, h]), [lonLat.length, surveyed.lap[0]]] : [[0, 0], [lonLat.length, 0]];
+// Gravel traps of a line drawn by hand: [from, to, side (-1 left, 1 right), width], as indices of its points
+const lineFile = cfg.line ? JSON.parse(fs.readFileSync(path.join(__dirname, cfg.line), 'utf8')) : {};
+const RUNOFFS = lineFile.runoffs || [];
+// A line drawn by hand may come with everything else (Forest Speedway, tools/forest_design.js): its heights, grass
+// between the kerbs and the barriers (`verge`, metres, and `verges`: ranges where it differs), a bridge where the
+// lap crosses itself, a pit lane, and the land all round, which is part of the circuit's road part and so solid.
+const DESIGN = lineFile.verge != null;
+if (lineFile.heights && lineFile.heights.length !== lonLat.length) throw new Error(cfg.line + ': one height per point of the line is needed');
+const PROFILE = lineFile.heights ? [...lineFile.heights.map((h, i) => [i, h]), [lonLat.length, lineFile.heights[0]]]
+  : surveyed ? [...surveyed.lap.map((h, i) => [i, h]), [lonLat.length, surveyed.lap[0]]] : [[0, 0], [lonLat.length, 0]];
 if (process.argv[3] === '--points') { fs.writeFileSync(path.join(__dirname, KEY + '_points.json'), JSON.stringify({ origin: ORIGIN, lap: lonLat })); console.log(lonLat.length + ' points written for tools/heights.js'); process.exit(0); }
 // Where the checkpoints may go (ranges of that line), in lap order: one on each side of the ring
 const GATE_RANGES = (cfg.gates || [[0.14, 0.30], [0.36, 0.52], [0.56, 0.72], [0.78, 0.92]]).map(r => r.map(f => f * lonLat.length));
@@ -174,19 +186,53 @@ function halfWidths(pts) {
   return w;
 }
 const OUTSIDE = KERB + WALL;                                             // from the edge of the asphalt to the back of the barrier
+// ranges of the line's points (u), which may run over the start line
+const inU = (u, from, to) => (from <= to ? u >= from && u <= to : u >= from || u <= to);
+const sinceU = (u, from) => ((u - from) % N_GPS + N_GPS) % N_GPS;
+const fadeU = (u, from, to) => ease(Math.min(1, sinceU(u, from) / 6)) * ease(Math.min(1, sinceU(to, u) / 6));   // in and out over 6 points
+// width of the gravel trap beyond the kerb at a point of the line, [left, right]
+const sandAt = u => {
+  const out = [0, 0];
+  for (const [from, to, side, width] of RUNOFFS) if (inU(u, from, to)) out[side < 0 ? 0 : 1] = Math.max(out[side < 0 ? 0 : 1], width * fadeU(u, from, to));
+  return out;
+};
+// Room between the kerb and the barrier, [left, right]: the grass verge, wider where there is a gravel trap (the
+// gravel, then 3 m of grass), narrower on the inside of the tight corners, where the barrier would fold over itself
+const VERGE = lineFile.verge || 0;
+const MOST_RUNOFF = Math.max(VERGE, ...RUNOFFS.map(r => r[3] + 3), ...(lineFile.verges || []).map(v => v[3]));
+function runoffs(pts, widths) {
+  if (!DESIGN) return pts.map(q => sandAt(gpsIndex(q[2])));
+  const n = pts.length, r = pts.map((_, i) => radiusAt(pts, i, 4));
+  const tangent = i => { const a = pts[(i - 2 + n) % n], b = pts[(i + 2) % n], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; };
+  let out = pts.map((q, i) => {
+    const u = gpsIndex(q[2]), v = [VERGE, VERGE], sand = sandAt(u);
+    for (const [from, to, side, width] of lineFile.verges || []) if (inU(u, from, to)) { const f = fadeU(u, from, to); for (const s of side ? [side < 0 ? 0 : 1] : [0, 1]) v[s] += (width - v[s]) * f; }
+    for (const s of [0, 1]) if (sand[s] > 0) v[s] = Math.max(v[s], sand[s] + 3 * Math.min(1, sand[s] / 3));
+    let m = Infinity; for (let o = -6; o <= 6; o++) m = Math.min(m, r[(i + o + n) % n]);
+    const a = tangent((i - 5 + n) % n), b = tangent((i + 5) % n), inside = a[0] * b[1] - a[1] * b[0] > 0 ? 1 : 0;   // turning right: the inside is on the right
+    v[inside] = Math.min(v[inside], Math.max(0.5, 0.7 * m - widths[i][inside] - OUTSIDE));
+    return v;
+  });
+  for (let pass = 0; pass < 3; pass++) out = out.map((v, i) => [0, 1].map(k => Math.min(v[k], (out[(i - 2 + n) % n][k] + out[(i - 1 + n) % n][k] + v[k] + out[(i + 1) % n][k] + out[(i + 2) % n][k]) / 5)));
+  return out;
+}
+// The two roads at the crossing of a figure of eight pass over each other: they never need room from each other
+const BRIDGE = lineFile.bridge;
+const crossing = (u, v) => BRIDGE != null && ((inU(u, ...BRIDGE.zone.high) && inU(v, ...BRIDGE.zone.low)) || (inU(v, ...BRIDGE.zone.high) && inU(u, ...BRIDGE.zone.low)));
+const REACH = DESIGN ? 2 * (ROAD_HALF + WIDEN + OUTSIDE + MOST_RUNOFF) + GAP : 40;   // stretches further apart than this are not looked at
 function relax(pts, pinned = () => 1) {
   for (let pass = 0; pass < 3000; pass++) {
-    const n = pts.length, move = pts.map(() => [0, 0]), widths = halfWidths(pts);
+    const n = pts.length, move = pts.map(() => [0, 0]), widths = halfWidths(pts), room = runoffs(pts, widths);
     const wall = (i, j) => {                                             // back of the barrier of i, on the side that faces j
       const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n], c = pts[j];
       const side = (b[0] - a[0]) * (c[1] - pts[i][1]) - (b[1] - a[1]) * (c[0] - pts[i][0]);   // > 0: j is on the right
-      return widths[i][side > 0 ? 1 : 0] + OUTSIDE;
+      return widths[i][side > 0 ? 1 : 0] + OUTSIDE + (DESIGN ? room[i][side > 0 ? 1 : 0] : 0);
     };
     let busy = 0;
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
       if (alongRoad(i, j, n) < 80) continue;
       const dx = pts[j][0] - pts[i][0], dz = pts[j][1] - pts[i][1];
-      if (Math.abs(dx) > 40 || Math.abs(dz) > 40) continue;
+      if (Math.abs(dx) > REACH || Math.abs(dz) > REACH || crossing(pts[i][2], pts[j][2])) continue;
       const need = wall(i, j) + wall(j, i) + GAP;
       const dist = Math.hypot(dx, dz);
       if (dist >= need + 0.5 || dist === 0) continue;
@@ -234,7 +280,7 @@ const inRange = (u, [a, b]) => { const g = gpsIndex(u); return a <= b ? g >= a &
 function gateSpot(index) {
   const q = line[index], t = tangentAt(line, index, 4);
   let clear = Infinity;
-  for (let j = 0; j < line.length; j++) if (alongRoad(j, index, line.length) > 60) clear = Math.min(clear, Math.hypot(line[j][0] - q[0], line[j][1] - q[1]));
+  for (let j = 0; j < line.length; j++) if (alongRoad(j, index, line.length) > 60 && !crossing(line[j][2], q[2])) clear = Math.min(clear, Math.hypot(line[j][0] - q[0], line[j][1] - q[1]));
   // straight for 15 m either side?
   const t1 = tangentAt(line, (index + 5) % line.length, 2), t2 = tangentAt(line, (index - 5 + line.length) % line.length, 2);
   const axis = Math.abs(t[1]) > Math.abs(t[0]) ? 0 : 1;
@@ -247,7 +293,8 @@ const checkpoints = ranges.map(range => {
   for (let i = 0; i < line.length; i++) {
     if (!inRange(uAt(i), range)) continue;
     const spot = gateSpot(i);
-    if (spot.clear < 36) continue;
+    if (spot.clear < (DESIGN ? 42 : 36)) continue;
+    if (DESIGN) { let sand = false; for (let o = -8; o <= 8 && !sand; o++) { const v = sandAt(gpsIndex(uAt((i + o + line.length) % line.length))); sand = v[0] > 0 || v[1] > 0; } if (sand) continue; }   // the gate's posts stand behind the barriers
     spot.slope = Math.abs(profileAt(gpsIndex(uAt((i + 3) % line.length))) - profileAt(gpsIndex(uAt((i - 3 + line.length) % line.length)))) * HEIGHT_SCALE / (6 * SPACING);
     spot.score = Math.min(spot.straightness, 0.95) - spot.slope * 2;      // square enough to the grid, then as level as possible
     if (best == null || spot.score > best.score) best = spot;
@@ -255,8 +302,10 @@ const checkpoints = ranges.map(range => {
   if (best == null) throw new Error('No room for a checkpoint between GPS points ' + range);
   return best;
 });
-const finishIndex = line.length - Math.round(20 / SPACING);
-const finish = { index: finishIndex, gx: 0, gz: 4, rotation: 0 };                  // 20 m behind the start line: its own cell on the mini-map
+// 20 m behind the start line (its own cell on the mini-map); on a circuit drawn by hand, 20 m past it, its grid being
+// painted behind the start line (the first time the cars cross it, they have not been round yet)
+const finishIndex = DESIGN ? Math.round(20 / SPACING) : line.length - Math.round(20 / SPACING);
+const finish = { index: finishIndex, gx: 0, gz: DESIGN ? -4 : 4, rotation: 0 };
 // move the road onto the gates: a smooth bump of the line around each one
 for (const g of [...checkpoints, finish]) {
   const q = line[g.index], dx = g.gx * GRID - q[0], dz = g.gz * GRID - q[1];
@@ -284,7 +333,7 @@ function profileAt(g) {                                                  // PROF
   return 0;
 }
 let height = line.map(q => profileAt(gpsIndex(q[2])) * HEIGHT_SCALE);
-for (let pass = 0; pass < 5; pass++) {                                   // long vertical curves: a moving average over 54 m
+for (let pass = 0; pass < (cfg.heightPasses ?? 5); pass++) {           // long vertical curves: a moving average over 54 m
   const R = 9;
   height = height.map((_, i) => { let s = 0; for (let o = -R; o <= R; o++) s += height[(i + o + height.length) % height.length]; return s / (2 * R + 1); });
 }
@@ -366,20 +415,45 @@ function box(mesh, material, x0, y0, z0, x1, y1, z1) {
 // cross-section, from the left wall to the right wall: [offset from the centreline, height]
 const E = ROAD_HALF, K = ROAD_HALF + KERB, W = K + WALL;                // on the straights (the gates are sized for these)
 const half = halfWidths(line);
+// room beyond the kerb, [left, right], at each cross-section: the gravel trap (it fades in and out over 30 m)
+// and, on a circuit drawn by hand, the grass after it
+const room = runoffs(line, half);
+const sand = line.map((q, i) => { const s = sandAt(gpsIndex(q[2])); return [Math.min(s[0], room[i][0]), Math.min(s[1], room[i][1])]; });
+// the stretch of the upper road that is a bridge (its barriers stop at the deck), and the pit lane: where it runs
+// beside the road, from 0 at the ends of its tapers to 1 along the pits (null: no pit lane there)
+const DECK = 1.2;                                                        // thickness of the bridge's deck
+const onBridge = line.map(q => BRIDGE != null && inU(gpsIndex(q[2]), ...BRIDGE.high));
+// the stretch that runs through the mountain: walls up to a roof ROOF metres over the road, a portal at each end
+const ROOF = 7.5, onTunnel = line.map(q => lineFile.tunnel != null && inU(gpsIndex(q[2]), ...lineFile.tunnel));
+const PIT = lineFile.pit;
+const pitAt = line.map(q => {
+  if (!PIT) return null;
+  const u = gpsIndex(q[2]), from = (PIT.from - PIT.taper + N_GPS) % N_GPS, to = (PIT.to + PIT.taper) % N_GPS;
+  return inU(u, from, to) ? Math.min(1, sinceU(u, from) / PIT.taper, sinceU(to, u) / PIT.taper) : null;
+});
 const section = line.map((q, i) => {
   const t = tangentAt(line, i, 1), nx = -t[1], nz = t[0];                // unit vector across the road
   const at = (u, y) => [q[0] + nx * u, y + height[i], q[1] + nz * u];
   const side = s => half[i][s < 0 ? 0 : 1];                                // asphalt width on the left (s < 0) or right side
-  return { t, n: [nx, 0, nz], at, e: s => side(s), k: s => side(s) + KERB, w: s => side(s) + OUTSIDE };
+  const gravel = s => sand[i][s < 0 ? 0 : 1], runoff = s => room[i][s < 0 ? 0 : 1];
+  // e: edge of the asphalt, k: of the kerb, sd: of the gravel, g: of the run-off (the face of the barrier), w: back of the barrier
+  return { t, n: [nx, 0, nz], at, e: s => side(s), k: s => side(s) + KERB, sd: s => side(s) + KERB + gravel(s), g: s => side(s) + KERB + runoff(s), w: s => side(s) + OUTSIDE + runoff(s) };
 });
+// The pit lane at a cross-section, [inner edge, outer edge] from the centreline: it opens from the back of the
+// road's barrier over the first half of its taper, then its inner edge moves away from the road
+if (PIT && line.some((_, i) => pitAt[i] != null && sand[i][PIT.side < 0 ? 0 : 1] > 0)) throw new Error('A gravel trap runs into the pit lane');
+const pitLane = (c, p) => {
+  const w = c.w(PIT.side);
+  return [p < 0.5 ? w : w + (PIT.offset - PIT.half - w) * ease((p - 0.5) * 2), w + (PIT.offset + PIT.half - w) * ease(Math.min(1, p * 2))];
+};
 // both edges must always move forward along the road, or a barrier would cut across it
 let folds = 0, closest = Infinity, tightest = Infinity;
 for (let i = 0; i < line.length; i++) {
   const a = section[i], b = section[(i + 1) % line.length];
   for (const s of [-1, 1]) { const p0 = a.at(s * a.w(s), 0), p1 = b.at(s * b.w(s), 0); if ((p1[0] - p0[0]) * a.t[0] + (p1[2] - p0[2]) * a.t[1] <= 0) folds++; }
-  for (let j = i + 1; j < line.length; j++) if (alongRoad(i, j, line.length) > 80) {
+  for (let j = i + 1; j < line.length; j++) if (alongRoad(i, j, line.length) > 80 && !crossing(line[i][2], line[j][2])) {
     const dx = line[j][0] - line[i][0], dz = line[j][1] - line[i][1], d = Math.hypot(dx, dz);
-    if (d > 60) continue;
+    if (d > Math.max(60, REACH)) continue;
     const si = Math.sign(dx * a.n[0] + dz * a.n[2]) || 1, sj = -Math.sign(dx * section[j].n[0] + dz * section[j].n[2]) || 1;
     closest = Math.min(closest, d - a.w(si) - section[j].w(sj));
   }
@@ -387,26 +461,107 @@ for (let i = 0; i < line.length; i++) {
 }
 console.log(`Ribbon check: ${folds} folded edge segments, ${closest.toFixed(1)} m between the barriers of the two closest stretches, tightest corner ${tightest.toFixed(1)} m, road ${Math.min(...half.map(h => h[0] + h[1])).toFixed(1)} to ${Math.max(...half.map(h => h[0] + h[1])).toFixed(1)} m wide`);
 if (folds > 0 || closest < 1) throw new Error('The road ribbon overlaps itself; raise MIN_RADIUS or GAP');
+if (BRIDGE) {                                                            // room under the bridge
+  let low = Infinity;
+  line.forEach((p, i) => { if (!onBridge[i]) return; line.forEach((q, j) => { if (!onBridge[j] && alongRoad(i, j, line.length) > 80 && Math.hypot(q[0] - p[0], q[1] - p[1]) < 12) low = Math.min(low, height[i] - height[j]); }); });
+  console.log(`Bridge: ${(low - DECK).toFixed(1)} m of headroom over the road below`);
+  if (!(low - DECK > 5)) throw new Error('The bridge is too low over the road below');
+}
 // kerbs are painted red and white in the corners only; elsewhere the edge is a white line on grey
 const corner = line.map((_, i) => { let r = Infinity; for (let o = -4; o <= 4; o++) r = Math.min(r, radiusAt(line, (i + o + line.length) % line.length, 4)); return r < 110; });
+const MESH = NAME + 'Road', HIDDEN = NAME + 'RoadInvisible';           // the road part; what it has that is solid but not drawn (patch_bundle.js)
 for (let i = 0; i < line.length; i++) {
-  const a = section[i], b = section[(i + 1) % line.length];
+  const j = (i + 1) % line.length, a = section[i], b = section[j];
   // a strip between two offsets, each end at its own section's offset (the road is wider in the corners)
-  const strip = (material, u0, y0, u1, y1, towards) => quad(NAME + 'Road', material, a.at(u0(a), y0), a.at(u1(a), y1), b.at(u1(b), y1), b.at(u0(b), y0), towards);
+  const strip = (material, u0, y0, u1, y1, towards, mesh = MESH) => quad(mesh, material, a.at(u0(a), y0), a.at(u1(a), y1), b.at(u1(b), y1), b.at(u0(b), y0), towards);
   const kerb = corner[i] ? (Math.floor(i / 2) % 2 === 0 ? 'RoadEdgeRed' : 'RoadEdgeWhite') : 'RoadEdgeWhite';
   // the asphalt in 8 lanes and 3 steps along: where the road turns and climbs at once its surface twists,
   // and small facets spread the twist instead of folding it on a few long creases
   for (let k = 0; k < STEPS; k++) for (let m = 0; m < LANES; m++) {
     const P = (c, f) => c.at(-c.e(-1) + f * (c.e(-1) + c.e(1)), 0);
     const along = (f, t) => { const p = P(a, f), q = P(b, f); return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t]; };
-    quad(NAME + 'Road', 'Road', along(m / LANES, k / STEPS), along((m + 1) / LANES, k / STEPS), along((m + 1) / LANES, (k + 1) / STEPS), along(m / LANES, (k + 1) / STEPS), [0, 1, 0]);
+    quad(MESH, 'Road', along(m / LANES, k / STEPS), along((m + 1) / LANES, k / STEPS), along((m + 1) / LANES, (k + 1) / STEPS), along(m / LANES, (k + 1) / STEPS), [0, 1, 0]);
   }
+  const bridge = onBridge[i] && onBridge[j];
   for (const s of [-1, 1]) {
-    const out = [a.n[0] * s, 0, a.n[2] * s], inward = [-out[0], 0, -out[2]];
-    strip(kerb, c => s * c.e(s), 0, c => s * c.k(s), corner[i] ? 0.05 : 0.01, [0, 1, 0]);
-    strip('RoadBarrier', c => s * c.k(s), corner[i] ? 0.05 : 0.01, c => s * c.k(s), WALL_H, inward);   // the face the cars hit
-    strip('RoadBarrier', c => s * c.k(s), WALL_H, c => s * c.w(s), WALL_H, [0, 1, 0]);
-    strip('RoadBarrier', c => s * c.w(s), WALL_H, c => s * c.w(s), -8, out);   // down to the ground, wherever the town is lower
+    const out = [a.n[0] * s, 0, a.n[2] * s], inward = [-out[0], 0, -out[2]], k = s < 0 ? 0 : 1;
+    const kerbY = corner[i] ? 0.05 : 0.01, gravel = sand[i][k] > 0 || sand[j][k] > 0;
+    const grass = DESIGN && (a.g(s) - a.sd(s) > 0.05 || b.g(s) - b.sd(s) > 0.05);
+    strip(kerb, c => s * c.e(s), 0, c => s * c.k(s), kerbY, [0, 1, 0]);
+    if (gravel) strip('Sand', c => s * c.k(s), kerbY, c => s * c.sd(s), 0, [0, 1, 0]);   // the gravel trap, level with the road
+    if (grass) strip('Grass', c => s * c.sd(s), gravel ? 0 : kerbY, c => s * c.g(s), 0, [0, 1, 0]);   // then grass up to the barrier
+    if (PIT && s === PIT.side && pitAt[i] != null && pitAt[j] != null && pitAt[i] < 0.5 && pitAt[j] < 0.5) {
+      // the mouth of the pit lane: open to the eye, closed by a wall nobody sees (the races and time trials do not use the pits)
+      strip('Road', c => s * c.g(s), 0, c => s * c.w(s), 0, [0, 1, 0]);
+      strip('Invisible', c => s * c.g(s), -0.5, c => s * c.g(s), WALL_H + 3, inward, HIDDEN);
+      continue;
+    }
+    if (onTunnel[i] && onTunnel[j]) {                                    // the tunnel's wall, its shell outside
+      strip('TunnelWall', c => s * c.g(s), gravel || grass ? 0 : kerbY, c => s * c.g(s), ROOF, inward);
+      strip('TunnelWall', c => s * c.w(s), ROOF + 1, c => s * c.w(s), -8, out);
+      continue;
+    }
+    const barrier = DESIGN && corner[i] ? 'BarrierYellow' : 'RoadBarrier';
+    strip(barrier, c => s * c.g(s), gravel || grass ? 0 : kerbY, c => s * c.g(s), WALL_H, inward);   // the face the cars hit
+    strip(barrier, c => s * c.g(s), WALL_H, c => s * c.w(s), WALL_H, [0, 1, 0]);
+    strip('RoadBarrier', c => s * c.w(s), WALL_H, c => s * c.w(s), bridge ? -DECK : -8, out);   // down to the ground, wherever the town is lower
+  }
+  if (bridge) strip('Concrete', c => -c.w(-1), -DECK, c => c.w(1), -DECK, [0, -1, 0]);   // under the deck
+  if (onTunnel[i] && onTunnel[j]) {                                      // its roof, a row of lights along it, the shell over it
+    strip('TunnelRoof', c => -c.g(-1), ROOF, c => c.g(1), ROOF, [0, -1, 0]);
+    if (i % 4 < 2) strip('TunnelLight', () => -0.5, ROOF - 0.05, () => 0.5, ROOF - 0.05, [0, -1, 0]);
+    strip('TunnelWall', c => -c.w(-1), ROOF + 1, c => c.w(1), ROOF + 1, [0, 1, 0]);
+  }
+}
+// the portals: a wall of stone across the hillside at each end of the tunnel, with the road's opening in it
+for (let i = 0; i < line.length; i++) {
+  const j = (i + 1) % line.length;
+  if (onTunnel[i] === onTunnel[j]) continue;
+  const k = onTunnel[i] ? i : j, c = section[k], f = onTunnel[i] ? 1 : -1, towards = [c.t[0] * f, 0, c.t[1] * f], WIDE = 16, HIGH = ROOF + 9;
+  const face = (u0, y0, u1, y1) => quad(MESH, 'Portal', c.at(u0, y0), c.at(u1, y0), c.at(u1, y1), c.at(u0, y1), towards);
+  face(-c.g(-1) - WIDE, -3, -c.g(-1), HIGH); face(c.g(1), -3, c.g(1) + WIDE, HIGH); face(-c.g(-1), ROOF, c.g(1), HIGH);
+  face(-c.g(-1) - 0.6, ROOF - 0.6, c.g(1) + 0.6, ROOF);                  // the lintel
+}
+// A box standing on the road's frame: centre (x, z), along t and across n, half sizes, from y0 to y1
+function pillar(material, x, z, t, n, along, across, y0, y1) {
+  const P = (u, v, y) => [x + t[0] * u + n[0] * v, y, z + t[1] * u + n[2] * v];
+  for (const [u0, v0, u1, v1, o] of [[-along, -across, along, -across, [-n[0], 0, -n[2]]], [-along, across, along, across, [n[0], 0, n[2]]], [-along, -across, -along, across, [-t[0], 0, -t[1]]], [along, -across, along, across, [t[0], 0, t[1]]]])
+    quad(MESH, material, P(u0, v0, y0), P(u1, v1, y0), P(u1, v1, y1), P(u0, v0, y1), o);
+}
+// the bridge's piers: a pair on either side of the road below, just behind its barriers
+if (BRIDGE) {
+  const low = line.map((q, i) => i).filter(i => inU(gpsIndex(line[i][2]), ...BRIDGE.zone.low) && !onBridge[i]);
+  const lowReach = Math.max(...low.map(i => Math.max(section[i].w(-1), section[i].w(1)))), bottom = Math.min(...low.map(i => height[i])) - 3;
+  const fromLow = i => Math.min(...low.map(k => Math.hypot(line[k][0] - line[i][0], line[k][1] - line[i][1])));
+  let before = null;
+  for (let i = 0; i < line.length; i++) {
+    if (!onBridge[i]) { before = null; continue; }
+    const d = fromLow(i) - lowReach - 3;
+    if (before != null && before * d <= 0) for (const s of [-1, 1]) {
+      const c = section[i], p = c.at(s * (c.e(s) - 2.5), 0);
+      pillar('Concrete', p[0], p[2], c.t, c.n, 1.1, 1.1, bottom, height[i] - DECK);
+    }
+    before = d;
+  }
+}
+// the pit lane, beside the main straight: its asphalt, white lines along it, a wall on its outer side and,
+// once it leaves the road, on its inner side
+if (PIT) for (let i = 0; i < line.length; i++) {
+  const j = (i + 1) % line.length, pa = pitAt[i], pb = pitAt[j];
+  if (pa == null || pb == null) continue;
+  const a = section[i], b = section[j], s = PIT.side, out = [a.n[0] * s, 0, a.n[2] * s], inward = [-out[0], 0, -out[2]];
+  const [ia, oa] = pitLane(a, pa), [ib, ob] = pitLane(b, pb);
+  const lane = (material, u0a, u1a, y0, u0b, u1b, y1, towards) => quad(MESH, material, a.at(s * u0a, y0), a.at(s * u1a, y1), b.at(s * u1b, y1), b.at(s * u0b, y0), towards);
+  lane('Road', ia, oa, 0, ib, ob, 0, [0, 1, 0]);
+  if (oa - ia > 1 && ob - ib > 1) lane('RoadEdgeWhite', oa - 0.4, oa, 0.01, ob - 0.4, ob, 0.01, [0, 1, 0]);
+  lane('RoadBarrier', oa, oa, 0, ob, ob, WALL_H, inward);
+  lane('RoadBarrier', oa, oa + WALL, WALL_H, ob, ob + WALL, WALL_H, [0, 1, 0]);
+  lane('RoadBarrier', oa + WALL, oa + WALL, WALL_H, ob + WALL, ob + WALL, -8, out);
+  if (pa > 0.5 || pb > 0.5) {
+    lane('RoadEdgeWhite', ia, ia + 0.4, 0.01, ib, ib + 0.4, 0.01, [0, 1, 0]);
+    lane('RoadBarrier', ia, ia, 0, ib, ib, WALL_H, out);
+    lane('RoadBarrier', ia - WALL, ia, WALL_H, ib - WALL, ib, WALL_H, [0, 1, 0]);
+    lane('RoadBarrier', ia - WALL, ia - WALL, WALL_H, ib - WALL, ib - WALL, -8, inward);
   }
 }
 
@@ -417,7 +572,7 @@ for (let i = 0; i < line.length; i++) {
 const LINE_Y = -0.4;
 const lineAcross = (mesh, material, depth) => quad(mesh, material, [-E, LINE_Y, -depth / 2], [E, LINE_Y, -depth / 2], [E, LINE_Y, depth / 2], [-E, LINE_Y, depth / 2], [0, 1, 0]);
 function gate(mesh, banner) {
-  const post = W + 1.2;
+  const post = W + VERGE + 1.2;                                          // behind the barriers
   for (const s of [-1, 1]) box(mesh, 'RoadBarrier', s * post - 0.3, 0, -0.3, s * post + 0.3, 6.4, 0.3);
   box(mesh, banner, -post, 5.4, -0.2, post, 6.4, 0.2);
 }
@@ -427,6 +582,180 @@ for (let k = 0; k < 10; k++) for (let r = 0; r < 2; r++)                 // cheq
   quad(NAME + 'Finish', (k + r) % 2 ? 'FinishWhite' : 'FinishBlack', [-E + k * 1.5, LINE_Y, r * 0.9 - 0.9], [-E + (k + 1) * 1.5, LINE_Y, r * 0.9 - 0.9], [-E + (k + 1) * 1.5, LINE_Y, r * 0.9], [-E + k * 1.5, LINE_Y, r * 0.9], [0, 1, 0]);
 gate(NAME + 'Finish', 'Finish');
 
+// ------------------------------------------------------------------ the land of a circuit drawn by hand
+// The land round the circuit is part of the road part: it is drawn with it and, above all, solid, so that a car
+// thrown over a barrier lands on the grass it sees instead of falling through the scenery. A grid of 40 m cells
+// over the circuit and far round it, cut into 10 m cells near the road (the coarse cells next to fine ones are
+// fanned from their middle, through every point of their edges: no cracks). Its height: the road's own beside
+// the road (just under it, where the verges and barriers stand), rising or dropping to the hills further away
+// (rock where they are steep), level round the paddock, a lake in the loop. Wherever the land would still come up
+// through the road, its run-off, the pit lane or under the bridge's deck, it is dug down. The heights are written
+// in the json (`terrain`), for apex-town.js to plant the trees on, and the lake's level with its outline.
+let terrain = null, lakeLevel = null;
+if (DESIGN) {
+  const T = cfg.terrain || {};
+  const BIG = 40, FINE = 10, SUB = BIG / FINE, MARGIN = T.margin || 440, NEAR = T.near || 120;
+  const hash2 = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123; return s - Math.floor(s); };
+  const noise = (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+  const fbm = (x, y) => noise(x, y) * 0.55 + noise(x * 2.1 + 5.2, y * 2.1 + 1.3) * 0.30 + noise(x * 4.3 + 9.1, y * 4.3 + 7.7) * 0.15;
+  const smooth = (a, b, v) => ease(Math.min(1, Math.max(0, (v - a) / (b - a))));
+  // the road's cross-sections in 30 m boxes, and how far each one reaches on the side of a place: the back of
+  // its barrier, or of the pit lane's outer wall
+  const BOX = 30, boxes = new Map();
+  line.forEach((q, i) => { const k = Math.floor(q[0] / BOX) + ',' + Math.floor(q[1] / BOX); if (!boxes.has(k)) boxes.set(k, []); boxes.get(k).push(i); });
+  const around = (x, z, r, f) => { const n = Math.ceil(r / BOX), bi = Math.floor(x / BOX), bj = Math.floor(z / BOX); for (let a = bi - n; a <= bi + n; a++) for (let b = bj - n; b <= bj + n; b++) for (const i of boxes.get(a + ',' + b) || []) f(i); };
+  const reachOf = (i, x, z) => {
+    const c = section[i], s = (x - line[i][0]) * c.n[0] + (z - line[i][1]) * c.n[2] > 0 ? 1 : -1;
+    return PIT && s === PIT.side && pitAt[i] != null ? pitLane(c, pitAt[i])[1] + WALL : c.w(s);
+  };
+  const MOST = ROAD_HALF + WIDEN + OUTSIDE + Math.max(MOST_RUNOFF, PIT ? PIT.offset + PIT.half : 0) + 2;
+  const polygon = list => list.map(p => toGame(p[0], p[1]));
+  const inPoly = (x, z, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const a = P[i], b = P[j]; if ((a[1] > z) !== (b[1] > z) && x < (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+  const toEdge = (x, z, P) => { let d = Infinity; P.forEach((a, i) => { const b = P[(i + 1) % P.length], lx = b[0] - a[0], lz = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * lx + (z - a[1]) * lz) / (lx * lx + lz * lz || 1))); d = Math.min(d, Math.hypot(a[0] + lx * t - x, a[1] + lz * t - z)); }); return d; };
+  const paddock = lineFile.paddock ? polygon([[lineFile.paddock[0], lineFile.paddock[1]], [lineFile.paddock[2], lineFile.paddock[1]], [lineFile.paddock[2], lineFile.paddock[3]], [lineFile.paddock[0], lineFile.paddock[3]]]) : null;
+  const lake = town.water.length && town.water[0].area ? polygon(town.water[0].area) : null;
+
+  // the grid: the road's bounds and a wide margin, on 160 m steps (apex-town.js draws the land beyond in 160 m cells)
+  let bx0 = Infinity, bz0 = Infinity, bx1 = -Infinity, bz1 = -Infinity;
+  for (const q of line) { bx0 = Math.min(bx0, q[0]); bz0 = Math.min(bz0, q[1]); bx1 = Math.max(bx1, q[0]); bz1 = Math.max(bz1, q[1]); }
+  const x0 = Math.floor((bx0 - MARGIN) / 160) * 160, z0 = Math.floor((bz0 - MARGIN) / 160) * 160, x1 = Math.ceil((bx1 + MARGIN) / 160) * 160, z1 = Math.ceil((bz1 + MARGIN) / 160) * 160;
+  const cols = (x1 - x0) / BIG, rows = (z1 - z0) / BIG, VC = cols * SUB + 1, VR = rows * SUB + 1;
+  const plain = -START_LEVEL * GRID, lowest = Math.min(...height), border = lowest + 2;
+  // hills: smooth noise, flattened out towards the edge of the grid
+  const hills = (x, z) => {
+    const inside = Math.min(x - x0, x1 - x, z - z0, z1 - z), h = (T.hills ?? 52) * (fbm(x * 0.0042 + 1.7, z * 0.0042 + 4.2) - 0.40) + 12 * (noise(x * 0.012 + 3.3, z * 0.012 + 9.1) - 0.5);
+    let peak = 0;
+    for (const m of lineFile.mountains || []) { const [mx, mz] = toGame(...m.at), d = Math.hypot(x - mx, z - mz); peak = Math.max(peak, (m.height - lineFile.heights[0] - border) * Math.exp(-1.6 * (d / m.radius) ** 2) * (0.85 + 0.3 * noise(x * 0.02 + 5, z * 0.02 + 2))); }
+    return border + h * smooth(0, 300, inside) + peak;
+  };
+  // the land without the lake: the hills, brought down (or up) to the road beside it, flat round the paddock
+  const land = (x, z) => {
+    let h = hills(x, z), best = -1, d = Infinity;
+    around(x, z, 150, i => { if (onBridge[i] || onTunnel[i]) return; const q = (line[i][0] - x) ** 2 + (line[i][1] - z) ** 2; if (q < d) { d = q; best = i; } });
+    if (best >= 0) { const road = height[best] - 0.3, r = reachOf(best, x, z); h = road + (h - road) * smooth(r + 2, r + (T.blend ?? 42), Math.sqrt(d)); }
+    if (paddock) { const k = inPoly(x, z, paddock) ? 0 : toEdge(x, z, paddock); h = -0.3 + (h + 0.3) * smooth(0, 45, k); }
+    return h;
+  };
+  if (lake) lakeLevel = Math.max(plain + 3, Math.min(...lake.map(p => land(p[0], p[1]))) - 0.6);
+  const heightAt = (x, z) => {
+    let h = land(x, z);
+    if (lake) h = Math.min(h, lakeLevel - 2.2 + (inPoly(x, z, lake) ? 0 : toEdge(x, z, lake) * 0.3));   // its bed, then a gentle bank
+    return Math.max(h, plain + 1.5);
+  };
+  // which 40 m cells are cut finer: those near the road, the pit lane or the paddock
+  const fineCell = new Uint8Array(cols * rows);
+  for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) {
+    const x = x0 + (c + 0.5) * BIG, z = z0 + (r + 0.5) * BIG;
+    let near = paddock != null && (inPoly(x, z, paddock) || toEdge(x, z, paddock) < BIG);
+    around(x, z, NEAR + BIG, i => { if (!near && Math.hypot(line[i][0] - x, line[i][1] - z) < NEAR + 30) near = true; });
+    fineCell[c * rows + r] = near ? 1 : 0;
+  }
+  const isFine = (c, r) => c >= 0 && r >= 0 && c < cols && r < rows && fineCell[c * rows + r] === 1;
+  // heights of the points of the 10 m lattice that are used, worked out once
+  const H = new Float32Array(VC * VR).fill(NaN);
+  const vh = (a, b) => { const k = a * VR + b; if (Number.isNaN(H[k])) H[k] = heightAt(x0 + a * FINE, z0 + b * FINE); return H[k]; };
+  const fineTris = [];                                                   // [[a, b], [a, b], [a, b]] lattice points
+  for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) if (isFine(c, r)) for (let i = 0; i < SUB; i++) for (let j = 0; j < SUB; j++) {
+    const a = c * SUB + i, b = r * SUB + j;
+    fineTris.push([[a, b], [a + 1, b], [a + 1, b + 1]], [[a, b], [a + 1, b + 1], [a, b + 1]]);
+  }
+  // dig the land down wherever it comes up through the road, its run-off, the pit lane or under the deck
+  const bound = (x, z) => {
+    let m = Infinity;
+    around(x, z, MOST, i => { if (!onTunnel[i] && Math.hypot(line[i][0] - x, line[i][1] - z) <= reachOf(i, x, z) + 0.6) m = Math.min(m, height[i] - (onBridge[i] ? DECK + 0.5 : 0.25)); });
+    return m;
+  };
+  const boundCache = new Map(), bounded = (x, z) => { const k = x + ',' + z; if (!boundCache.has(k)) boundCache.set(k, bound(x, z)); return boundCache.get(k); };
+  let dug = 0;
+  for (let pass = 0; pass < 25; pass++) {
+    let moved = 0;
+    for (const t of fineTris) {
+      const P = t.map(([a, b]) => [x0 + a * FINE, vh(a, b), z0 + b * FINE]);
+      // a point of the triangle above what it may reach: the corners that make it are brought down to that
+      for (const w of [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0.5, 0.5, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [1 / 3, 1 / 3, 1 / 3]]) {
+        const x = P[0][0] * w[0] + P[1][0] * w[1] + P[2][0] * w[2], z = P[0][2] * w[0] + P[1][2] * w[1] + P[2][2] * w[2], y = P[0][1] * w[0] + P[1][1] * w[1] + P[2][1] * w[2];
+        const top = bounded(+x.toFixed(2), +z.toFixed(2));
+        if (y <= top) continue;
+        t.forEach(([a, b], k) => { if (w[k] > 0 && H[a * VR + b] > top - 0.05) H[a * VR + b] = top - 0.05; });
+        moved++;
+      }
+    }
+    dug += moved;
+    if (moved === 0) break;
+  }
+  // over the tunnel the land stays above its shell, and what of it would still reach into the tunnel (by its
+  // portals, where the land comes down to the road) is left out: the portals' walls stand there
+  const inBore = (x, z) => { let y = null; around(x, z, MOST, i => { if (onTunnel[i] && Math.hypot(line[i][0] - x, line[i][1] - z) <= section[i].w(1) + 0.5 && (y == null || height[i] > y)) y = height[i]; }); return y; };
+  const clearOf = (x, z) => { let m = Infinity; around(x, z, MOST, i => { if (!onTunnel[i] && Math.hypot(line[i][0] - x, line[i][1] - z) <= reachOf(i, x, z) + 0.6) m = Math.min(m, height[i]); }); return m === Infinity; };
+  if (lineFile.tunnel) for (let a = 0; a < VC; a++) for (let b = 0; b < VR; b++) {
+    const k = a * VR + b; if (Number.isNaN(H[k])) continue;
+    const x = x0 + a * FINE, z = z0 + b * FINE;
+    let y = null; around(x, z, MOST + 10, i => { if (onTunnel[i] && Math.hypot(line[i][0] - x, line[i][1] - z) <= section[i].w(1) + 9 && (y == null || height[i] > y)) y = height[i]; });
+    if (y != null && clearOf(x, z)) H[k] = Math.max(H[k], y + ROOF + 2.5);
+  }
+  const holes = new Set();
+  if (lineFile.tunnel) fineTris.forEach((t, n) => {
+    const P = t.map(([a, b]) => [x0 + a * FINE, vh(a, b), z0 + b * FINE]);
+    for (const w of [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0.5, 0.5, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [1 / 3, 1 / 3, 1 / 3]]) {
+      const x = P[0][0] * w[0] + P[1][0] * w[1] + P[2][0] * w[2], z = P[0][2] * w[0] + P[1][2] * w[1] + P[2][2] * w[2], y = P[0][1] * w[0] + P[1][1] * w[1] + P[2][1] * w[2];
+      const road = inBore(x, z);
+      if (road != null && y > road - 0.5 && y < road + ROOF + 2) { holes.add(n); return; }
+    }
+  });
+  // what covers each triangle: rock where it is steep, the lake's bed, the paddock, grass near the road, the forest's floor further away
+  const nearRoad = (x, z) => { let d = Infinity; around(x, z, 60, i => { d = Math.min(d, Math.hypot(line[i][0] - x, line[i][1] - z) - reachOf(i, x, z)); }); return d; };
+  const ground = (a, b, c) => {
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = Math.hypot(nx, ny, nz) || 1;
+    const x = (a[0] + b[0] + c[0]) / 3, y = (a[1] + b[1] + c[1]) / 3, z = (a[2] + b[2] + c[2]) / 3;
+    let material;
+    if (Math.abs(ny) / l < 0.8) material = hash2(Math.round(x / 7), Math.round(z / 7)) < 0.5 ? 'Rock' : 'RockDark';
+    else if (lake && y < lakeLevel - 0.2) material = 'LakeBed';
+    else if (paddock && inPoly(x, z, paddock)) material = 'Paddock';
+    else if (nearRoad(x, z) < 28) material = noise(x * 0.05, z * 0.05) < 0.5 ? 'Grass' : 'GrassLight';
+    else material = noise(x * 0.03 + 7, z * 0.03 + 1) < 0.45 ? 'ForestFloor' : 'Grass';
+    if (ny >= 0) tri(MESH, material, a, b, c); else tri(MESH, material, a, c, b);
+  };
+  const L = (a, b) => [x0 + a * FINE, vh(a, b), z0 + b * FINE];
+  fineTris.forEach((t, n) => { if (!holes.has(n)) ground(...t.map(([a, b]) => L(a, b))); });
+  const centres = new Map();
+  for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) {
+    if (isFine(c, r)) continue;
+    // the coarse cell's outline, anticlockwise seen from above, with every lattice point its fine neighbours use
+    const a0 = c * SUB, b0 = r * SUB, ring = [];
+    const edge = (neighbour, from, step, n) => { for (let k = 0; k < SUB; k++) if (k === 0 || neighbour) ring.push([from[0] + step[0] * k, from[1] + step[1] * k]); };
+    edge(isFine(c, r - 1), [a0, b0], [1, 0]); edge(isFine(c + 1, r), [a0 + SUB, b0], [0, 1]); edge(isFine(c, r + 1), [a0 + SUB, b0 + SUB], [-1, 0]); edge(isFine(c - 1, r), [a0, b0 + SUB], [0, -1]);
+    const mx = x0 + (c + 0.5) * BIG, mz = z0 + (r + 0.5) * BIG, m = [mx, heightAt(mx, mz), mz];
+    centres.set(c * rows + r, { m, ring });
+    ring.forEach((p, k) => ground(m, L(...p), L(...ring[(k + 1) % ring.length])));
+  }
+  // the heights of the lattice as drawn, for apex-town.js: the coarse cells' points from their fans
+  const out = new Array(VC * VR);
+  for (let a = 0; a < VC; a++) for (let b = 0; b < VR; b++) {
+    const c = Math.min(cols - 1, Math.floor(a / SUB)), r = Math.min(rows - 1, Math.floor(b / SUB)), k = a * VR + b;
+    let h;
+    if (!Number.isNaN(H[k]) && (isFine(c, r) || a % SUB === 0 || b % SUB === 0)) h = H[k];
+    else {
+      const { m, ring } = centres.get(c * rows + r) || {};
+      const x = x0 + a * FINE, z = z0 + b * FINE;
+      h = m ? m[1] : heightAt(x, z);
+      if (m) ring.forEach((p, i) => {                                    // the fan triangle the point is in
+        const P = L(...p), Q = L(...ring[(i + 1) % ring.length]);
+        const cross = (u, v, w) => (v[0] - u[0]) * (w[2] - u[2]) - (v[2] - u[2]) * (w[0] - u[0]), X = [x, 0, z], all = cross(m, P, Q);
+        const wm = cross(X, P, Q) / all, wp = cross(m, X, Q) / all, wq = 1 - wm - wp;
+        if (wm >= -1e-6 && wp >= -1e-6 && wq >= -1e-6) h = wm * m[1] + wp * P[1] + wq * Q[1];
+      });
+    }
+    out[k] = +h.toFixed(2);
+  }
+  terrain = { x0, z0, step: FINE, cols: VC, rows: VR, border: +border.toFixed(2), h: out };
+  console.log(`Land: ${cols} x ${rows} cells of 40 m, ${fineTris.length} fine triangles (${dug} dug under the road), heights ${Math.min(...out).toFixed(0)} to ${Math.max(...out).toFixed(0)} m${lake ? `, lake at ${lakeLevel.toFixed(1)} m` : ''}`);
+}
+
 // ------------------------------------------------------------------ tiles (20 m cells the road covers): mini-map, thumbnail, bounds
 const cells = new Set();
 for (const s of section) for (const u of [-s.e(-1), 0, s.e(1)]) { const [x, , z] = s.at(u, 0); cells.add(Math.round(x / 20) + ',' + Math.round(z / 20)); }
@@ -434,7 +763,10 @@ const gateCells = new Set([[0, 0], [finish.gx, finish.gz], ...checkpoints.map(c 
 
 // ------------------------------------------------------------------ <circuit>.glb
 // linear RGB; road, kerb and line colours are the ones of the game's own road parts, the barrier is a lighter steel
-const MATERIALS = { Road: [0.2957, 0.2957, 0.2957], RoadEdgeRed: [0.8, 0.0323, 0.0127], RoadEdgeWhite: [0.8, 0.8, 0.8], RoadBarrier: [0.33, 0.35, 0.38], StartLine: [0.8, 0.8, 0.8], Checkpoint: [0.76, 0.52, 0.02], FinishWhite: [0.8, 0.8, 0.8], FinishBlack: [0.01, 0.01, 0.012], Finish: [0.64, 0.02, 0.02] };
+const MATERIALS = { Road: [0.2957, 0.2957, 0.2957], RoadEdgeRed: [0.8, 0.0323, 0.0127], RoadEdgeWhite: [0.8, 0.8, 0.8], RoadBarrier: [0.33, 0.35, 0.38], StartLine: [0.8, 0.8, 0.8], Checkpoint: [0.76, 0.52, 0.02], FinishWhite: [0.8, 0.8, 0.8], FinishBlack: [0.01, 0.01, 0.012], Finish: [0.64, 0.02, 0.02], Sand: [0.62, 0.47, 0.25] };
+// a circuit drawn by hand: its grass, its land, its yellow barriers in the corners, its bridge (display sRGB, made linear)
+if (DESIGN) for (const [name, rgb] of Object.entries({ Grass: [0.38, 0.55, 0.26], GrassLight: [0.45, 0.60, 0.30], ForestFloor: [0.27, 0.40, 0.22], Rock: [0.56, 0.54, 0.50], RockDark: [0.45, 0.43, 0.40],
+  LakeBed: [0.26, 0.34, 0.30], Paddock: [0.56, 0.56, 0.55], TunnelWall: [0.66, 0.64, 0.60], TunnelRoof: [0.30, 0.29, 0.28], TunnelLight: [1, 0.92, 0.70], Portal: [0.50, 0.46, 0.40], Concrete: [0.70, 0.69, 0.66], BarrierYellow: [0.93, 0.74, 0.12], Invisible: [1, 0, 1] })) MATERIALS[name] = rgb.map(v => +(v ** 2.2).toFixed(4));
 const gltf = { asset: { version: '2.0', generator: 'GoofyTrack make_circuit.js' }, scene: 0, scenes: [{ name: NAME, nodes: [] }], nodes: [], meshes: [], materials: Object.entries(MATERIALS).map(([name, rgb]) => ({ name, pbrMetallicRoughness: { baseColorFactor: [...rgb, 1], metallicFactor: 0, roughnessFactor: 0.8 } })), accessors: [], bufferViews: [], buffers: [{ byteLength: 0 }] };
 const chunks = []; let offset = 0;
 for (const [name, byMaterial] of Object.entries(parts)) {
@@ -480,7 +812,7 @@ for (const [name, v] of Object.entries(town.landmarks)) landmarks[name] = Array.
 const relief = fs.existsSync(heightsFile) && surveyed.grid ? surveyed.grid : null;
 fs.writeFileSync(path.join(OUT, KEY + '.json'), JSON.stringify({
   town: KEY,
-  ids: IDS, lapLength: Math.round(lapLength), roadHalfWidth: ROAD_HALF, gateWidth: 2 * W + 6,
+  ids: IDS, lapLength: Math.round(lapLength), roadHalfWidth: ROAD_HALF, gateWidth: 2 * (W + VERGE) + 6,
   level: START_LEVEL,                                                     // grid height of the start line (the lowest point of the lap is 5 m above the plain)
   finish: { gx: finish.gx, gy: finish.y, gz: finish.gz, rotation: finish.rotation },
   checkpoints: checkpoints.map(({ gx, y, gz, rotation }) => ({ gx, gy: y, gz, rotation })),
@@ -489,14 +821,28 @@ fs.writeFileSync(path.join(OUT, KEY + '.json'), JSON.stringify({
   waypoints: line.filter((_, i) => i % STEP === 0).map((q, k) => [round1(q[0]), round1(q[1]), +height[k * STEP].toFixed(2), round1(half[k * STEP][0]), round1(half[k * STEP][1])]),
   // the same centreline at full resolution (one point every 3 m, as the road is built), for whatever has to
   // follow the road's edges exactly; the waypoints are every STEP of these
-  fine: line.map((q, i) => [+q[0].toFixed(2), +q[1].toFixed(2), +height[i].toFixed(2), +half[i][0].toFixed(2), +half[i][1].toFixed(2)]),
+  // (and on a circuit drawn by hand, where the faces of its barriers are, on the left and on the right)
+  fine: line.map((q, i) => [+q[0].toFixed(2), +q[1].toFixed(2), +height[i].toFixed(2), +half[i][0].toFixed(2), +half[i][1].toFixed(2), ...(DESIGN ? [+section[i].g(-1).toFixed(2), +section[i].g(1).toFixed(2)] : [])]),
   fineStep: STEP,
+  // gravel traps: [index in `fine`, width on the left, on the right] wherever there is one (apex-town.js draws
+  // them, apex-sand.js slows the cars down on them); the painted grid of a circuit drawn by hand
+  // a road part with walls nobody sees (the mouth of the pit lane): patch_bundle.js keeps them out of the drawing
+  hidden: parts[HIDDEN] != null || undefined,
+  // the land round a circuit drawn by hand, as drawn (heights of a 10 m lattice, x0 + step * column, z0 + step * row,
+  // h[column * rows + row]); beyond it apex-town.js carries on from `border`
+  terrain,
+  // the pit lane (apex-town.js dresses it): its side, its edges' offsets from the centreline along the pits, the
+  // fronts of the garages, and the cross-sections along which it runs at full width, in lap order
+  pit: PIT ? { side: PIT.side, inner: PIT.offset - PIT.half, outer: PIT.offset + PIT.half, front: PIT.offset + PIT.half + 1.5,
+    full: (() => { const n = line.length, i0 = pitAt.findIndex((p, i) => p === 1 && pitAt[(i - 1 + n) % n] !== 1), out = []; for (let k = 0; k < n && pitAt[(i0 + k) % n] === 1; k++) out.push((i0 + k) % n); return out; })() } : undefined,
+  sand: sand.map((w, i) => [i, +w[0].toFixed(2), +w[1].toFixed(2)]).filter(r => r[1] > 0 || r[2] > 0),
+  grid: lineFile.grid,
   north: (() => { const a = toGame(origin[0], origin[1]), b = toGame(origin[0], origin[1] - 1000); return [(b[0] - a[0]) / 1000, (b[1] - a[1]) / 1000].map(v => +v.toFixed(4)); })(),
   source: town.source,
   // the town, in the circuit's frame (metres, the start line at the origin, the road leaving it towards -z)
   buildings,
   streets: town.streets.map(s => (s.area ? { area: game(s.area) } : { line: game(s.line), width: s.width })),
-  water: town.water.map(w => (w.area ? { area: game(w.area) } : { line: game(w.line), width: w.width })),
+  water: town.water.map(w => (w.area ? { area: game(w.area), ...(lakeLevel != null ? { y: +lakeLevel.toFixed(2) } : {}) } : { line: game(w.line), width: w.width })),
   rails: town.rails.map(game),
   parks: town.parks.map(game),
   woods: (town.woods || []).map(game),

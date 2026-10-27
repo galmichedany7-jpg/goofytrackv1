@@ -13,3 +13,5 @@ services:
         sync: false
       - key: GITHUB_TOKEN  # keeps the mod tracks' records and the accounts in secret gists (token with the "gist" scope)
         sync: false
+      - key: UNLOCKS       # who owns the garage's icons, by account number: "mp4_7a:7777+42" (sources/server/accounts.js)
+        sync: false

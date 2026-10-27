@@ -116,6 +116,22 @@
     } finally { showing = false; }
   }
   const markAuto = panel => panel.apxWingAuto?.classList.toggle('selected', panel.apxWingHex == null);
+  // an icon's pattern keeps its colours, and its wings the pattern (patch_bundle.js, ICONS): the Primary, Secondary
+  // and Wing pickers are greyed out while it is on the car, a note over them saying why, their colours kept for the
+  // other patterns
+  function lockPaint(panel, style) {
+    const locked = gameModule(CAR_STYLE).A.isIcon?.(style.pattern) ?? false;
+    const name = locked ? window.ApexRarity?.info(style.pattern)?.name : null;
+    const text = tr(`Couleur d'origine de l'Icône « ${name} » : elle fait partie du design et ne se change pas.`,
+      `The original colour of the Icon "${name}": it is part of the design and cannot be changed.`);
+    for (const box of [panel.apxPrimaryBox, panel.apxPrimaryBox?.nextElementSibling, panel.apxWingBox]) {
+      if (box == null) continue;
+      box.classList.toggle('apx-locked', locked);
+      let note = box.querySelector(':scope > .apx-lock-note');
+      if (locked && note == null) { note = document.createElement('div'); note.className = 'apx-lock-note'; box.appendChild(note); }
+      if (note != null) note.textContent = locked ? '🔒 ' + text : '';
+    }
+  }
 
   // ---------------------------------------------------------------- the garage
   let garage = null;
@@ -138,7 +154,14 @@
     + '#ui .customization-panel-ui .color h2 .apx-wing-auto{position:absolute;right:0;top:50%;transform:translateY(-50%);margin:0;padding:2px 8px;'
     + 'font:inherit;font-size:12px;letter-spacing:.06em;color:#cfd3da;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);border-radius:6px;cursor:pointer}'
     + '#ui .customization-panel-ui .color h2 .apx-wing-auto:hover{background:rgba(255,255,255,.16)}'
-    + '#ui .customization-panel-ui .color h2 .apx-wing-auto.selected{color:#fff;background:var(--accent-color,#e10600);border-color:transparent}';
+    + '#ui .customization-panel-ui .color h2 .apx-wing-auto.selected{color:#fff;background:var(--accent-color,#e10600);border-color:transparent}'
+    // a picker an icon's pattern locks (lockPaint)
+    + '#ui .customization-panel-ui .color{position:relative}'
+    + '#ui .customization-panel-ui .color.apx-locked{pointer-events:none}'
+    + '#ui .customization-panel-ui .color.apx-locked>:not(.apx-lock-note){opacity:.3;filter:grayscale(1)}'
+    + '#ui .customization-panel-ui .color>.apx-lock-note{display:none}'
+    + '#ui .customization-panel-ui .color.apx-locked>.apx-lock-note{display:flex;align-items:center;justify-content:center;position:absolute;inset:30px 8px 8px;'
+    + 'padding:10px;border-radius:8px;text-align:center;font-size:14px;line-height:1.3;color:#fff;background:rgba(8,40,44,.88);box-shadow:inset 0 0 0 1px #22e6c8}';
   document.head.appendChild(css);
 
   function close() {
@@ -326,6 +349,8 @@
       });
       element.querySelector('h2')?.appendChild(button);
       panel.apxWingAuto = button;
+      panel.apxWingBox = element;
+      panel.apxPrimaryBox = element.parentElement?.firstElementChild;   // Primary, the first of the left column
       for (let i = 0; i < gameModule(CAR_STYLE).A.patterns.length; i++) share(i);   // read before they are picked
     },
     // the car the panel built: its wing, and the colour the picker was moved to
@@ -337,9 +362,11 @@
       }
       style.wing = panel.apxWing ?? 0;
       style.wingHex = panel.apxWingHex ?? null;
+      style.body = panel.apxBody ?? 0;
       panel.apxWingStyle = style;
       if (picker != null && style.wingHex == null && !showing) show(panel, picker, autoHex(style));
       markAuto(panel);
+      lockPaint(panel, style);
     },
     // the car handed to the panel (it has set apxWing and apxWingHex from it)
     wingShow(panel, style, picker) {
@@ -348,6 +375,8 @@
       panel.apxWingTarget = undefined;
       show(panel, picker, style.wingHex ?? autoHex(style));
       markAuto(panel);
+      lockPaint(panel, style);
     },
+    bodyLabel: () => tr('Carrosserie', 'Body'),
   };
 })();

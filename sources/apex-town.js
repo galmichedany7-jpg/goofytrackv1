@@ -1,7 +1,7 @@
 // Apex town: the real surroundings of the circuits built from maps (Montbéliard, Strasbourg, Dijon,
-// Spa-Francorchamps), in low poly. Looks only.
+// Spa-Francorchamps) and of Forest Speedway, drawn by hand (tools/forest_design.js), in low poly. Looks only.
 //
-// These places are not invented: tracks/<circuit>.json (written by tools/make_circuit.js) carries the real
+// These places (but Forest Speedway) are not invented: tracks/<circuit>.json (written by tools/make_circuit.js) carries the real
 // map around the lap, from OpenStreetMap, in the circuit's own frame, and for Spa the real relief (EU-DEM).
 // From it:
 //
@@ -18,6 +18,9 @@
 // A town whose style has `rich` (Dijon) is drawn in more detail, as Monaco is: dressed fronts (windows, sills,
 // shutters, shops, balconies, cornices), mansards with dormers, chimneys, plane trees and lamps along the road.
 // The detail fades with the distance to the road, and the fronts that are not seen from it stay plain.
+//
+// Forest Speedway has land of its own, part of its road part (tools/make_circuit.js) and so solid: it is not drawn
+// here, its heights (`terrain`) are only used to plant on it; beyond it, a range of mountains, snow on their tops.
 //
 // Coordinates are the circuit's own: metres, the start line at the origin, heights counted from it.
 // Nothing here is collided with: the road keeps its own barriers.
@@ -56,7 +59,7 @@
     flatRoof: [0.52, 0.52, 0.53], slate: [0.30, 0.32, 0.37], copper: [0.42, 0.56, 0.50], window: [0.22, 0.29, 0.40], glass: [0.16, 0.20, 0.26],
     stone: [0.80, 0.70, 0.54], paleStone: [0.84, 0.79, 0.66], pinkStone: [0.76, 0.56, 0.49], vosges: [0.62, 0.43, 0.39], castle: [0.86, 0.82, 0.72], castleRoof: [0.44, 0.26, 0.21],
     white: [0.72, 0.73, 0.75], iron: [0.50, 0.57, 0.57],
-    rock: [0.62, 0.59, 0.54], rockDark: [0.52, 0.50, 0.46],
+    rock: [0.62, 0.59, 0.54], rockDark: [0.52, 0.50, 0.46], snow: [0.93, 0.95, 0.98], scree: [0.58, 0.56, 0.52],
     trunk: [0.42, 0.32, 0.24], leaves: [[0.27, 0.47, 0.24], [0.33, 0.54, 0.27], [0.39, 0.58, 0.29], [0.24, 0.42, 0.24]],
     startLine: [0.92, 0.92, 0.92], checkpoint: [0.95, 0.72, 0.10], black: [0.07, 0.07, 0.08],
     standFrame: [0.58, 0.60, 0.63], seats: [[0.70, 0.16, 0.16], [0.80, 0.22, 0.20]],
@@ -163,6 +166,19 @@
       landmarks: () => {
         const pits = { height: 12, wall: C.white, roof: 'flat', windows: true, bay: 6, storey: 4, windowHeight: 2.4, windowWidth: 4.5, glass: C.glass };
         return { pitsF1: { ...pits, height: 14 }, pitsEndurance: pits, hotelSource: { height: 13, wall: [0.84, 0.83, 0.80], tiles: C.slate, rise: 4, windows: true } };
+      },
+    },
+    forest: {
+      seed: 1922,                    // Monza's autodrome is built in the royal park, in a hundred days
+      walls: [[0.86, 0.86, 0.86], [0.78, 0.80, 0.82], [0.70, 0.72, 0.75]],
+      tiles: [C.slate, [0.34, 0.35, 0.38]],
+      floors: 0, steep: 0.30, detail: 140, hills: 1,
+      wild: true,                    // no town: meadows up to the road, the forest behind the barriers
+      mountains: true,               // a range of high mountains all round, beyond the circuit's own land
+      landmarks: () => {
+        const pits = { height: 9, wall: C.white, roof: 'flat', windows: true, bay: 6, storey: 4.5, windowHeight: 2.6, windowWidth: 4.5, glass: C.glass };
+        // the garages' fronts are dressed by the pit lane's own scenery (see the pit lane below)
+        return { pits: { ...pits, windows: false }, tower: { ...pits, height: 30, bay: 3, storey: 3.4, windowHeight: 2.4, windowWidth: 2.4 } };
       },
     },
   };
@@ -303,6 +319,27 @@
   // beyond the map.
   function Land(road, data, style) {
     const [cx, cz] = road.centre, R = data.relief, hillsFrom = road.reach + 700, edge = road.reach + 2900;
+    // the circuit's own land (Forest Speedway): the heights of its 10 m lattice, cut in triangles as make_circuit.js
+    // cuts it; beyond, from its border, the mountains
+    const T = data.terrain;
+    if (T) {
+      const tx1 = T.x0 + (T.cols - 1) * T.step, tz1 = T.z0 + (T.rows - 1) * T.step, edgeT = Math.max(tx1 - T.x0, tz1 - T.z0) / 2 + 3200;
+      const inside = (x, z) => x >= T.x0 && x <= tx1 && z >= T.z0 && z <= tz1;
+      const lattice = (x, z) => {
+        const u = (x - T.x0) / T.step, v = (z - T.z0) / T.step, a = clamp(Math.floor(u), 0, T.cols - 2), b = clamp(Math.floor(v), 0, T.rows - 2), fu = u - a, fv = v - b;
+        const h00 = T.h[a * T.rows + b], h10 = T.h[(a + 1) * T.rows + b], h01 = T.h[a * T.rows + b + 1], h11 = T.h[(a + 1) * T.rows + b + 1];
+        return fu >= fv ? h00 + (h10 - h00) * fu + (h11 - h10) * fv : h00 + (h11 - h01) * fu + (h01 - h00) * fv;
+      };
+      // ridges of sharp noise, rising from 150 m beyond the land to 1.5 km, taller further out
+      const mountains = (x, z) => {
+        const out = Math.hypot(Math.max(T.x0 - x, 0, x - tx1), Math.max(T.z0 - z, 0, z - tz1)), k = smooth(150, 1500, out);
+        if (k <= 0) return 0;
+        const ridge = 1 - Math.abs(2 * noise(x * 0.0016 + 4.4, z * 0.0016 + 1.9) - 1), bumps = fbm(x * 0.004 + 2.2, z * 0.004 + 6.1);
+        return k * (110 + 420 * ridge * ridge * (0.6 + 0.4 * smooth(1500, 3000, out)) + 90 * bumps);
+      };
+      const height = (x, z) => (inside(x, z) ? lattice(x, z) : T.border + (style.mountains ? mountains(x, z) : 0));
+      return { height, hill: (x, z) => (inside(x, z) ? 0 : height(x, z) - T.border), real: false, terrain: T, inside, hillsFrom: 0, edge: edgeT, base: T.border };
+    }
     let real = null;
     if (R) {
       const { x0, z0, step, cols, rows, h } = R, f = R.frame, scale = R.scale || 1, zero = R.startHeight || 0;
@@ -325,13 +362,38 @@
     return { height, hill, real: !!real, hillsFrom, edge };
   }
 
-  function ground(B, road, data, land, inWoods) {
+  function ground(B, road, data, land, inWoods, style) {
     const [cx, cz] = road.centre;
+    if (land.terrain) {
+      // the circuit's own land is drawn by its road part: only the mountains beyond, coloured by height and slope
+      const big = 160, E = Math.round(land.edge / big) * big, ox = Math.round(cx / big) * big, oz = Math.round(cz / big) * big, T = land.terrain;
+      const colour = (y, steep, x, z) => {
+        const up = y - land.base, n = noise(x * 0.01, z * 0.01);
+        if (up > 330 + 60 * n && steep < 1.3) return shade(C.snow, 0.94 + 0.06 * n);
+        if (steep > 0.85 || up > 230 + 50 * n) return shade(hash2(Math.round(x / 90), Math.round(z / 90)) < 0.5 ? C.rock : C.scree, 0.9 + 0.15 * n);
+        if (up > 25) return shade(C.forest[Math.floor(hash2(Math.round(x / 60), Math.round(z / 60)) * 3)], 0.92 + 0.12 * n);
+        return shade(C.meadow, 0.94 + 0.1 * n);
+      };
+      for (let x = ox - E; x < ox + E; x += big) for (let z = oz - E; z < oz + E; z += big) {
+        if (x >= T.x0 - 1 && x + big <= T.x0 + (T.cols - 1) * T.step + 1 && z >= T.z0 - 1 && z + big <= T.z0 + (T.rows - 1) * T.step + 1) continue;
+        // halves of 80 m near the land, for the slopes' outline
+        const s = Math.hypot(x + big / 2 - cx, z + big / 2 - cz) < land.edge * 0.45 ? 80 : big;
+        for (let a = x; a < x + big; a += s) for (let b = z; b < z + big; b += s) {
+          const c = [[a, b], [a + s, b], [a + s, b + s], [a, b + s]].map(([px, pz]) => [px, land.height(px, pz), pz]);
+          for (const t of [[c[0], c[1], c[2]], [c[0], c[2], c[3]]]) {
+            const y = (t[0][1] + t[1][1] + t[2][1]) / 3, steep = (Math.max(t[0][1], t[1][1], t[2][1]) - Math.min(t[0][1], t[1][1], t[2][1])) / s;
+            B.tri3(t[0], t[1], t[2], colour(y, steep, a, b), UP);
+          }
+        }
+      }
+      for (const w of data.water) if (w.area) flat(B, w.area, w.y != null ? w.y : land.height(...centroid(w.area)) + WATER_Y, C.water);
+      return;
+    }
     // paved where the town is (within a block of a building, or of the road), meadows beyond
     const BLOCK = 80, blocks = new Set();
     if (!land.real) {
       for (const b of data.buildings) blocks.add(Math.floor(b.p[0][0] / BLOCK) + ',' + Math.floor(b.p[0][1] / BLOCK));
-      for (const p of road.F) blocks.add(Math.floor(p[0] / BLOCK) + ',' + Math.floor(p[1] / BLOCK));
+      if (!style.wild) for (const p of road.F) blocks.add(Math.floor(p[0] / BLOCK) + ',' + Math.floor(p[1] / BLOCK));
     }
     const builtUp = (x, z) => { const i = Math.floor(x / BLOCK), j = Math.floor(z / BLOCK); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (blocks.has((i + a) + ',' + (j + b))) return true; return false; };
     const inParks = Areas(data.parks);
@@ -393,7 +455,12 @@
       cone(ring, y + h * 0.55, [x, y + h * 1.25, z], col);
       for (let k = 0; k < 6; k++) { const a = ring[k], b = ring[(k + 1) % 6]; B.tri3([a[0], y + h * 0.55, a[1]], [b[0], y + h * 0.55, b[1]], [x, y + h * 0.28, z], shade(col, 0.8), [a[0] - x, -1, a[1] - z]); }
     };
-    const fir = (x, z, y, h, rnd) => { const col = C.forest[Math.floor(rnd() * 3)]; cone(circle(x, z, h * 0.3, 5, rnd() * 6), y + h * 0.15, [x, y + h, z], col); };
+    // a fir: a cone of needles over the ground; seen from close by (`trunk`), on a trunk, and from afar (`grounded`) reaching down to the ground
+    const fir = (x, z, y, h, rnd, look) => {
+      const col = C.forest[Math.floor(rnd() * 3)];
+      if (look === 'trunk') { prism(circle(x, z, 0.25 + h * 0.012, 3, rnd() * 6), y - 0.4, y + h * 0.32, C.trunk, null); cone(circle(x, z, h * 0.3, 5, rnd() * 6), y + h * 0.22, [x, y + h, z], col); return; }
+      cone(circle(x, z, h * 0.3, 5, rnd() * 6), look === 'grounded' ? y - 0.3 : y + h * 0.15, [x, y + h, z], col);
+    };
     // a faceted ball (icosahedron), for the crowns of the plane trees
     const ball = (x, y, z, rx, ry, rz, cols, rnd) => {
       const v = ICO.v.map(p => { const k = 0.91 + rnd() * 0.18; return [x + p[0] * rx * k, y + p[1] * ry * k, z + p[2] * rz * k]; });
@@ -739,15 +806,49 @@
       const a = w.line[i], b = w.line[i + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]); if (l < 1) continue;
       for (let s = rnd() * 16; s < l; s += 16) for (const side of [-1, 1]) { const o = side * (w.width / 2 + 5 + rnd() * 3); plant(a[0] + (b[0] - a[0]) * s / l - (b[1] - a[1]) / l * o, a[1] + (b[1] - a[1]) * s / l + (b[0] - a[0]) / l * o, 7.5); }
     }
+    // how far from the road the forest stays: past the barrier, and past the gravel traps where there are some
+    const sandAt = new Map((data.sand || []).map(([i, l, r]) => [i, [l, r]]));
+    const clear = (x, z) => {
+      if (!style.wild) return road.dist(x, z) >= 17;
+      const k = road.nearest(x, z), f = road.frame(k), s = (x - f.p[0]) * f.n[0] + (z - f.p[1]) * f.n[1] > 0 ? 1 : 0, g = sandAt.get(k);
+      if (f.p.length > 5) return road.dist(x, z) >= f.p[5 + s] + 5;     // the faces of the barriers are known: past them
+      return road.dist(x, z) >= f.p[3 + s] + (g ? g[s] : 0) + 8;
+    };
+    // how steep the land is at a place (rise over run, the steepest way)
+    const steepAt = (x, z) => { const h = land.height(x, z); return Math.max(Math.abs(land.height(x + 4, z) - h), Math.abs(land.height(x, z + 4) - h)) / 4; };
     for (const p of data.woods || []) {
       const [x0, z0, x1, z1] = boundsOf(p), gap = 15;
       for (let x = x0; x <= x1 && stats.firs < 30000; x += gap) for (let z = z0; z <= z1; z += gap) {
         const tx = x + (rnd() - 0.5) * 11, tz = z + (rnd() - 0.5) * 11;
-        if (!inPoly(tx, tz, p) || road.dist(tx, tz) < 17 || built(tx, tz, 3) || onStreet(tx, tz)) continue;
+        if (!inPoly(tx, tz, p) || road.dist(tx, tz) < 17 || (road.dist(tx, tz) < 80 && !clear(tx, tz)) || built(tx, tz, 3) || onStreet(tx, tz)) continue;
+        if (land.terrain) {                                              // the circuit's own land: not in the lake, not on the rock
+          if (wet(tx, tz) || steepAt(tx, tz) > 0.8) continue;
+          X.fir(tx, tz, land.height(tx, tz), 12 + rnd() * 10, rnd, road.near(tx, tz, 7).d < 420 ? 'trunk' : 'grounded'); stats.firs++;
+          continue;
+        }
         X.fir(tx, tz, land.height(tx, tz) - 0.5, 12 + rnd() * 10, rnd); stats.firs++;
       }
     }
-    if (!land.real && style.hills > 0) {
+    if (land.terrain && style.mountains) {
+      // firs on the mountains' lower slopes, up to the tree line; boulders on the circuit's own steep land
+      const [cx, cz] = road.centre;
+      for (let k = 0; k < 9000; k++) {
+        const a = rnd() * 2 * Math.PI, r = rnd() * land.edge, x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+        if (land.inside(x, z)) continue;
+        const up = land.height(x, z) - land.base;
+        if (up < 2 || up > 210 || steepAt(x, z) > 0.75) continue;
+        X.fir(x, z, land.height(x, z), 14 + rnd() * 12, rnd, 'grounded'); stats.firs++;
+      }
+      const rocks = [[0.62, 0.59, 0.54], [0.55, 0.53, 0.49], [0.50, 0.48, 0.45]];
+      const T = land.terrain;
+      for (let k = 0; k < 2600; k++) {
+        const x = T.x0 + rnd() * (T.cols - 1) * T.step, z = T.z0 + rnd() * (T.rows - 1) * T.step, steep = steepAt(x, z), size = 1.2 + rnd() * rnd() * 5;
+        if (steep < 0.45 && rnd() > 0.06) continue;                      // mostly where the land is steep, a few in the meadows
+        if (road.dist(x, z) < 80 && !clear(x, z) || wet(x, z) || built(x, z, 4) || road.dist(x, z) < 16) continue;
+        X.ball(x, land.height(x, z) + size * 0.25, z, size * (1 + rnd() * 0.5), size * (0.6 + rnd() * 0.3), size, rocks, rnd); stats.rocks = (stats.rocks || 0) + 1;
+      }
+    }
+    if (!land.real && !land.terrain && style.hills > 0) {
       const [cx, cz] = road.centre;
       for (let k = 0; k < 2600; k++) {
         const a = rnd() * 2 * Math.PI, r = land.hillsFrom + 150 + rnd() * rnd() * 1500, x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r, h = land.hill(x, z);
@@ -767,6 +868,18 @@
     across(0, 0.6, -0.3, C.startLine);
     for (const g of data.checkpoints) across(gateIndex(g), 1.0, -0.5, C.checkpoint);
     { const i = gateIndex(data.finish); for (let r = 0; r < 2; r++) across(i, 0.9, r * 0.9 - 0.9, k => ((k + r) % 2 ? C.startLine : C.black), 10); }
+    // the grid painted behind the start line (a straight, level stretch): a box per car, a bar in front of it and a
+    // short line down each side, staggered as apex-room.js places the cars, the pole nearest the line
+    if (data.grid) {
+      const g = data.grid, f = road.frame(0), [x, z, y] = f.p, Y = y + 0.03;
+      const at = (u, v) => [x + f.n[0] * u + f.t[0] * v, Y, z + f.n[1] * u + f.t[1] * v];
+      const paint = (u0, u1, v0, v1) => B.quad(at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1), C.startLine, UP);
+      for (let k = 0; k < g.slots; k++) {
+        const d = -(g.first + k * g.gap), u = k % 2 === 0 ? g.side : -g.side;
+        paint(u - 1.6, u + 1.6, d + 2.4, d + 2.75);
+        for (const e of [-1.6, 1.6]) paint(u + e - 0.12, u + e + 0.12, d - 2.6, d + 2.75);
+      }
+    }
 
     // ---- grandstands, where the place leaves room beside a straight
     const stand = (x, z, y, ux, uz, nx, nz) => {                         // 26 m long, six rows rising away from the road
@@ -789,12 +902,65 @@
       const f = road.frame(i), before = road.frame((i - 5 + road.n) % road.n), after = road.frame((i + 5) % road.n);
       if (before.t[0] * after.t[0] + before.t[1] * after.t[1] < 0.995 || Math.abs(after.p[2] - before.p[2]) > 1.2) continue;   // on the level straights only
       for (const side of [1, -1]) {
-        const off = (side > 0 ? f.p[3] : f.p[4]) + 5.5, nx = f.n[0] * side, nz = f.n[1] * side, x = f.p[0] + nx * off, z = f.p[1] + nz * off;
+        const off = f.p.length > 5 ? f.p[side > 0 ? 6 : 5] + 4 : (side > 0 ? f.p[3] : f.p[4]) + 5.5, nx = f.n[0] * side, nz = f.n[1] * side, x = f.p[0] + nx * off, z = f.p[1] + nz * off;
         let free = true;
         for (let s = -13; s <= 13 && free; s += 6.5) for (let d = 0; d <= 7 && free; d += 3.5) { const px = x + f.t[0] * s + nx * d, pz = z + f.t[1] * s + nz * d; if (built(px, pz, 2) || wet(px, pz) || road.dist(px, pz) < off - 6.5 || baseAt(px, pz) == null || (rock && baseAt(px, pz) === ROCK_HEIGHT) || inWoods(px, pz)) free = false; }
         if (!free) continue;
         stand(x, z, f.p[2], f.t[0], f.t[1], nx, nz); stats.stands++; lastStand = i; stands.push([x + nx * 3.3, z + nz * 3.3, f.t[0], f.t[1]]); break;
       }
+    }
+
+    // ---- the pit lane (Forest Speedway): the garages' fronts, each in its team's colours, an awning over the lane,
+    // the teams' boxes and the fast lane's line painted on it, and the pit wall's stands between it and the road
+    if (data.pit) {
+      const P = data.pit, side = P.side, frames = P.full.map(i => road.frame(i));
+      const TEAMS = [[0.78, 0.08, 0.08], [0.10, 0.22, 0.62], [0.96, 0.50, 0.06], [0.04, 0.42, 0.30], [0.72, 0.74, 0.77], [0.95, 0.80, 0.08], [0.38, 0.14, 0.55], [0.10, 0.55, 0.76], [0.92, 0.92, 0.92], [0.16, 0.16, 0.18]];
+      // a point beside the pit lane: `along` metres from its start, `u` metres from the road's centreline on its side
+      const lengths = [0]; for (let k = 1; k < frames.length; k++) lengths.push(lengths[k - 1] + Math.hypot(frames[k].p[0] - frames[k - 1].p[0], frames[k].p[1] - frames[k - 1].p[1]));
+      const total = lengths[lengths.length - 1];
+      const frameAt = d => { let k = 1; while (k < frames.length - 1 && lengths[k] < d) k++; const a = frames[k - 1], b = frames[k], t = clamp((d - lengths[k - 1]) / ((lengths[k] - lengths[k - 1]) || 1), 0, 1); return { x: a.p[0] + (b.p[0] - a.p[0]) * t, z: a.p[1] + (b.p[1] - a.p[1]) * t, y: a.p[2] + (b.p[2] - a.p[2]) * t, t: a.t, n: a.n }; };
+      const at = (d, u, y) => { const f = frameAt(d); return [f.x + f.n[0] * side * u, f.y + y, f.z + f.n[1] * side * u]; };
+      const out = d => { const f = frameAt(d); return [f.n[0] * side, 0, f.n[1] * side]; };
+      const towardsRoad = d => { const o = out(d); return [-o[0], 0, -o[2]]; };
+      // a flat rectangle between two distances and two offsets, at a height over the road, facing `facing`
+      const panel = (d0, d1, u0, u1, y0, y1, col, facing) => B.quad(at(d0, u0, y0), at(d1, u0, y0), at(d1, u1, y1), at(d0, u1, y1), col, facing);
+      const wall = (d0, d1, u, y0, y1, col, facing) => B.quad(at(d0, u, y0), at(d1, u, y0), at(d1, u, y1), at(d0, u, y1), col, facing);
+      const F = P.front - 0.06, GARAGE = 13, n = Math.floor((total - 6) / GARAGE);
+      for (let k = 0; k < n; k++) {
+        const d0 = 3 + k * GARAGE, d1 = d0 + GARAGE - 1.2, m = (d0 + d1) / 2, team = TEAMS[Math.floor(k / 2) % TEAMS.length], face = towardsRoad(m);
+        wall(d0 + 0.6, d1 - 0.6, F, 0, 4.4, shade(team, 0.32), face);                    // the open door, the garage lit in its colours
+        wall(d0 + 0.6, d1 - 0.6, F - 0.02, 0, 0.6, shade(team, 0.55), face);            // its floor
+        wall(d0 + 0.6, d1 - 0.6, F - 0.03, 3.7, 3.9, [0.95, 0.93, 0.85], face);           // the lights along its ceiling
+        wall(d0 + 2.5, d1 - 2.5, F - 0.03, 1.2, 2.4, shade(team, 0.55), face);           // the team's screens on its back wall
+        wall(d0, d1, F - 0.02, 4.6, 5.6, team, face);                                   // the team's band over the door
+        for (const e of [d0, d1 - 0.5]) wall(e, e + 0.5, F - 0.04, 0, 4.6, shade(team, 0.8), face);
+        // the box painted on the working lane in front of it
+        const u0 = P.outer - 6.2, u1 = P.outer - 0.6, Y = 0.03, line = (a, b, c, e) => panel(a, b, c, e, Y, Y, C.startLine, UP);
+        line(d0 + 1, d1 - 1, u0, u0 + 0.18); line(d0 + 1, d0 + 1.18, u0, u1); line(d1 - 1.18, d1 - 1, u0, u1);
+        panel(d0 + 1.18, d1 - 1.18, u0 + 0.18, u0 + 0.6, Y, Y, team, UP);
+      }
+      // hospitality over the garages: a band of glass the whole length, and an awning over the working lane
+      wall(0, total, F, 5.9, 8.2, C.glass, towardsRoad(total / 2));
+      panel(0, total, P.front, P.outer - 5, 8.9, 8.9, [0.86, 0.87, 0.88], UP);
+      panel(0, total, P.front, P.outer - 5, 8.6, 8.6, [0.60, 0.61, 0.63], [0, -1, 0]);
+      wall(0, total, P.outer - 5, 8.6, 8.9, [0.78, 0.10, 0.10], towardsRoad(total / 2));
+      // the line between the fast lane and the working lane, in dashes
+      for (let d = 2; d + 3 < total; d += 6) panel(d, d + 3, P.outer - 6.4, P.outer - 6.2, 0.03, 0.03, C.startLine, UP);
+      // the pit wall's stands: under a low roof by the pit lane, a desk and screens per team
+      const uRoad = Math.max(...P.full.map(i => road.F[i][side > 0 ? 6 : 5])) + 1.4, uLane = P.inner - 1.3;
+      for (let d = 4; d + 8 < total; d += 26) {
+        const e = d + 20, team = TEAMS[Math.floor(d / 26) % TEAMS.length];
+        for (const [a, u] of [[d, uLane - 2.8], [e, uLane - 2.8], [d, uLane], [e, uLane]]) { const p = at(a, u, 0); X.prism(X.circle(p[0], p[2], 0.12, 4), p[1] - 0.3, p[1] + 3.0, C.standFrame, null); }
+        panel(d - 0.5, e + 0.5, uLane - 3.2, uLane + 0.4, 3.0, 3.0, [0.92, 0.92, 0.92], UP);
+        panel(d - 0.5, e + 0.5, uLane - 3.2, uLane + 0.4, 2.8, 2.8, team, [0, -1, 0]);
+        wall(d - 0.5, e + 0.5, uLane + 0.4, 2.6, 3.0, team, out(d));
+        panel(d + 1, e - 1, uLane - 1.6, uLane - 0.6, 1.0, 1.0, [0.30, 0.31, 0.33], UP);  // the desk
+        wall(d + 1, e - 1, uLane - 0.6, 0, 1.0, [0.30, 0.31, 0.33], out(d));
+        for (let q = d + 2; q + 1.6 < e - 1; q += 2.6) wall(q, q + 1.6, uLane - 1.2, 1.1, 2.1, [0.08, 0.12, 0.22], out(d));   // screens facing the lane
+      }
+      // stacks of tyres at the ends of the pit wall
+      for (const d of [1, total - 3]) for (let k = 0; k < 3; k++) { const p = at(d + k * 0.9, (uRoad + uLane) / 2, 0); X.prism(X.circle(p[0], p[2], 0.36, 8), p[1], p[1] + 1.1, C.black, [0.18, 0.18, 0.2]); }
+      stats.garages = n;
     }
 
     // ---- detailed towns: plane trees and lamps along the road, where the pavement is free
@@ -829,7 +995,7 @@
     const style = STYLES[data.town] || STYLES.montbeliard;
     const road = circuit(data), rnd = random(style.seed), land = Land(road, data, style), inWoods = Areas(data.woods || []);
     const terrain = Builder(), objects = Builder();
-    ground(terrain, road, data, land, inWoods);
+    ground(terrain, road, data, land, inWoods, style);
     const stats = town(objects, road, data, land, style, inWoods, rnd);
     return { terrain: terrain.done(), objects: objects.done(), stats };
   }

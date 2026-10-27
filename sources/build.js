@@ -72,6 +72,16 @@ fs.writeFileSync(path.join(APP, 'apex-account.js'), 'window.GOOFY_SERVER = ' + J
   + 'window.GOOFY_GAME_TRACKS = ' + JSON.stringify(gameTracks) + ';\n'
   + 'window.GOOFY_MOD_TRACKS = ' + JSON.stringify(require('./tracks').map(t => ({ id: t.id, name: t.name, author: t.author, outline: require('./track_outlines').outline(t) }))) + ';\n'
   + fs.readFileSync(path.join(__dirname, 'apex-account.js'), 'utf8'));
+// The physics worker slows the cars down in the gravel traps and, a little, on the grass (apex-sand.js): the traps of each
+// circuit and where its barriers stand, in front of its script
+const sandData = {};
+for (const [key, c] of Object.entries(require('./tools/circuits'))) {
+  if (c.stunt) continue;
+  const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', key, key + '.json'), 'utf8'));
+  if (!data.sand || data.sand.length === 0) continue;
+  sandData[c.ids.road] = { fine: data.fine.flatMap(p => [p[0], p[1], p[2]]), half: data.fine.flatMap(p => [p[3], p[4]]), sand: data.sand, edge: data.fine[0].length > 5 ? data.fine.flatMap(p => [p[5], p[6]]) : null };
+}
+fs.writeFileSync(path.join(APP, 'apex-sand.js'), 'self.APEX_SAND = ' + JSON.stringify(sandData) + ';\n' + fs.readFileSync(path.join(__dirname, 'apex-sand.js'), 'utf8'));
 // The room list asks the server for the rooms of this very build: the one the patched game connects with
 const buildQuery = /multiplayer\/join(\?mod=[^"]+)"/.exec(fs.readFileSync(path.join(APP, 'main.bundle.js'), 'utf8'))[1];
 fs.writeFileSync(path.join(APP, 'apex-lobby.js'), 'window.GOOFY_ROOMS = ' + JSON.stringify(SERVER_URL + 'rooms' + buildQuery) + ';\n' + fs.readFileSync(path.join(__dirname, 'apex-lobby.js'), 'utf8'));
@@ -82,8 +92,10 @@ fs.writeFileSync(path.join(APP, 'apex-theme.css'), `html:root { --apx-version: "
 fs.copyFileSync(path.join(__dirname, 'goofytrack-logo.svg'), path.join(APP, 'images', 'logo.svg'));
 fs.copyFileSync(path.join(__dirname, 'audio', 'goofytrack_music.mp3'), path.join(APP, 'audio', 'goofytrack_music.mp3'));   // "Vroum Vroum" by Teknah
 fs.copyFileSync(path.join(__dirname, 'audio', 'goofytrack_waiting.mp3'), path.join(APP, 'audio', 'goofytrack_waiting.mp3'));   // "WAITING" by Teknah (track selection menu)
+fs.copyFileSync(path.join(__dirname, 'audio', 'engine_mp4_7a.wav'), path.join(APP, 'audio', 'engine_mp4_7a.wav'));   // the MP4/7A body's V12 (tools/make_engine_sound.js)
 for (const icon of ['riviera.svg', 'riviera_colored.svg']) fs.copyFileSync(path.join(__dirname, 'images', icon), path.join(APP, 'images', icon));   // Riviera environment
 fs.copyFileSync(path.join(__dirname, 'images', 'wing.svg'), path.join(APP, 'images', 'wing.svg'));   // the garage's Wing tab
+fs.copyFileSync(path.join(__dirname, 'images', 'body.svg'), path.join(APP, 'images', 'body.svg'));   // the garage's Body tab
 // App icon: the window (taskbar, Alt+Tab) uses the .ico (patched into electron/main.js), the web manifest the .svg
 fs.copyFileSync(path.join(__dirname, 'images', 'goofytrack_icon.ico'), path.join(APP, 'images', 'goofytrack_icon.ico'));
 fs.copyFileSync(path.join(__dirname, 'images', 'goofytrack_icon.svg'), path.join(APP, 'images', 'icons', 'icon.svg'));

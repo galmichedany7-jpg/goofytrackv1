@@ -35,6 +35,10 @@
   const START_HEIGHT = 0.2;           // the start transform is a car's centre, 0.2 to 0.35 m above the road: the podium's floor
   const GRID_ROW_GAP = 3.0;           // metres between two grid slots along the track
   const GRID_SIDE = 1.15;             // metres left/right of the racing line
+  // Grids painted on a circuit's start straight (tools/forest_design.js, drawn by apex-town.js), by the id of its
+  // start part: behind the start line, the pole's box `first` metres back, `gap` metres between two boxes, staggered
+  // `side` metres left and right of the middle of the road
+  const PAINTED_GRIDS = { 229: { first: 8, gap: 8, side: 4.5, slots: 16 } };
   const LOOP_DISTANCE = 50;           // metres; a finish this close to the start makes the track a circuit
   const TELEPORT_DISTANCE = 40;       // metres in one frame: a respawn, not a crossing
   const MAX_LAPS = 20;
@@ -328,6 +332,17 @@
   function buildGrid(order) {
     const start = ctx.track().getStartTransform();
     const startState = { position: start.position, quaternion: start.quaternion };
+    // a circuit with a grid painted behind its start line: one car per box, the pole in the front one
+    let painted = null;
+    ctx.track().getTrackData().forEachPart((x, y, z, id) => { if (PAINTED_GRIDS[id] != null) painted = PAINTED_GRIDS[id]; });
+    if (painted != null) {
+      const fwd = rotate(startState.quaternion, [0, 0, 1]), q = startState.quaternion;
+      return order.map((id, k) => {
+        const d = -(painted.first + k * painted.gap), side = rotate(q, [k % 2 === 0 ? -painted.side : painted.side, 0, 0]);
+        const p = startState.position;
+        return { id, p: [p.x + fwd[0] * d + side[0], p.y + fwd[1] * d + side[1], p.z + fwd[2] * d + side[2]], q: [q.x, q.y, q.z, q.w] };
+      });
+    }
     const leader = leaderRun();
     let path = leader ? leader.run.states : null;
     // only a run seen from its very start describes the road ahead of the line

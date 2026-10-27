@@ -50,8 +50,10 @@ for (let z = -0.33; z > -1.71; z -= 0.055) tubZ.push(+z.toFixed(3));
 tubZ.push(-1.72);
 // How many ring points on each side of the centreline are sunk into the cockpit opening
 const dipAt = z => (z <= 0.355 && z >= -0.235) ? 2 : (z === COCKPIT_FRONT || z === COCKPIT_REAR) ? 1 : 0;
+// the tub through the stations of tubZ, its cockpit sunk in (Body and the icon bodies, from their own keys)
+function monocoque(keys, { main, black, frame }) {
 const tubRings = tubZ.map(z => {
-  const [, w, top, bot, n] = sampleKeys(tubKeys, z);
+  const [, w, top, bot, n] = sampleKeys(keys, z);
   const r = ring(z, { w, top, bot, n, N });
   const d = dipAt(z);
   if (d > 0) {
@@ -72,6 +74,8 @@ loft(tubRings, (i, k) => {
 });
 cap(main, tubRings[0], true);
 cap(frame, tubRings[tubRings.length - 1], false);
+}
+monocoque(tubKeys, { main, black, frame });
 
 // ---------------------------------------------------------------- Airbox and engine cover spine
 const spineKeys = [
@@ -109,29 +113,34 @@ const podKeys = [
   [-1.10, 0.280, 0.130, -0.390, -0.615, 3.0],
   [-1.35, 0.200, 0.070, -0.470, -0.610, 2.6],
 ];
+function sidepods(keys, main, black) {
 for (const side of [1, -1]) {
   const rings = [];
-  for (let z = 0.44; z > -1.355; z -= 0.05) {
-    const [zz, xc, w, top, bot, n] = sampleKeys(podKeys, +z.toFixed(3));
+  for (let z = keys[0][0]; z > -1.355; z -= 0.05) {
+    const [zz, xc, w, top, bot, n] = sampleKeys(keys, +z.toFixed(3));
     const r = ring(zz, { w, top, bot, n, xc, N: 28 });
     rings.push(side === 1 ? r : r.map(p => [-p[0], p[1], p[2]]).reverse());
   }
   loft(rings, main);
   cap(main, rings[rings.length - 1], false);
   // Inlet: painted lip, then a recessed dark duct
-  const [, xc, w, top, bot, n] = podKeys[0];
+  const [z0, xc, w, top, bot, n] = keys[0];
   const shrink = (s, z) => {
     const r = ring(z, { w: w * s, top: (top + bot) / 2 + (top - bot) / 2 * s, bot: (top + bot) / 2 - (top - bot) / 2 * s, n, xc, N: 28 });
     return side === 1 ? r : r.map(p => [-p[0], p[1], p[2]]).reverse();
   };
-  const lip = shrink(0.80, 0.44), deep = shrink(0.74, 0.37);
+  const lip = shrink(0.80, z0), deep = shrink(0.74, z0 - 0.07);
   loft([lip, rings[0]], main);
   loft([deep, lip], black);
   cap(black, deep, true);
 }
+}
+sidepods(podKeys, main, black);
 
 // ---------------------------------------------------------------- Floor and diffuser
-const floorHalf = [[0.10, 1.00], [0.26, 0.92], [0.56, 0.62], [0.62, 0.40], [0.62, -0.55], [0.53, -1.00], [0.50, -1.18], [0.50, -1.30]];
+// (shared by every body)
+function floor(frame) {
+const floorHalf =[[0.10, 1.00], [0.26, 0.92], [0.56, 0.62], [0.62, 0.40], [0.62, -0.55], [0.53, -1.00], [0.50, -1.18], [0.50, -1.30]];
 const floorPoly = [...floorHalf, ...floorHalf.map(([x, z]) => [-x, z]).reverse()];
 extrude(frame, floorPoly, -0.650, -0.625, (x, z, y) => [x, y, z]);
 // Diffuser ramp with strakes
@@ -144,6 +153,8 @@ for (const x of [-0.494, -0.25, 0, 0.25, 0.494])
   loft(rings, frame);
   cap(frame, rings[2], false);
 }
+}
+floor(frame);
 
 // ---------------------------------------------------------------- Wings (front and rear, one mesh per style)
 // Each style is a mesh of its own, Wing0..: the garage's Wing tab swaps it like the exhausts (patch_bundle.js),
@@ -266,6 +277,20 @@ const WINGS = [
     pair(x => plate(f, [[-1.42, -0.26], [-1.60, 0.02], [-1.72, 0.03], [-1.58, -0.30]], x, 0.009), 0.1);
     lights(light, 0.526, 0.1, -2.05, 0.18);
   },
+  // 8 MP4/7A 1992 (icon): a wide two-element front wing straight under the nose between square endplates; at the
+  // back three elements stacked high between tall endplates reaching down to the diffuser, a beam wing low down,
+  // a single pylon, and only the rain light (no endplate lights in 1992)
+  ({ w, f, light }) => {
+    [[2.01, -0.632, 0.17, 3], [1.85, -0.612, 0.105, 17]].forEach(([z, y, chord, aoa]) =>
+      wing(w, airfoil(chord, { thickness: 0.10, camber: 0.05, aoa }), span(FRONT_SPAN, () => ({ z, y }))));
+    pair(x => plate(w, [[2.04, -0.668], [2.04, -0.548], [1.71, -0.548], [1.67, -0.668]], x, 0.008), 0.786);
+    [[-1.57, 0.085, 0.20, 9], [-1.755, 0.15, 0.13, 25], [-1.875, 0.225, 0.095, 42]].forEach(([z, y, chord, aoa]) =>
+      wing(w, airfoil(chord, { thickness: 0.11, camber: 0.07, aoa }), span(REAR_SPAN, () => ({ z, y }))));
+    pair(x => plate(w, [[-1.50, -0.44], [-1.50, 0.10], [-1.54, 0.31], [-1.99, 0.31], [-1.99, -0.24], [-1.78, -0.44]], x, 0.008), 0.476);
+    wing(f, airfoil(0.15, { thickness: 0.11, camber: 0.05, aoa: 12 }), span(REAR_SPAN, () => ({ z: -1.66, y: -0.31 })));
+    plate(f, [[-1.62, -0.46], [-1.70, 0.09], [-1.80, 0.09], [-1.80, -0.48]], 0, 0.01);
+    box(light, 0, -0.525, -1.962, 0.07, 0.07, 0.014);
+  },
 ];
 
 // ---------------------------------------------------------------- Halo, driver, mirrors
@@ -314,6 +339,147 @@ const WINGS = [
   });
 }
 
+// ================================================================ Icon bodies (Body1..)
+// The garage's Body tab swaps the chassis for one of these (patch_bundle.js): Body1.. after the car's own Body,
+// never reordered (the index is saved in the car style; apex-rarity.js names them). Same paint UVs and the same
+// landmarks as Body (cockpit, sidepods, gearbox), so every pattern fits them; the floor is the same, and so are the
+// suspension and the wheels. Every wing, rims and exhaust fits every body.
+const BODIES = [
+  // 1 MP4/7A 1992: no halo but a small screen, a low rounded nose, a tall airbox above the driver's head flowing
+  // into a wide engine cover between long square sidepods, a vent on each flank, the driver in a yellow helmet
+  () => {
+    const p = { main: new Part(), black: new Part(), frame: new Part(), helmet: new Part(), visor: new Part() };
+    monocoque([
+      [1.97, 0.050, -0.548, -0.602, 2.0],
+      [1.92, 0.080, -0.520, -0.606, 2.2],
+      [1.75, 0.112, -0.465, -0.604, 2.5],
+      [1.50, 0.138, -0.400, -0.594, 2.8],
+      [1.20, 0.160, -0.325, -0.585, 3.0],
+      [0.90, 0.192, -0.255, -0.590, 3.2],
+      [0.60, 0.232, -0.190, -0.608, 3.4],
+      [0.40, 0.250, -0.160, -0.620, 3.5],
+      [0.00, 0.262, -0.118, -0.620, 3.6],
+      [-0.30, 0.268, -0.100, -0.620, 3.6],
+      [-0.60, 0.262, -0.130, -0.620, 3.4],
+      [-0.95, 0.225, -0.200, -0.610, 3.0],
+      [-1.30, 0.165, -0.285, -0.570, 2.8],
+      [-1.55, 0.122, -0.310, -0.500, 2.5],
+      [-1.72, 0.098, -0.318, -0.445, 2.2],
+    ], p);
+    // Airbox and engine cover: a hump narrower on top (taper), as wide as the sidepods' inner edge at its widest
+    const coverKeys = [
+      [-0.205, 0.095, 0.150, -0.130, 2.4],
+      [-0.28, 0.120, 0.188, -0.150, 2.6],
+      [-0.42, 0.150, 0.176, -0.185, 2.8],
+      [-0.65, 0.230, 0.112, -0.230, 3.0],
+      [-0.95, 0.262, 0.022, -0.280, 3.0],
+      [-1.25, 0.200, -0.105, -0.330, 2.8],
+      [-1.50, 0.120, -0.225, -0.360, 2.4],
+      [-1.70, 0.080, -0.295, -0.380, 2.2],
+    ];
+    const cover = [];
+    for (let z = -0.205; z > -1.705; z -= 0.05) {
+      const [, w, top, bot, n] = sampleKeys(coverKeys, +z.toFixed(3));
+      cover.push(ring(+z.toFixed(3), { w, top, bot, n, taper: 0.5, N: 32 }));
+    }
+    loft(cover, p.main);
+    cap(p.main, cover[0], true);
+    cap(p.main, cover[cover.length - 1], false);
+    cap(p.black, ring(-0.199, { w: 0.06, top: 0.135, bot: 0.045, n: 2.4, N: 20 }), true);   // the airbox's mouth
+    sidepods([
+      [0.46, 0.430, 0.170, -0.235, -0.500, 4.0],
+      [0.30, 0.440, 0.190, -0.215, -0.550, 4.2],
+      [0.00, 0.445, 0.195, -0.210, -0.600, 4.4],
+      [-0.40, 0.440, 0.195, -0.215, -0.615, 4.4],
+      [-0.75, 0.400, 0.175, -0.250, -0.620, 4.0],
+      [-1.05, 0.310, 0.130, -0.330, -0.620, 3.4],
+      [-1.35, 0.205, 0.072, -0.450, -0.612, 2.8],
+    ], p.main, p.black);
+    pair(x => box(p.black, x, -0.33, -0.38, 0.012, 0.06, 0.22), 0.628);   // flank vents
+    floor(p.frame);
+    // the screen in front of the driver
+    extrude(p.visor, [[0.455, -0.168], [0.47, -0.168], [0.392, -0.066], [0.378, -0.066]], -0.125, 0.125, (z, y, x) => [x, y, z]);
+    const hc = [0, -0.045, -0.06], hr = [0.100, 0.110, 0.122];
+    ellipsoid(p.helmet, hc, hr);
+    ellipsoid(p.visor, hc, hr.map(r => r * 1.025), { az0: -1.15, az1: 1.15, el0: -0.12, el1: 0.42, nAz: 14, nEl: 5 });
+    for (const side of [1, -1]) {
+      const x = side * 0.335;
+      box(p.main, x, -0.095, 0.335, 0.105, 0.05, 0.035);
+      box(p.black, x, -0.095, 0.3165, 0.09, 0.038, 0.004);
+      tube(p.frame, [[side * 0.23, -0.17, 0.34], [side * 0.30, -0.11, 0.335]], 0.008, { sides: 6 });
+    }
+    return p;
+  },
+];
+
+// ================================================================ Icon rims (Wheel12..) and exhausts (Exhaust8..)
+// After the game's own (patch_bundle.js lists them, apex-rarity.js names them), never reordered. A rim is drawn
+// around the x axis, its face towards +x, in the game's tyre (Wheel0's, reused as it is), whose sidewall is flat at
+// x = 0.172 from r = 0.258 to 0.331. The game mirrors the wheels of one side (scale.x = -1): those with lettering
+// are turned round instead (patch_bundle.js, TURNED_RIMS), so it reads the right way on both sides.
+const lathe = (part, profile, N = 36) => loft(profile.map(([x, r]) => Array.from({ length: N }, (_, k) => [x, r * Math.cos(2 * Math.PI * k / N), r * Math.sin(2 * Math.PI * k / N)])), part, {});
+// a block from its 8 corners: the 4 of its front face, then the 4 of its back face
+function hexa(part, c) {
+  const v = c.map(p => part.v(...p));
+  [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0]].forEach(([a, b, cc, d]) => part.quad(v[a], v[b], v[cc], v[d]));
+}
+// A stroke font for the tyres' lettering: each letter is polylines in a box 0.6 wide and 1 high
+const GLYPHS = {
+  A: [[[0, 0], [0.3, 1], [0.6, 0]], [[0.13, 0.38], [0.47, 0.38]]],
+  B: [[[0, 0], [0, 1], [0.42, 1], [0.57, 0.87], [0.57, 0.65], [0.42, 0.52], [0, 0.52]], [[0.42, 0.52], [0.6, 0.4], [0.6, 0.13], [0.45, 0], [0, 0]]],
+  E: [[[0.6, 1], [0, 1], [0, 0], [0.6, 0]], [[0, 0.52], [0.45, 0.52]]],
+  F: [[[0.6, 1], [0, 1], [0, 0]], [[0, 0.52], [0.45, 0.52]]],
+  G: [[[0.6, 0.82], [0.45, 1], [0.15, 1], [0, 0.8], [0, 0.2], [0.15, 0], [0.45, 0], [0.6, 0.2], [0.6, 0.45], [0.33, 0.45]]],
+  L: [[[0, 1], [0, 0], [0.6, 0]]],
+  O: [[[0.15, 0], [0.45, 0], [0.6, 0.2], [0.6, 0.8], [0.45, 1], [0.15, 1], [0, 0.8], [0, 0.2], [0.15, 0]]],
+  R: [[[0, 0], [0, 1], [0.45, 1], [0.6, 0.85], [0.6, 0.65], [0.45, 0.5], [0, 0.5]], [[0.3, 0.5], [0.6, 0]]],
+  Y: [[[0, 1], [0.3, 0.5], [0.6, 1]], [[0.3, 0.5], [0.3, 0]]],
+};
+// a word around the sidewall, centred at angle at (0 = top, reading clockwise seen from +x), letters h high from r0
+function tyreWord(part, word, at, { x = 0.1736, r0 = 0.274, h = 0.040, stroke = 0.15, advance = 0.9 } = {}) {
+  const rm = r0 + h / 2, length = (word.length * advance - (advance - 0.6)) * h;
+  const place = (s, v) => { const a = at + (s - length / 2) / rm, r = r0 + v * h; return [x, r * Math.cos(a), -r * Math.sin(a)]; };
+  [...word].forEach((ch, i) => {
+    for (const line of GLYPHS[ch]) for (let k = 0; k < line.length - 1; k++) {
+      const [u1, v1] = line[k], [u2, v2] = line[k + 1];
+      const l = Math.hypot(u2 - u1, v2 - v1), du = (u2 - u1) / l, dv = (v2 - v1) / l, hw = stroke / 2;
+      const at_ = (u, v, e, n) => place((i * advance + u + du * e - dv * n) * h, v + dv * e + du * n);
+      const a = part.v(...at_(u1, v1, -hw, -hw)), b = part.v(...at_(u2, v2, hw, -hw)), c = part.v(...at_(u2, v2, hw, hw)), d = part.v(...at_(u1, v1, -hw, hw));
+      part.quad(a, b, c, d);
+    }
+  });
+}
+const RIMS = [
+  // 12 MP4/7A 1992 (icon): six-spoke rims dished in (the rims' colour: black for the real one), a centre-lock nut,
+  // and the tyres' lettering (gold or black, from the rims' colour: patch_bundle.js, LETTERING)
+  ({ rim, metal, text }) => {
+    lathe(rim, [[-0.143, 0.252], [0.150, 0.252], [0.170, 0.258], [0.172, 0.249], [0.160, 0.239], [0.12, 0.232], [-0.12, 0.232]]);
+    lathe(metal, [[0.06, 0.205], [0.06, 0.10]], 24);   // the brake disc behind the spokes
+    for (let k = 0; k < 6; k++) {
+      const a = 2 * Math.PI * k / 6, ca = Math.cos(a), sa = Math.sin(a);
+      const at = (r, t, x) => [x, r * ca - t * sa, r * sa + t * ca];
+      hexa(rim, [at(0.072, -0.025, 0.160), at(0.236, -0.015, 0.142), at(0.236, 0.015, 0.142), at(0.072, 0.025, 0.160),
+        at(0.072, -0.025, 0.136), at(0.236, -0.015, 0.118), at(0.236, 0.015, 0.118), at(0.072, 0.025, 0.136)]);
+    }
+    lathe(rim, [[0.10, 0.08], [0.16, 0.08], [0.166, 0.066]], 24);
+    cap(rim, Array.from({ length: 24 }, (_, k) => [0.166, 0.066 * Math.cos(2 * Math.PI * k / 24), 0.066 * Math.sin(2 * Math.PI * k / 24)]), true);
+    const nut = [[0.166, 0.036], [0.19, 0.036]].map(([x, r]) => Array.from({ length: 6 }, (_, k) => [x, r * Math.cos(Math.PI * k / 3), r * Math.sin(Math.PI * k / 3)]));
+    loft(nut, metal);
+    cap(metal, nut[1], true);
+    tyreWord(text, 'GOOFYEAR', 0);
+    tyreWord(text, 'BEAGLE', Math.PI);
+  },
+];
+const EXHAUSTS = [
+  // 8 MP4/7A 1992 (icon): two oval pipes either side of the gearbox, low over the diffuser
+  ({ metal, black: b }) => {
+    for (const s of [1, -1]) {
+      tube(metal, smoothPath([[s * 0.15, -0.50, -1.30], [s * 0.165, -0.46, -1.60], [s * 0.17, -0.43, -1.82], [s * 0.17, -0.425, -1.90]], 3), 0.034, { sides: 12, flatten: 0.75, caps: false });
+      cap(b, ring(-1.902, { w: 0.029, top: -0.425 + 0.021, bot: -0.425 - 0.021, n: 2, xc: s * 0.17, N: 12 }), false);
+    }
+  },
+];
+
 // ================================================================ GLB assembly
 const glb = fs.readFileSync(SRC);
 const jsonLen = glb.readUInt32LE(12);
@@ -358,9 +524,10 @@ function uvs(part) {
   }
   return uv;
 }
-function primitive(part, material, { withUv = false, withMorph = false } = {}) {
+// (bare: positions only, as the game's rims and exhausts have, which it merges with theirs)
+function primitive(part, material, { withUv = false, withMorph = false, bare = false } = {}) {
   const prim = {
-    attributes: { POSITION: addAccessor(new Float32Array(part.pos), 'VEC3', true), NORMAL: addAccessor(computeNormals(part), 'VEC3') },
+    attributes: { POSITION: addAccessor(new Float32Array(part.pos), 'VEC3', true), ...(bare ? {} : { NORMAL: addAccessor(computeNormals(part), 'VEC3') }) },
     indices: addAccessor(part.count > 65535 ? new Uint32Array(part.idx) : new Uint16Array(part.idx), 'SCALAR'),
     material, mode: 4,
   };
@@ -403,6 +570,32 @@ const wingTris = WINGS.map((build, i) => {
   json.nodes.push({ mesh: json.meshes.length - 1, name: 'Wing' + i });
   json.scenes[0].nodes.push(json.nodes.length - 1);
   return Object.values(parts).reduce((s, p) => s + p.idx.length / 3, 0);
+});
+
+// The icon parts' own colours: the yellow helmet, the tyres' lettering (until the car is painted: patch_bundle.js)
+json.materials.push({ name: 'Helmet92', pbrMetallicRoughness: { baseColorFactor: [0.95, 0.62, 0.0, 1], metallicFactor: 0, roughnessFactor: 0.25 } });
+json.materials.push({ name: 'TireText', pbrMetallicRoughness: { baseColorFactor: [0.80, 0.52, 0.06, 1], metallicFactor: 0, roughnessFactor: 0.6 } });
+const addMesh = (name, primitives) => {
+  json.meshes.push({ name, primitives });
+  json.nodes.push({ mesh: json.meshes.length - 1, name });
+  json.scenes[0].nodes.push(json.nodes.length - 1);
+};
+BODIES.forEach((build, i) => {
+  const p = build();
+  addMesh('Body' + (i + 1), [[p.main, 'Main'], [p.black, 'AirIntake'], [p.frame, 'Metal'], [p.helmet, 'Helmet92'], [p.visor, 'Visor']]
+    .map(([part, m]) => primitive(part, matIndex(m), { withUv: true })));
+});
+// the game's tyre, as Wheel0 has it (Draco compressed: its primitive is shared as it is)
+const tyre = json.meshes[json.nodes.find(n => n.name === 'Wheel0').mesh].primitives.find(p => json.materials[p.material].name === 'Tire');
+RIMS.forEach((build, i) => {
+  const parts = { rim: new Part(), metal: new Part(), text: new Part() };
+  build(parts);
+  addMesh('Wheel' + (12 + i), [tyre, ...[[parts.rim, 'Rim'], [parts.metal, 'Metal'], [parts.text, 'TireText']].filter(([p]) => p.count > 0).map(([p, m]) => primitive(p, matIndex(m), { bare: true }))]);
+});
+EXHAUSTS.forEach((build, i) => {
+  const parts = { metal: new Part(), black: new Part() };
+  build(parts);
+  addMesh('Exhaust' + (8 + i), [[parts.metal, 'Metal'], [parts.black, 'AirIntake']].map(([p, m]) => primitive(p, matIndex(m), { bare: true })));
 });
 
 json.buffers[0].byteLength = binSize;

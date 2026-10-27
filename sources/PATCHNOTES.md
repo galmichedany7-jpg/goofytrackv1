@@ -15,6 +15,35 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.19 : rareté Icône, McLaren MP4/7A 1992 et Forest Speedway
+
+Une nouvelle rareté pour les vraies légendes de la F1, à gagner en tournoi, un nouvel onglet Carrosserie, et un nouveau circuit avec des bacs à graviers.
+
+**Rareté Icône**
+- Nouvelle rareté **Icône**, au-dessus de Mythique, avec son cadre bleu-vert : un contour qui tourne, un reflet qui balaie la tuile et des étincelles. Ce sont de vrais designs de F1, sponsors compris (en version parodique), qui ne se gagnent qu'en tournoi ou lors d'événements.
+- Sans l'Icône, sa tuile montre la voiture en silhouette noire, « À débloquer » et un cadenas. Un clic dit comment la gagner, sans l'équiper. Le bouton « Aléatoire » ne la tire jamais.
+- Une Icône garde ses couleurs d'origine : avec son motif, les couleurs Principale, Secondaire et d'Aileron sont verrouillées, et un message explique pourquoi. Vos couleurs sont gardées et reviennent avec un autre motif. Le châssis et les jantes restent libres.
+
+**Pack McLaren MP4/7A 1992**, la première Icône (à gagner au premier tournoi GoofyTrack)
+- **Motif** : les chevrons rouges sur fond blanc de la voiture de Senna en 1992, avec ses sponsors revisités : Malbarré, Pelle (et sa pelle dorée), POWERED by HONTA, COURT-JUS, BOSSE, GOOFYEAR et le « 1 » rouge sur le nez.
+- **Carrosserie** : sans halo, un petit pare-brise, un nez bas et arrondi, une grande prise d'air au-dessus du pilote qui file vers le capot moteur, des pontons carrés avec leurs ouïes, et un casque jaune.
+- **Jantes** à six branches et écrou central, aux couleurs de vos jantes, avec **GOOFYEAR** et **BEAGLE** en relief sur les pneus (dorés sur des jantes sombres, noirs sur des jantes claires), lisibles des deux côtés.
+- **Échappement** à deux sorties ovales et **aileron** d'époque : avant à deux éléments, arrière haut à trois éléments.
+- **Son de moteur** : un V12 propre à cette carrosserie, calé sur un enregistrement embarqué de la RA122E à Kyalami en 1992.
+- Chaque pièce du pack se monte aussi sur les autres voitures.
+
+**Garage**
+- Nouvel onglet **Carrosserie**, en premier : la F1 GoofyTrack ou la MP4/7A. Ailerons, jantes et échappements vont sur les deux.
+- Le logo GT sur le nez du motif **Goofy Signature** se lit enfin à l'endroit.
+
+**Forest Speedway**
+- Un circuit de Grand Prix imaginaire de 3,1 km dans une vallée boisée au pied des montagnes, dans l'esprit de Trial Mountain : un tracé en 8 qui repasse sur un pont au-dessus de sa propre route, des esses serrés, une montée en lacets entre des parois de roche, un tunnel sous le sommet, puis la descente vers le pont.
+- Une route de 18 m de large pour doubler, une grille de départ peinte de 16 cases (le mode Course y place les voitures), une voie des stands (fermée pour l'instant), des stands aux couleurs des équipes, une tour de contrôle, des tribunes, des sapins, des rochers et un lac.
+- **Bacs à graviers et herbe** : les barrières sont en retrait, l'herbe freine un peu et les graviers beaucoup. Une voiture qui passe par-dessus une barrière retombe sur l'herbe.
+- Sur Forest Speedway et Monaco GP, la voiture apparaît posée sur la route au départ au lieu d'y retomber.
+
+**Mise à jour** : « Mettre a jour GoofyTrack.bat » (ou `git pull` puis « Construire GoofyTrack.bat »). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.19. Le serveur (Render) doit être redéployé pour les Icônes. Qui possède quelle Icône se règle avec la variable `UNLOCKS` (par défaut, la McLaren va aux comptes #7777 et #0001), et un créateur peut en donner une depuis la console du jeu : `ApexAccount.unlock('mp4_7a', numéro)`.
+
 ## V2.18 : badges de distance et de temps, chargement 4 fois plus rapide
 
 Douze nouveaux badges à gagner en roulant, un mur pour voir tous les badges du jeu, un démarrage bien plus court et un dossier GoofyTrack enfin rangé.

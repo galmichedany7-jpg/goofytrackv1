@@ -25,7 +25,8 @@
 // each other as friends. Friends see each other's profile (name, flag, car), whether they are playing, and
 // the invite code of the room they are in (hosting it or not), to join it in one click:
 //   POST /account/presence  { profile: { nickname, countryCode, carStyle, badges, distance, driving }, state: 'menu' | 'playing', room: code | null }
-//                           -> { id, verified, badges, requests, online }     every 30 s while the game runs
+//                           -> { id, verified, badges, unlocks, requests, online }     every 30 s while the game runs
+//   POST /account/unlock    { id, item, give }       -> { id, unlocks }    a creator gives an unlockable item (or takes it, give: false)
 //   GET  /account/friends                            -> { me, friends, requests, sent }
 //   POST /account/friends   { action: 'add' | 'accept' | 'decline' | 'cancel' | 'remove', id }
 //   GET  /account/player?name=<account name> | ?id=<number>   -> a player's public card, no session needed
@@ -77,6 +78,12 @@ const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:7777,shyn:1').s
 const CREATOR_IDS = new Set((process.env.CREATOR_IDS ?? '7777,1').split(',').filter(Boolean).map(Number));
 // the VIP diamond: friends and the first players, by number (#0003 is 3)
 const VIP_IDS = new Set((process.env.VIP_IDS ?? '').split(',').filter(Boolean).map(Number));
+// The garage's unlockable items (apex-rarity.js, `unlock`): the icons, won in tournaments and events. UNLOCKS gives
+// them to accounts by number, "mp4_7a:7777+42,other:…" (by default the McLaren to Julio and Dany); a creator gives or takes
+// one with POST /account/unlock { id, item, give }, kept with the account (unlocks). The presence says which a player owns.
+const UNLOCKABLES = ['mp4_7a'];
+const UNLOCKS = new Map((process.env.UNLOCKS ?? 'mp4_7a:7777+1').split(',').filter(Boolean)
+  .map(pair => pair.split(':')).map(([item, ids]) => [item, new Set((ids || '').split('+').filter(Boolean).map(Number))]));
 const COUNTRY = /^[a-z]{2}$/i;
 // the frames a player can put around their car (apex-account.js, FRAMES there): the badges one of which it needs
 // (by kind: 'p1' for any P1 badge), or null for the colours anyone picks
@@ -367,6 +374,21 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
     if (needs === undefined) return null;
     return needs == null || badgesOf(a).some(b => needs.includes(b.split(':')[0])) ? a.profile.frame : null;
   };
+  // the unlockable items a player owns
+  const unlocksOf = a => UNLOCKABLES.filter(item => UNLOCKS.get(item)?.has(a.id) || (a.unlocks || []).includes(item));
+  // a creator gives an item to a player, or takes it back (those of UNLOCKS stay)
+  function giveUnlock(s, body) {
+    if (!CREATOR_IDS.has(s.account.id)) return [403, { error: 'creators only' }];
+    const key = byId.get(Number(body.id)), item = String(body.item || '');
+    if (key == null) return [404, { error: 'no such player' }];
+    if (!UNLOCKABLES.includes(item)) return [400, { error: 'no such item' }];
+    const a = accounts.get(key), had = a.unlocks || [];
+    a.unlocks = body.give === false ? had.filter(i => i !== item) : [...new Set([...had, item])];
+    if (a.unlocks.length === 0) delete a.unlocks;
+    changed(key);
+    log(`accounts: #${s.account.id} ${body.give === false ? 'took' : 'gave'} ${item} ${body.give === false ? 'from' : 'to'} #${a.id}`);
+    return [200, { id: a.id, unlocks: unlocksOf(a) }];
+  }
   const isOnline = key => Date.now() - (presence.get(key)?.time ?? 0) < ONLINE;
   // the room a player is in: the one they host, or the one they said they joined if it is still open
   const roomOf = key => rooms.get(key) ?? (roomOpen(presence.get(key)?.room) ? presence.get(key).room : null);
@@ -412,7 +434,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       }
     }
     const a = s.account;
-    return [200, { id: a.id, verified: verifiedOf(a.id), badges: badgesOf(a), requests: a.requests.length, online: keysOf(a.friends).filter(isOnline).length, recovery: a.recovery != null }];
+    return [200, { id: a.id, verified: verifiedOf(a.id), badges: badgesOf(a), unlocks: unlocksOf(a), requests: a.requests.length, online: keysOf(a.friends).filter(isOnline).length, recovery: a.recovery != null }];
   }
 
   function getFriends(s) {
@@ -531,7 +553,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       }
       if (route === 'GET /account/player') return getPlayer(req, url.searchParams);
       const routes = ['GET /account/save', 'PUT /account/save', 'POST /account/logout', 'POST /account/presence', 'GET /account/friends', 'POST /account/friends',
-        'POST /account/password', 'POST /account/recovery'];
+        'POST /account/password', 'POST /account/recovery', 'POST /account/unlock'];
       if (!routes.includes(route)) return [404, { error: 'not found' }];
       const s = sessionOf(req);
       if (s == null) return [401, { error: 'not logged in' }];
@@ -544,6 +566,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       if (route === 'POST /account/friends') return friendAction(s, body);
       if (route === 'POST /account/password') return changePassword(s, body);
       if (route === 'POST /account/recovery') return setRecovery(s, body);
+      if (route === 'POST /account/unlock') return giveUnlock(s, body);
       return putSave(s, body);
     })().then(([status, out]) => reply(res, status, out), e => { console.error('accounts:', e); reply(res, 500, { error: 'server error' }); });
     return true;

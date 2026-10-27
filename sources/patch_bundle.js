@@ -16,22 +16,47 @@ const MONACO = require('./tracks/monaco/monaco.json');
 const sumsOf = name => (fs.existsSync(path.join(__dirname, 'tracks', name, 'checksums.json')) ? JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', name, 'checksums.json'), 'utf8')) : {});
 // Monaco GP has tools of its own; the others are the circuits of tools/circuits.js (tools/make_circuit.js)
 const MAP_CIRCUITS = require('./tools/circuits');
+// `start`: how high above the start line the car appears. The game's own start parts have it 0.35 m up, above their
+// thicker road; on a circuit whose road is a sheet at the line's height, the car dropped from there and lost time
+// bouncing. The ones set here appear where the car rests (measured in the game); the others keep 0.35.
 const CIRCUITS = [
-  { name: 'Monaco', model: 'monaco', data: MONACO, sums: sumsOf('monaco') },
-  ...Object.entries(MAP_CIRCUITS).map(([key, c]) => ({ name: c.mesh, model: key, data: JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', key, key + '.json'), 'utf8')), sums: sumsOf(key) })),
+  { name: 'Monaco', model: 'monaco', data: MONACO, sums: sumsOf('monaco'), start: 0.18 },
+  ...Object.entries(MAP_CIRCUITS).map(([key, c]) => ({ name: c.mesh, model: key, data: JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', key, key + '.json'), 'utf8')), sums: sumsOf(key), start: c.startHeight })),
 ];
 const circuitParts = c => [['Road', c.data.ids.road], ['Start', c.data.ids.start], ['Checkpoint', c.data.ids.checkpoint], ['Finish', c.data.ids.finish]].map(([part, id]) => [c.name + part, id]);
 // The mod's car patterns (build_patterns.js), numbered 16 on after the game's: never reorder them, a car
 // saved with one keeps its number (apex-rarity.js names them in this order)
 const MOD_PATTERNS = ['monaco', 'bignumber', 'diagonal', 'wingtips', 'dotted', 'camo', 'lightning', 'flames', 'tiger', 'barcode', 'carbon',
-  'spa', 'strasbourg', 'dijon', 'montbeliard', 'coaster', 'killer_loop', 'goofy', 'champion'];
+  'spa', 'strasbourg', 'dijon', 'montbeliard', 'coaster', 'killer_loop', 'goofy', 'champion', 'mp4_7a'];
 // The mod's wings (build_car.js draws Wing0.., apex-rarity.js names them in this order)
-const WING_COUNT = 8;
+const WING_COUNT = 9;
+// The mod's bodies (build_car.js: the car's own Body, then Body1..), and its rims and exhausts after the game's
+// 12 and 8 (Wheel12.., Exhaust8..)
+const BODY_COUNT = 2, MOD_RIMS = 1, MOD_EXHAUSTS = 1;
+// The rims whose tyres are lettered: on the side the game mirrors, turned round instead (build_car.js)
+const TURNED_RIMS = [12];
+// The icons' patterns (apex-rarity.js): real cars' liveries, which keep their own colours. The car style gives
+// them in place of the primary and secondary colours (those picked stay for the other patterns), and their wings
+// take the pattern. [primary, secondary] by pattern.
+const ICONS = { mp4_7a: [0xf3f3ef, 0xf2361e] };
+const ICON_COLOURS = JSON.stringify(Object.fromEntries(Object.entries(ICONS).map(([name, colours]) => [16 + MOD_PATTERNS.indexOf(name), colours])));
+// The engine's sound by body (build_car.js), in audio/ (tools/make_engine_sound.js); the others have the game's
+const ENGINE_SOUNDS = { 1: 'engine_mp4_7a' };
+// The lettering of the tyres (build_car.js, TireText), from the rims' colour: gold on dark rims, black on light ones
+const LETTERING = rims => '(((' + rims + '>>16&255)*.299+(' + rims + '>>8&255)*.587+(255&' + rims + ')*.114)<150?15776808:1118481)';
+// The paint, from the pattern's picture (build_patterns.js): green is the secondary colour, red the primary, and
+// two inks no picker changes, blue for black and none of the three for gold (every other pattern is red and
+// green only). shade(source) gives the shader lines, source scaling the pattern (the wings may leave it out).
+const shade = source => 'vec4 apxPattern = texture(carColorPattern, vUv);\\nfloat colorSource = apxPattern.g' + source + ';\\n'
+  + 'vec3 apxColor = carColorSecondary * colorSource + diffuse * (1.0 - colorSource);\\n'
+  + 'apxColor = mix(apxColor, vec3(0.012), apxPattern.b' + source + ');\\n'
+  + 'apxColor = mix(apxColor, vec3(0.85, 0.55, 0.02), clamp(1.0 - apxPattern.r - apxPattern.g - apxPattern.b, 0.0, 1.0)' + source + ');\\n'
+  + 'vec4 diffuseColor = vec4( apxColor, opacity );';
 const RIVIERA_GROUND = 6318394;    // 0x60693a: the Riviera plain (apex-scenery.js recognises the environment by it)
 
 // Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
 // so a modified game never meets an older one (their race messages or physics would not match).
-const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-show.js', 'apex-collide.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), ...Object.keys(require('./tools/circuits')).flatMap(key => [path.join('tracks', key, key + '.json'), path.join('tracks', key, 'checksums.json')]),   // the checksums stand for the road meshes
+const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-show.js', 'apex-collide.js', 'apex-sand.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), ...Object.keys(require('./tools/circuits')).flatMap(key => [path.join('tracks', key, key + '.json'), path.join('tracks', key, 'checksums.json')]),   // the checksums stand for the road meshes
   ...MOD_TRACKS.map(t => path.join('tracks', t.file))];
 // Hashed as text with LF line endings and no BOM: git on Windows may check the same files out with
 // CRLF (and a ZIP download has LF), which must not make two copies of the same code look different.
@@ -494,12 +519,24 @@ const patches = [
   {
     name: 'a part colour is built by a function of its own',
     find: 'let l=null;for(const n of e.colors){const i=[];',
-    replace: 'let l=null;const apexColour=n=>{const i=[];',
+    replace: 'let l=null;const apexColour=n=>{const i=[],apexHidden=[];',
   },
   {
     name: 'the circuits\' other colours are built when a track needs them',
     find: 'c=new M.eaF(o,a);t.colors.set(n.id,c),l??(l=r)}if(null==l)',
     replace: 'c=new M.eaF(o,a);return[c,r]};for(const n of e.colors){if(null!=l&&t.colors.defer&&window.ApexGfx.deferColour(l)){t.colors.defer(n.id,()=>apexColour(n)[0]);continue}const[c,r]=apexColour(n);t.colors.set(n.id,c),l??(l=r)}if(null==l)',
+  },
+  {
+    // meshes whose name ends with "Invisible" (the wall closing Forest Speedway's pit lane) are solid but not drawn:
+    // left out of the part's mesh, added to what the physics collides with
+    name: 'a part\'s invisible meshes are not drawn',
+    find: 'for(const t of e)i.push(t)}const r=vu.pP(i,!0)',
+    replace: 'for(const t of e)(/Invisible$/.test(r)?apexHidden:i).push(t)}const r=vu.pP(i,!0)',
+  },
+  {
+    name: 'a part\'s invisible meshes are added to what the physics collides with',
+    find: 'c=new M.eaF(o,a);return[c,r]};',
+    replace: 'c=new M.eaF(o,a);if(apexHidden.length){const v=[r.attributes.position.array,...apexHidden.map((e=>(e.index?e.toNonIndexed():e).attributes.position.array))],p=new Float32Array(v.reduce(((e,t)=>e+t.length),0));let k=0;for(const e of v)p.set(e,k),k+=e.length;return[c,{attributes:{position:new M.THS(p,3)}}]}return[c,r]};',
   },
 
   // ---------------------------------------------------------------- scenery (apex-scenery.js)
@@ -513,6 +550,27 @@ const patches = [
     name: 'the physics reads the original mountain mesh',
     find: 'const e=(0,s.gn)(this,A,"f").geometry;if(!(e.attributes.position instanceof o.THS))throw new Error("Vertices must use BufferAttribute");return Array.from(e.attributes.position.array)}getMountainOffset',
     replace: 'const e=(0,s.gn)(this,A,"f").userData.apexPhysics||(0,s.gn)(this,A,"f").geometry;if(!(e.attributes.position instanceof o.THS))throw new Error("Vertices must use BufferAttribute");return Array.from(e.attributes.position.array)}getMountainOffset',
+  },
+  // A circuit with land of its own, solid (Forest Speedway, tools/make_circuit.js), has no mountains at all: the game's
+  // ring of them, hidden under its scenery, would still stand across its road and its land as invisible hills. The
+  // track's bounds say so (from its parts); the game, and the check of records, make the mountains from them.
+  {
+    name: 'a track whose circuit brings its own land has its bounds say so',
+    find: 'getBounds(){let e=1/0,t=1/0,n=-1/0,i=-1/0;return this.forEachPart(',
+    replace: 'getBounds(){const apexBounds=this.apexBounds();let apexLand=!1;return this.forEachPart(((e,t,n,i)=>{apexLand=apexLand||' + JSON.stringify(CIRCUITS.filter(c => c.data.terrain).map(c => c.data.ids.road)) + '.includes(i)})),apexLand&&(apexBounds.apexOwnLand=!0),apexBounds}'
+      + 'apexBounds(){let e=1/0,t=1/0,n=-1/0,i=-1/0;return this.forEachPart(',
+  },
+  {
+    // the track being played keeps its own bounds, from its parts as they are placed (what makes the mountains in the game)
+    name: 'a track being played whose circuit brings its own land has its bounds say so',
+    find: 'Number.isFinite(e)&&Number.isFinite(t)&&Number.isFinite(n)&&Number.isFinite(i)?(0,A.GG)(this,d,{min:new y.I9Y(e,t),max:new y.I9Y(n,i)},"f"):(0,A.GG)(this,d,{min:new y.I9Y,max:new y.I9Y},"f")',
+    replace: 'Number.isFinite(e)&&Number.isFinite(t)&&Number.isFinite(n)&&Number.isFinite(i)?(0,A.GG)(this,d,{min:new y.I9Y(e,t),max:new y.I9Y(n,i)},"f"):(0,A.GG)(this,d,{min:new y.I9Y,max:new y.I9Y},"f");'
+      + 'for(const r of(0,A.gn)(this,l,"f"))' + JSON.stringify(CIRCUITS.filter(c => c.data.terrain).map(c => c.data.ids.road)) + '.includes(r.trackPartData?.configuration?.id)&&((0,A.gn)(this,d,"f").apexOwnLand=!0)',
+  },
+  {
+    name: 'no mountains round a circuit that brings its own land',
+    find: 'static createMountainVertices(e){const t=new h,',
+    replace: 'static createMountainVertices(e){if(e.apexOwnLand)return{vertices:[],offset:new o.Pq0};const t=new h,',
   },
 
   // ---------------------------------------------------------------- Riviera: a fourth environment
@@ -589,12 +647,13 @@ const patches = [
   {
     name: 'circuit track parts are registered',
     find: '],f=new Map;for(const e of u){if(f.has(e.id))throw new Error("Duplicate track part id "',
-    replace: CIRCUITS.map(({ name, data, sums }) => {
+    replace: CIRCUITS.map(({ name, data, sums, start }) => {
       const cell = '[[[-2,0,-2],[1,0,1]]]';
       const detector = type => '{type:o.A.' + type + ',center:[0,3.5,0],size:[' + data.gateWidth + ',7,1]}';
       const roadTiles = JSON.stringify(data.roadCells.map(([i, j]) => [[4 * i - 2, 0, 4 * j - 2], [4 * i + 1, 0, 4 * j + 1]]));
-      const part = (kind, id, rest) => ',new d(' + JSON.stringify(sums[id] || '') + ',r.A.Special,' + id + ',[["' + name + '","' + name + kind + '"]],c,' + rest + ')';
-      return part('Road', data.ids.road, roadTiles) + part('Start', data.ids.start, cell + ',null,new i.Pq0(0,.35,0)')
+      // the road may have walls nobody sees, in a mesh of its own (tools/make_circuit.js)
+      const part = (kind, id, rest) => ',new d(' + JSON.stringify(sums[id] || '') + ',r.A.Special,' + id + ',[["' + name + '","' + name + kind + '"]' + (kind === 'Road' && data.hidden ? ',["' + name + '","' + name + 'RoadInvisible"]' : '') + '],c,' + rest + ')';
+      return part('Road', data.ids.road, roadTiles) + part('Start', data.ids.start, cell + ',null,new i.Pq0(0,' + (start ?? 0.35) + ',0)')
         + part('Checkpoint', data.ids.checkpoint, cell + ',' + detector('Checkpoint')) + part('Finish', data.ids.finish, cell + ',' + detector('Finish'));
     }).join('') + '],f=new Map;for(const e of u){if(f.has(e.id))throw new Error("Duplicate track part id "',
   },
@@ -717,35 +776,42 @@ const patches = [
   // when the colour is the wing's own): a style with the standard wing painted like the body is written as
   // before, 16 bytes, so cars and records saved before stay the same. The game reads the extra bytes when
   // they are there; multiplayer sends all 20 (binaryLength), which every player of this build reads.
+  // The body (build_car.js: 0 the car's own, 1.. the icons') follows in byte 20: a car with the car's own body is
+  // saved in 16 or 20 bytes as before.
   {
     name: 'car style: wing fields',
     find: 'this.pattern=e,this.rims=t,this.exhaust=n,',
-    replace: 'this.pattern=e,this.rims=t,this.exhaust=n,this.wing=0,this.wingHex=null,',
+    replace: 'this.pattern=e,this.rims=t,this.exhaust=n,this.wing=0,this.wingHex=null,this.body=0,',
+  },
+  {
+    name: 'car style: an icon\'s pattern keeps its colours',
+    find: 'get primaryColor(){return new h.Q1f((0,c.gn)(this,r,"f"))}get secondaryColor(){return new h.Q1f((0,c.gn)(this,a,"f"))}',
+    replace: 'get primaryColor(){return new h.Q1f(i.iconOf(this.pattern)?.[0]??(0,c.gn)(this,r,"f"))}get secondaryColor(){return new h.Q1f(i.iconOf(this.pattern)?.[1]??(0,c.gn)(this,a,"f"))}',
   },
   {
     name: 'car style: wing colour',
     find: 'get rimsColor(){return new h.Q1f((0,c.gn)(this,o,"f"))}',
-    replace: 'get rimsColor(){return new h.Q1f((0,c.gn)(this,o,"f"))}get wingColor(){return new h.Q1f(this.wingHex??(0,c.gn)(this,r,"f"))}',
+    replace: 'get rimsColor(){return new h.Q1f((0,c.gn)(this,o,"f"))}get wingColor(){return new h.Q1f(i.iconOf(this.pattern)?.[0]??this.wingHex??(0,c.gn)(this,r,"f"))}',
   },
   {
     name: 'car style: equals with the wing',
     find: 'this.rimsHex==e.rimsHex}',
-    replace: 'this.rimsHex==e.rimsHex&&this.wing==e.wing&&this.wingHex==e.wingHex}',
+    replace: 'this.rimsHex==e.rimsHex&&this.wing==e.wing&&this.wingHex==e.wingHex&&this.body==e.body}',
   },
   {
     name: 'car style: clone with the wing',
     find: 'clone(){return new i(this.pattern,this.rims,this.exhaust,(0,c.gn)(this,r,"f"),(0,c.gn)(this,a,"f"),(0,c.gn)(this,s,"f"),(0,c.gn)(this,o,"f"))}',
-    replace: 'clone(){const e=new i(this.pattern,this.rims,this.exhaust,(0,c.gn)(this,r,"f"),(0,c.gn)(this,a,"f"),(0,c.gn)(this,s,"f"),(0,c.gn)(this,o,"f"));return e.wing=this.wing,e.wingHex=this.wingHex,e}',
+    replace: 'clone(){const e=new i(this.pattern,this.rims,this.exhaust,(0,c.gn)(this,r,"f"),(0,c.gn)(this,a,"f"),(0,c.gn)(this,s,"f"),(0,c.gn)(this,o,"f"));return e.wing=this.wing,e.wingHex=this.wingHex,e.body=this.body,e}',
   },
   {
     name: 'car style: saved as before without a wing of its own',
     find: 'serialize(){return d.l(this.serializeBinary())}',
-    replace: 'serialize(){const e=this.serializeBinary();return d.l(0==this.wing&&null==this.wingHex?e.subarray(0,16):e)}',
+    replace: 'serialize(){const e=this.serializeBinary();return d.l(0!=this.body?e:0==this.wing&&null==this.wingHex?e.subarray(0,16):e.subarray(0,20))}',
   },
   {
     name: 'car style: wing bytes',
     find: '(0,c.gn)(this,o,"f")>>16&255],13),e}',
-    replace: '(0,c.gn)(this,o,"f")>>16&255],13),e.set([255&(this.wingHex??0),(this.wingHex??0)>>8&255,(this.wingHex??0)>>16&255,this.wing|(null==this.wingHex?0:128)],16),e}',
+    replace: '(0,c.gn)(this,o,"f")>>16&255],13),e.set([255&(this.wingHex??0),(this.wingHex??0)>>8&255,(this.wingHex??0)>>16&255,this.wing|(null==this.wingHex?0:128),this.body],16),e}',
   },
   {
     name: 'car style: reads styles saved without a wing',
@@ -755,33 +821,50 @@ const patches = [
   {
     name: 'car style: reads the wing',
     find: 'return new i(t,n,r,a,s,o,l)}static get defaultPattern',
-    replace: 'const W=new i(t,n,r,a,s,o,l);return e.length>=20&&(W.wing=i.isValidWing(127&e[19])?127&e[19]:0,W.wingHex=128&e[19]?e[16]|e[17]<<8|e[18]<<16:null),W}static get defaultPattern',
+    replace: 'const W=new i(t,n,r,a,s,o,l);return e.length>=20&&(W.wing=i.isValidWing(127&e[19])?127&e[19]:0,W.wingHex=128&e[19]?e[16]|e[17]<<8|e[18]<<16:null),e.length>=21&&(W.body=i.isValidBody(e[20])?e[20]:0),W}static get defaultPattern',
   },
   {
     name: 'car style: valid wings',
     find: 'static isValidExhaust(e){return Number.isSafeInteger(e)&&e>=0&&e<i.exhausts.length}',
-    replace: 'static isValidExhaust(e){return Number.isSafeInteger(e)&&e>=0&&e<i.exhausts.length}static isValidWing(e){return Number.isSafeInteger(e)&&e>=0&&e<i.wings.length}',
+    replace: 'static isValidExhaust(e){return Number.isSafeInteger(e)&&e>=0&&e<i.exhausts.length}static isValidWing(e){return Number.isSafeInteger(e)&&e>=0&&e<i.wings.length}'
+      + 'static isValidBody(e){return Number.isSafeInteger(e)&&e>=0&&e<i.bodies.length}static iconOf(e){return ' + ICON_COLOURS + '[e]??null}static isIcon(e){return null!=i.iconOf(e)}',
   },
   {
     name: 'car style: the wing models',
     find: 'u.binaryLength=16,',
-    replace: 'u.binaryLength=20,u.wings=Object.freeze(Array.from({length:' + WING_COUNT + '},((e,t)=>Object.freeze({model:"Wing"+t})))),',
+    replace: 'u.binaryLength=21,u.wings=Object.freeze(Array.from({length:' + WING_COUNT + '},((e,t)=>Object.freeze({model:"Wing"+t})))),'
+      + 'u.bodies=Object.freeze(Array.from({length:' + BODY_COUNT + '},((e,t)=>Object.freeze({model:0==t?"Body":"Body"+t})))),',
+  },
+  {
+    name: 'car style: the mod\'s rims',
+    find: 'e[11]={model:"Wheel11"},',
+    replace: 'e[11]={model:"Wheel11"},' + Array.from({ length: MOD_RIMS }, (_, i) => 'e[' + (12 + i) + ']={model:"Wheel' + (12 + i) + '"},').join(''),
+  },
+  {
+    name: 'car style: the mod\'s exhausts',
+    find: 'e[7]={model:"Exhaust7"},',
+    replace: 'e[7]={model:"Exhaust7"},' + Array.from({ length: MOD_EXHAUSTS }, (_, i) => 'e[' + (8 + i) + ']={model:"Exhaust' + (8 + i) + '"},').join(''),
   },
   {
     name: 'car: loads the wings',
     find: 'B.models={chassis:r(i("Body",!0)),suspension:r(i("Suspension",!0)),rims:a,exhausts:s,',
-    replace: 'const W=new Map;for(let e=0;e<w.A.wings.length;e++)W.set(e,r(i(w.A.wings[e].model,!0)));B.models={chassis:r(i("Body",!0)),suspension:r(i("Suspension",!0)),rims:a,exhausts:s,wings:W,',
+    replace: 'const W=new Map;for(let e=0;e<w.A.wings.length;e++)W.set(e,r(i(w.A.wings[e].model,!0)));const Bd=new Map;for(let e=0;e<w.A.bodies.length;e++)Bd.set(e,r(i(w.A.bodies[e].model,!0)));'
+      + 'B.models={chassis:r(i("Body",!0)),suspension:r(i("Suspension",!0)),rims:a,exhausts:s,wings:W,bodies:Bd,',
   },
   {
-    // on the chassis like the exhaust, after it: the wing's brake light is the one the game lights
+    // on the chassis like the exhaust, after it: the wing's brake light is the one the game lights. The body is
+    // the chassis' geometry and materials, swapped (the exhaust and the wing stay on it)
     name: 'car: puts its wing on',
     find: '(0,l.gn)(this,ye,"f").add((0,l.gn)(this,we,"f"));for(const e of(0,l.gn)(this,xe,"f"))(0,l.gn)(this,me,"f").add(e);',
-    replace: '(0,l.gn)(this,ye,"f").add((0,l.gn)(this,we,"f")),this.apxWingMix={value:1},this.apxWing=B.models.wings.get((0,l.gn)(this,Me,"f").wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing);for(const e of(0,l.gn)(this,xe,"f"))(0,l.gn)(this,me,"f").add(e);',
+    replace: '(0,l.gn)(this,ye,"f").add((0,l.gn)(this,we,"f")),this.apxWingMix={value:1},this.apxWing=B.models.wings.get((0,l.gn)(this,Me,"f").wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing),'
+      + 'this.apxSetBody=e=>{const t=B.models.bodies.get(e).clone();(0,l.gn)(this,D,"m",We).call(this,t);const n=(0,l.gn)(this,ye,"f");(0,l.gn)(this,ge,"f").removeMaterial(n.material),n.geometry=t.geometry,n.material=t.material},'
+      + '0!=(0,l.gn)(this,Me,"f").body&&this.apxSetBody((0,l.gn)(this,Me,"f").body);for(const e of(0,l.gn)(this,xe,"f"))(0,l.gn)(this,me,"f").add(e);',
   },
   {
     name: 'car: changes its wing and paints it',
     find: '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):',
-    replace: 'e.wing!=(0,l.gn)(this,Me,"f").wing&&((0,l.gn)(this,ye,"f").remove(this.apxWing),(0,l.gn)(this,ge,"f").removeMaterial(this.apxWing.material),this.apxWing=B.models.wings.get(e.wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing)),this.apxWingMix.value=null==e.wingHex?1:0,'
+    replace: 'e.wing!=(0,l.gn)(this,Me,"f").wing&&((0,l.gn)(this,ye,"f").remove(this.apxWing),(0,l.gn)(this,ge,"f").removeMaterial(this.apxWing.material),this.apxWing=B.models.wings.get(e.wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing)),'
+      + 'e.body!=(0,l.gn)(this,Me,"f").body&&(this.apxSetBody(e.body),null!=(0,l.gn)(this,O,"f")&&((0,l.gn)(this,O,"f").source.stop(),(0,l.GG)(this,O,null,"f"))),this.apxWingMix.value=null==e.wingHex||e.constructor.isIcon(e.pattern)?1:0,'
       + '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):"Wing"==t.name?t.color.set(e.wingColor):',
   },
   {
@@ -790,9 +873,47 @@ const patches = [
     name: 'car: the wing material',
     find: 'for(const e of t)if("Main"==e.name){if(!(e instanceof c._4j))throw new Error("Main material must be MeshStandardMaterial");',
     replace: 'for(const e of t)if("Wing"==e.name)e.onBeforeCompile=e=>{e.fragmentShader="uniform sampler2D carColorPattern;\\nuniform vec3 carColorSecondary;\\nuniform float carWingPattern;\\n"+e.fragmentShader,'
-      + 'e.fragmentShader=e.fragmentShader.replace("vec4 diffuseColor = vec4( diffuse, opacity );","float colorSource = texture(carColorPattern, vUv).g * carWingPattern;\\nvec4 diffuseColor = vec4( carColorSecondary * colorSource + diffuse * (1.0 - colorSource), opacity );"),'
+      + 'e.fragmentShader=e.fragmentShader.replace("vec4 diffuseColor = vec4( diffuse, opacity );","' + shade(' * carWingPattern') + '"),'
       + 'e.uniforms.carColorPattern=(0,l.gn)(this,Te,"f"),e.uniforms.carColorSecondary=(0,l.gn)(this,Ee,"f"),e.uniforms.carWingPattern=this.apxWingMix,e.defines??(e.defines={}),e.defines.USE_UV=!0},e.needsUpdate=!0;'
       + 'else if("Main"==e.name){if(!(e instanceof c._4j))throw new Error("Main material must be MeshStandardMaterial");',
+  },
+  {
+    name: 'car: the body\'s paint has the patterns\' inks',
+    find: '"float colorSource = texture(carColorPattern, vUv).g;\\nvec4 diffuseColor = vec4( carColorSecondary * colorSource + diffuse * (1.0 - colorSource), opacity );"',
+    replace: '"' + shade('') + '"',
+  },
+  // ---------------------------------------------------------------- the engine's sound by body (ENGINE_SOUNDS)
+  {
+    name: 'the bodies\' engine sounds are loaded',
+    find: 'l.load("engine",["audio/engine.ogg","audio/engine.mp3"]),',
+    replace: 'l.load("engine",["audio/engine.ogg","audio/engine.mp3"]),' + Object.values(ENGINE_SOUNDS).map(name => 'l.load("' + name + '",["audio/' + name + '.wav"]),').join(''),
+  },
+  {
+    // (the body changing, the sound playing stops: setCarStyle above, and starts again with the new one)
+    name: 'a body has its engine\'s sound',
+    find: 'const e=(0,l.gn)(this,G,"f").getBuffer("engine");if(null!=e&&null!=(0,l.gn)(this,G,"f").context){',
+    replace: 'const e=(0,l.gn)(this,G,"f").getBuffer(' + JSON.stringify(ENGINE_SOUNDS) + '[(0,l.gn)(this,Me,"f").body]??"engine")??(0,l.gn)(this,G,"f").getBuffer("engine");if(null!=e&&null!=(0,l.gn)(this,G,"f").context){',
+  },
+  {
+    name: 'car: the tyres\' lettering follows the rims',
+    find: '"Rim"==t.name&&t.color.set(e.rimsColor)',
+    replace: '"Rim"==t.name?t.color.set(e.rimsColor):"TireText"==t.name&&t.color.set(' + LETTERING('e.rimsHex') + ')',
+  },
+  // ---------------------------------------------------------------- lettered tyres (build_car.js, TURNED_RIMS)
+  {
+    name: 'car: lettered rims are turned round rather than mirrored',
+    find: '(0,l.gn)(this,D,"m",We).call(this,t);return(1==e||3==e)&&(t.scale.x=-1),t}',
+    replace: '(0,l.gn)(this,D,"m",We).call(this,t);return(1==e||3==e)&&(' + JSON.stringify(TURNED_RIMS) + '.includes((0,l.gn)(this,Me,"f").rims)?(t.apxTurn=!0,t.quaternion.setFromAxisAngle(new c.Pq0(0,1,0),Math.PI)):t.scale.x=-1),t}',
+  },
+  {
+    name: 'car: lettered rims, when the rims change',
+    find: 'i.position.copy(n.position),i.quaternion.copy(n.quaternion),i.scale.copy(n.scale),',
+    replace: 'i.position.copy(n.position),i.quaternion.copy(n.quaternion),i.apxTurn=(1==t||3==t)&&' + JSON.stringify(TURNED_RIMS) + '.includes(e.rims),!!n.apxTurn!=i.apxTurn&&i.quaternion.multiply((new c.PTz).setFromAxisAngle(new c.Pq0(0,1,0),Math.PI)),i.scale.x=(1==t||3==t)&&!i.apxTurn?-1:1,',
+  },
+  {
+    name: 'car: lettered rims turn with the wheel',
+    find: 'o.multiply((new c.PTz).setFromAxisAngle(new c.Pq0(1,0,0),(0,l.gn)(this,pe,"f")[i])),',
+    replace: 'o.multiply((new c.PTz).setFromAxisAngle(new c.Pq0(1,0,0),(0,l.gn)(this,pe,"f")[i])),(0,l.gn)(this,xe,"f")[i].apxTurn&&o.multiply((new c.PTz).setFromAxisAngle(new c.Pq0(0,1,0),Math.PI)),',
   },
 ];
 
@@ -819,9 +940,9 @@ const workerPatches = [
   },
   // ---- car against car (apex-collide.js)
   {
-    name: 'collision code is loaded next to the physics',
+    name: 'collision and gravel code are loaded next to the physics',
     find: 'importScripts("lib/polytrack_physics.js");',
-    replace: 'importScripts("lib/polytrack_physics.js","apex-collide.js");',
+    replace: 'importScripts("lib/polytrack_physics.js","apex-collide.js","apex-sand.js");',
   },
   {
     name: 'the worker receives the other cars from the page',
@@ -831,7 +952,18 @@ const workerPatches = [
   {
     name: 'cars are tested against each other after every physics step',
     find: '[e.id,r.up,r.right,r.down,r.left,r.reset,i]);return new Uint8Array(t.HEAPU8.buffer,i,227).slice().buffer}',
-    replace: '[e.id,r.up,r.right,r.down,r.left,r.reset,i]);self.ApexCollide&&self.ApexCollide.afterStep(t,e,i);return new Uint8Array(t.HEAPU8.buffer,i,227).slice().buffer}',
+    replace: '[e.id,r.up,r.right,r.down,r.left,r.reset,i]);self.ApexCollide&&self.ApexCollide.afterStep(t,e,i);self.ApexSand&&self.ApexSand.afterStep(t,e,i);return new Uint8Array(t.HEAPU8.buffer,i,227).slice().buffer}',
+  },
+  // ---- gravel traps (apex-sand.js)
+  {
+    name: 'a car in the gravel has its controls filtered before each physics step',
+    find: 'function n(e,r){t.ccall("updateCarModel"',
+    replace: 'function n(e,r){self.ApexSand&&(r=self.ApexSand.controls(e,r));t.ccall("updateCarModel"',
+  },
+  {
+    name: 'the gravel code learns where the circuit of each new car is',
+    find: 'function s(e,i,r,s,n){const a=t.ccall("malloc"',
+    replace: 'function s(e,i,r,s,n){self.ApexSand&&self.ApexSand.car(e,s);const a=t.ccall("malloc"',
   },
   {
     name: 'a car can start from a grid slot instead of the start line',
@@ -846,11 +978,11 @@ const workerPatches = [
   {
     name: 'circuit track parts are registered (physics worker)',
     find: '],co=new Map;for(const t of ho){if(co.has(t.id))throw new Error("Duplicate track part id "',
-    replace: CIRCUITS.map(({ name, data }) => {
+    replace: CIRCUITS.map(({ name, data, start }) => {
       const cell = '[[[-2,0,-2],[1,0,1]]]';
       const detector = type => '{type:to.' + type + ',center:[0,3.5,0],size:[' + data.gateWidth + ',7,1]}';
       const part = (kind, id, rest) => ',new lo("",Xa.Special,' + id + ',[["' + name + '","' + name + kind + '"]],ao,' + cell + rest + ')';
-      return part('Road', data.ids.road, '') + part('Start', data.ids.start, ',null,new R(0,.35,0)')
+      return part('Road', data.ids.road, '') + part('Start', data.ids.start, ',null,new R(0,' + (start ?? 0.35) + ',0)')
         + part('Checkpoint', data.ids.checkpoint, ',' + detector('Checkpoint')) + part('Finish', data.ids.finish, ',' + detector('Finish'));
     }).join('') + '],co=new Map;for(const t of ho){if(co.has(t.id))throw new Error("Duplicate track part id "',
   },
@@ -963,6 +1095,60 @@ const garagePatches = [
     name: 'Wing tab camera',
     find: 'n.panel==(0,i.gn)(this,an,"f")&&((0,i.gn)(this,Yt,"m",vn).call(this),c(new s.Pq0(2.874291197536667,.9837316369014955,-.7283975369068978)))',
     replace: 'n.panel==(0,i.gn)(this,an,"f")?((0,i.gn)(this,Yt,"m",vn).call(this),c(new s.Pq0(2.874291197536667,.9837316369014955,-.7283975369068978))):n.panel==this.apxWingPanel&&(this.apxWingScroll(),c(new s.Pq0(3.6,2.2,1.5)))',
+  },
+  // the Body tab, made like the Wing one (build_car.js: the car's own body, then the icons'); the panel keeps
+  // apxBody, which apex-livery.js puts on the car it builds
+  {
+    name: 'Body tab',
+    find: 'const f=[{title:n.get("Paint"),icon:"images/paint.svg",panel:h},',
+    replace: '{const W=document.createElement("div");W.className="panel options-panel hidden",(0,i.gn)(this,Jt,"f").appendChild(W),this.apxBodyPanel=W,this.apxBodyTiles=new Map;'
+      + 'for(let o=0;o<y.A.bodies.length;o++){const l=document.createElement("button");l.addEventListener("click",(()=>{t.playUIClick(),this.apxBody=o,this.apxBodySelect(),(0,i.gn)(this,Yt,"m",dn).call(this)})),o==(this.apxBody??0)&&l.classList.add("selected"),W.appendChild(l),window.ApexRarity&&window.ApexRarity.item("body",l,o);'
+      + 'const q=new y.A(y.A.defaultPattern,y.A.defaultRims,y.A.defaultExhaust,15658734,2236962,1250067,6710886);q.body=o;const m=document.createElement("img");m.className="loading",kt.F(q,(0,i.gn)(this,hn,"f")).then((t=>{m.src=t,m.classList.remove("loading")})),l.appendChild(m),this.apxBodyTiles.set(o,l)}'
+      + 'this.apxBodySelect=()=>{for(const[t,n]of this.apxBodyTiles)t==(this.apxBody??0)?n.classList.add("selected"):n.classList.remove("selected")},this.apxBodyScroll=()=>{const t=this.apxBodyTiles.get(this.apxBody??0);null!=t&&(0,i.gn)(_t,_t,"m",wn).call(_t,W,t)}}'
+      + 'const f=[{title:n.get("Paint"),icon:"images/paint.svg",panel:h},',
+  },
+  {
+    // first of the tabs; Paint is still the one open
+    name: 'Body tab button',
+    find: 'const f=[{title:n.get("Paint"),icon:"images/paint.svg",panel:h},',
+    replace: 'const f=[{title:' + LIVERY + '?' + LIVERY + '.bodyLabel():"Body",icon:"images/body.svg",panel:this.apxBodyPanel},{title:n.get("Paint"),icon:"images/paint.svg",panel:h},',
+  },
+  {
+    name: 'Paint is the tab open',
+    find: 'let p=f[0];',
+    replace: 'let p=f.find((e=>e.panel==h));',
+  },
+  {
+    name: 'Paint is the tab picked',
+    find: '0==u.length&&e.classList.add("selected")',
+    replace: 'n.panel==h&&e.classList.add("selected")',
+  },
+  // the Random button leaves out the items not unlocked (apex-rarity.js)
+  ...[['Pattern', 'pattern'], ['Rims', 'rims'], ['Exhaust', 'exhaust']].map(([game, kind]) => ({
+    name: 'Random: ' + kind + ' unlocked',
+    find: '.filter((t=>(0,i.gn)(this,Xn,"f").is' + game + 'Unlocked(t)))',
+    replace: '.filter((t=>(0,i.gn)(this,Xn,"f").is' + game + 'Unlocked(t)&&(!window.ApexRarity||window.ApexRarity.owned("' + kind + '",t))))',
+  })),
+  {
+    name: 'Body tab hidden with the others',
+    find: 'this.apxWingPanel.classList.add("hidden"),',
+    replace: 'this.apxWingPanel.classList.add("hidden"),this.apxBodyPanel.classList.add("hidden"),',
+  },
+  {
+    name: 'Body tab camera',
+    find: ':n.panel==this.apxWingPanel&&(this.apxWingScroll(),c(new s.Pq0(3.6,2.2,1.5)))',
+    replace: ':n.panel==this.apxWingPanel?(this.apxWingScroll(),c(new s.Pq0(3.6,2.2,1.5))):n.panel==this.apxBodyPanel&&(this.apxBodyScroll(),c(new s.Pq0(2.6,1.4,4.4)))',
+  },
+  {
+    // the colours picked, not the ones an icon's pattern shows (patch_bundle.js, ICONS): they come back with another pattern
+    name: 'the pickers show the colours picked',
+    find: '(0,i.gn)(this,cn,"f")[0].color=t.primaryColor,(0,i.gn)(this,cn,"f")[1].color=t.secondaryColor,',
+    replace: '(0,i.gn)(this,cn,"f")[0].color=new s.Q1f(t.primaryHex),(0,i.gn)(this,cn,"f")[1].color=new s.Q1f(t.secondaryHex),',
+  },
+  {
+    name: 'the panel shows the body of the car',
+    find: 'setCarStyle(t){this.apxWing=t.wing??0,',
+    replace: 'setCarStyle(t){this.apxBody=t.body??0,this.apxBodySelect&&this.apxBodySelect(),this.apxWing=t.wing??0,',
   },
   // each pattern, rims, exhaust and wing shows its name and rarity, the rarest at the bottom (apex-rarity.js)
   {

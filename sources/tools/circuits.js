@@ -13,6 +13,7 @@
 //   landmarks    names on the map -> the name the town's scenery knows them by (see apex-town.js)
 //   waterWidths  width of the rivers and canals mapped as lines, by name
 //   smoothing, minRadius, gates, maxGrade, heightScale, facets   road builder settings (tools/make_circuit.js)
+//   startHeight  how high above the start line the car appears (patch_bundle.js; 0.35 when absent)
 module.exports = {
   montbeliard: {
     mesh: 'Montbeliard', ids: { road: 244, start: 245, checkpoint: 246, finish: 247 },
@@ -47,6 +48,18 @@ module.exports = {
     line: 'spa_gps.json', startLonLat: [5.96510, 50.44420],
     smoothing: 6, minRadius: 19, reach: 900, facets: [4, 2],
     landmarks: { 'Stand F1': 'pitsF1', 'Stand Endurance': 'pitsEndurance', 'Hôtel de la Source': 'hotelSource' },
+  },
+  // not a place on a map either: a Grand Prix circuit drawn by hand in a forest (tools/forest_design.js writes its
+  // line, gravel traps, grid and surroundings in the files the map tools would have made)
+  forest: {
+    mesh: 'Forest', ids: { road: 228, start: 229, checkpoint: 230, finish: 231 },
+    origin: [0, 0], line: 'forest_line.json', startLonLat: [0, 0],
+    roadHalf: 9,                     // 18 m of asphalt, room to overtake
+    smoothing: 2, minRadius: 18, facets: [1, 1],
+    heightPasses: 1, maxGrade: 0.11,                 // its heights are drawn already: hardly smoothed
+    gates: [[0.43, 0.47], [0.575, 0.605], [0.876, 0.886]],   // on straights, away from the gravel; the last one just past the bridge
+    terrain: { hills: 70 },
+    startHeight: 0.13,               // the car appears resting on the road (patch_bundle.js)
   },
   // not a place on a map: a stunt track drawn by tools/make_stunt.js (loop, jumps, wall ride, corkscrew).
   // It is listed here for its part ids and mesh names; the map tools do not apply to it.

@@ -1,6 +1,7 @@
 // Generates the livery patterns for the F1 body: the game's 16, then the mod's (patch_bundle.js adds them to its list).
 // Texture space (1024 x 1024): X follows the angle around the body (512 = centreline, sides further out),
-// Y runs from the nose (0) to the tail (1024). Red = primary colour, green = secondary colour.
+// Y runs from the nose (0) to the tail (1024). Red = primary colour, green = secondary colour; the icons also have
+// two inks no picker changes (patch_bundle.js, shade): blue for black, and black (none of the three) for gold.
 //
 // Landmarks (Y): front wing 12-90, front axle 175, cockpit 410-580, sidepods 400-850, rear wing 885-1005.
 // Landmarks (|X-512|): cockpit rim 85, tub side 180, sidepod top 200, sidepod flank 315, wing tips 440.
@@ -11,6 +12,9 @@ const path = require('path');
 const OUT = process.argv[2] || path.join(require('./config').APP, 'images');
 
 const G = '#0f0';
+// the icons' inks and the primary colour, for a shape drawn in the secondary (paint)
+const INK = '#00f', GOLD = '#000', P = '#f00';
+const SERIF = "Georgia, 'Times New Roman', serif", BLACK = "'Arial Black', Arial, sans-serif";
 const sym = fn => fn(1) + fn(-1); // mirror a shape on both sides of the centreline
 const X = (s, d) => 512 + s * d;
 const poly = pts => `<polygon points="${pts.map(p => p.join(',')).join(' ')}" fill="${G}"/>`;
@@ -142,8 +146,47 @@ const patterns = {
   // Champion: laurel wreaths on the nose and both sidepods, a centre band, chequered wings
   champion: laurels(512, 250, 120) + sym(s => laurels(X(s, 300), 640, 105)) + rect(484, 0, 56, 1024)
     + checker(0, 1024, 12, 92, 27) + checker(0, 1024, 885, 1005, 40),
+
+  // ---- icons: real cars' liveries, which keep their white (the primary colour is locked), their sponsors made up
+  // McLaren MP4/7A 1992: the red chevrons, one from behind the nose's lettering to the cockpit, one rising from
+  // the floor to the gearbox; Malbarré on the sidepods, the nose and the rear wing, Pelle and its gold shovel low on
+  // the flanks, POWERED by HONTA, COURT-JUS, BOSSE on the airbox, GOOFYEAR on the front wing, a red 1 on the nose
+  mp4_7a: sym(s => poly([[X(s, 0), 255], [X(s, 90), 228], [X(s, 175), 190], [X(s, 210), 182], [X(s, 210), 392], [X(s, 160), 412], [X(s, 0), 470]])
+      + poly([[X(s, 0), 885], [X(s, 120), 852], [X(s, 230), 752], [X(s, 330), 645], [X(s, 420), 588], [X(s, 512), 565], [X(s, 512), 1024], [X(s, 0), 1024]])
+      + word('Malbarré', X(s, 190), 612, s, 250, 60, { font: SERIF })
+      + word('POWERED by', X(s, 236), 548, s, 62, 11)
+      + word('HONTA', X(s, 250), 642, s, 115, 24, { weight: 900 })
+      + word('COURT-JUS', X(s, 288), 448, s, 95, 17)
+      + shovel(X(s, 322), 520, s)
+      + word('Pelle', X(s, 368), 520, s, 130, 30, { font: BLACK })
+      + word('Malbarré', X(s, 118), 115, s, 150, 24, { font: SERIF })
+      + word('GOOFYEAR', X(s, 435), 49, s, 78, 30, { font: BLACK, italic: true })
+      + word('BOSSE', X(s, 46), 586, s, 36, 12)
+      // the rear endplates' white square, a short circuit's bolt in it
+      + paint(rect(Math.min(X(s, 140), X(s, 174)), 950, 34, 34), P)
+      + paint(poly([[0.62, 0], [0.22, 0.55], [0.47, 0.55], [0.36, 1], [0.8, 0.4], [0.55, 0.4], [0.72, 0]].map(([u, v]) => [X(s, 145 + u * 24), 953 + v * 28])), INK))
+    + `<path d="M0 0h3v20h-3v-15l-3 2v-3z" transform="translate(512 104) scale(11 -3)" fill="${G}"/>`
+    + word('HONTA', 512, 140, 'nose', 70, 16, { weight: 900 })
+    + paint(rect(362, 912, 300, 50), P) + word('Malbarré', 512, 937, 0, 250, 34, { font: SERIF }),
 };
 // ---- shapes (function declarations: hoisted, used above)
+function paint(svg, colour) { return svg.replace(/fill="#0f0"/g, `fill="${colour}"`); }
+// a word centred at (x, y), w long and h high in texture pixels. On a flank (side s) it reads along the body, its top
+// towards the spine (as logo()); on top (s = 0) it reads across, the right way round from the chase camera; on the
+// nose (s = 'nose'), from in front of the car, as in the garage.
+function word(text, x, y, s, w, h, { font = "Arial, sans-serif", colour = INK, weight = 'bold', italic = false } = {}) {
+  const W0 = 60 * [...text].length;
+  const turn = s === 'nose' ? 'scale(1 -1)' : s > 0 ? 'matrix(0 1 1 0 0 0)' : s < 0 ? 'matrix(0 -1 -1 0 0 0)' : 'scale(-1 1)';
+  return `<text transform="translate(${x} ${y}) ${turn} scale(${(w / W0).toFixed(4)} ${(h / 72).toFixed(4)})" font-family="${font}" font-size="100" font-weight="${weight}"`
+    + `${italic ? ' font-style="italic"' : ''} text-anchor="middle" dominant-baseline="central" textLength="${W0}" lengthAdjust="spacingAndGlyphs" fill="${colour}">${text}</text>`;
+}
+// Pelle's shovel: a gold blade in a red outline on a red handle, its handle towards the spine, like word()
+function shovel(x, y, s) {
+  const turn = s > 0 ? 'matrix(0 1 1 0 0 0)' : 'matrix(0 -1 -1 0 0 0)';
+  const blade = 'M-34 -12H34V14Q34 46 0 50Q-34 46 -34 14Z';
+  return `<g transform="translate(${x} ${y}) ${turn} scale(0.5 0.7)"><rect x="-6" y="-50" width="12" height="42" fill="${G}"/><rect x="-20" y="-50" width="40" height="9" fill="${G}"/>`
+    + `<path d="${blade}" transform="scale(1.14)" fill="${G}"/><path d="${blade}" fill="${GOLD}"/></g>`;
+}
 // a chequered flag over a box: every other square, from its top left corner
 function checker(x0, x1, y0, y1, size) {
   let s = '';
@@ -185,11 +228,11 @@ function eight(cx, cy, k) {
 }
 // the GoofyTrack icon (images/goofytrack_icon.svg, drawn in 3..197 x 50..152) in one colour, k times its size.
 // On a flank (side s) it reads along the body, its top towards the spine: the texture is mirrored there, hence a
-// reflection; on top (s = 0) it reads across the body, its top towards the nose, as seen from the chase camera.
+// reflection; on top (s = 0) it reads across the body as seen from in front of the car, its top towards the cockpit.
 function logo(cx, cy, s, k) {
   const icon = fs.readFileSync(path.join(__dirname, 'images', 'goofytrack_icon.svg'), 'utf8');
   const paths = [...icon.matchAll(/<path\b[^>]*\sd="([^"]+)"/g)].map(m => `<path d="${m[1]}" fill="${G}"/>`).join('');
-  const turn = s > 0 ? 'matrix(0 1 1 0 0 0)' : s < 0 ? 'matrix(0 -1 -1 0 0 0)' : 'rotate(180)';
+  const turn = s > 0 ? 'matrix(0 1 1 0 0 0)' : s < 0 ? 'matrix(0 -1 -1 0 0 0)' : 'scale(1 -1)';
   return `<g transform="translate(${cx} ${cy}) ${turn} scale(${k}) translate(-100 -101)">${paths}</g>`;
 }
 // a laurel wreath: leaves along two arcs, open at the top
