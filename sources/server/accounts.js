@@ -79,10 +79,10 @@ const CREATOR_IDS = new Set((process.env.CREATOR_IDS ?? '7777,1').split(',').fil
 // the VIP diamond: friends and the first players, by number (#0003 is 3)
 const VIP_IDS = new Set((process.env.VIP_IDS ?? '').split(',').filter(Boolean).map(Number));
 // The garage's unlockable items (apex-rarity.js, `unlock`): the icons, won in tournaments and events. UNLOCKS gives
-// them to accounts by number, "mp4_7a:7777+42,other:…" (by default the McLaren to Julio and Dany); a creator gives or takes
+// them to accounts by number, "mp4_7a:7777+42,other:…" (by default the McLaren and the Renault to Julio and Dany); a creator gives or takes
 // one with POST /account/unlock { id, item, give }, kept with the account (unlocks). The presence says which a player owns.
-const UNLOCKABLES = ['mp4_7a'];
-const UNLOCKS = new Map((process.env.UNLOCKS ?? 'mp4_7a:7777+1').split(',').filter(Boolean)
+const UNLOCKABLES = ['mp4_7a', 'r26'];
+const UNLOCKS = new Map((process.env.UNLOCKS ?? 'mp4_7a:7777+1,r26:7777+1').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([item, ids]) => [item, new Set((ids || '').split('+').filter(Boolean).map(Number))]));
 const COUNTRY = /^[a-z]{2}$/i;
 // the frames a player can put around their car (apex-account.js, FRAMES there): the badges one of which it needs

@@ -148,7 +148,7 @@ function circleAt(pts, i, k) {
 function widen(pts, pinned) {
   const n = pts.length, radius = pts.map((_, i) => radiusAt(pts, i));
   let worst = -1;
-  for (let i = 0; i < n; i++) if (radius[i] < MIN_RADIUS + 0.3 && (worst < 0 || radius[i] < radius[worst])) worst = i;
+  for (let i = 0; i < n; i++) if (radius[i] < MIN_RADIUS + 0.3 && !inSpin(pts[i][2]) && (worst < 0 || radius[i] < radius[worst])) worst = i;
   if (worst < 0) return 0;
   let from = worst, to = worst;                                          // the whole corner
   while (to - from < 40 && radius[(from - 1 + n) % n] < MIN_RADIUS + 4) from--;
@@ -219,6 +219,8 @@ function runoffs(pts, widths) {
 // The two roads at the crossing of a figure of eight pass over each other: they never need room from each other
 const BRIDGE = lineFile.bridge;
 const crossing = (u, v) => BRIDGE != null && ((inU(u, ...BRIDGE.zone.high) && inU(v, ...BRIDGE.zone.low)) || (inU(v, ...BRIDGE.zone.high) && inU(u, ...BRIDGE.zone.low)));
+// the line through a spin is not road: it needs no room (tools/forest_design.js, see the spins below)
+const inSpin = u => (lineFile.spins || []).some(([from, to]) => inU(gpsIndex(u), from - 1, to + 1));
 const REACH = DESIGN ? 2 * (ROAD_HALF + WIDEN + OUTSIDE + MOST_RUNOFF) + GAP : 40;   // stretches further apart than this are not looked at
 function relax(pts, pinned = () => 1) {
   for (let pass = 0; pass < 3000; pass++) {
@@ -232,7 +234,7 @@ function relax(pts, pinned = () => 1) {
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
       if (alongRoad(i, j, n) < 80) continue;
       const dx = pts[j][0] - pts[i][0], dz = pts[j][1] - pts[i][1];
-      if (Math.abs(dx) > REACH || Math.abs(dz) > REACH || crossing(pts[i][2], pts[j][2])) continue;
+      if (Math.abs(dx) > REACH || Math.abs(dz) > REACH || crossing(pts[i][2], pts[j][2]) || inSpin(pts[i][2]) || inSpin(pts[j][2])) continue;
       const need = wall(i, j) + wall(j, i) + GAP;
       const dist = Math.hypot(dx, dz);
       if (dist >= need + 0.5 || dist === 0) continue;
@@ -367,14 +369,20 @@ for (const g of [...checkpoints, finish, { index: 0 }]) {
       let all = 0, weighted = 0;
       for (let j = 0; j < len; j++) { const i = (i0 + j) % n; all += grade[i]; weighted += grade[i] * weight[i]; }
       for (let j = 0; j < len; j++) { const i = (i0 + j) % n; moved[i] = grade[i] * weight[i] * all / weighted; }
-      // no stretch steeper than MAX_GRADE: what is over goes to the gentler parts of the same run
-      const cap = MAX_GRADE * SPACING;
+      // no stretch steeper than MAX_GRADE: what is over goes to the gentler parts of the same run, but hardly to its
+      // ends, the gentlest of all (they ease into a level stretch or the other way): there it would make a kink
+      const cap = MAX_GRADE * SPACING, end = j => ease(Math.min(1, Math.min(j, len - 1 - j) / 15));
       for (let pass = 0; pass < 30; pass++) {
         let excess = 0, room = 0;
-        for (let j = 0; j < len; j++) { const i = (i0 + j) % n, g = Math.abs(moved[i]); if (g > cap) { excess += g - cap; moved[i] = sg * cap; } else room += (cap - g) * weight[i]; }
+        for (let j = 0; j < len; j++) { const i = (i0 + j) % n, g = Math.abs(moved[i]); if (g > cap) { excess += g - cap; moved[i] = sg * cap; } else room += (cap - g) * weight[i] * end(j); }
         if (excess < 1e-6 || room < 1e-9) break;
-        for (let j = 0; j < len; j++) { const i = (i0 + j) % n, g = Math.abs(moved[i]); if (g < cap) moved[i] += sg * excess * (cap - g) * weight[i] / room; }
+        for (let j = 0; j < len; j++) { const i = (i0 + j) % n, g = Math.abs(moved[i]); if (g < cap) moved[i] += sg * excess * (cap - g) * weight[i] * end(j) / room; }
       }
+      // then the grade itself is rounded off along the run (nothing past its ends), keeping its height difference
+      let run = Array.from({ length: len }, (_, j) => moved[(i0 + j) % n]);
+      for (let pass = 0; pass < 3; pass++) run = run.map((_, j) => { let t = 0; for (let o = -3; o <= 3; o++) t += run[j + o] ?? 0; return t / 7; });
+      const was = run.reduce((a, g) => a + g, 0);
+      if (Math.abs(was) > 1e-9) run.forEach((g, j) => { moved[(i0 + j) % n] = g * all / was; });
     }
     k += len;
   }
@@ -394,6 +402,8 @@ height = height.map(h => h - startHeight);
 // ------------------------------------------------------------------ mesh helpers
 const parts = {};                         // mesh name -> material name -> [positions]
 const tri = (mesh, material, a, b, c) => { ((parts[mesh] ??= {})[material] ??= []).push(...a, ...b, ...c); };
+// how far the fourth corner of a quad stands off the plane of the other three, in metres
+const fold = (a, b, c, d) => { const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]], n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]; return Math.abs((d[0] - a[0]) * n[0] + (d[1] - a[1]) * n[1] + (d[2] - a[2]) * n[2]) / (Math.hypot(...n) || 1); };
 // quad whose visible side faces `towards`
 function quad(mesh, material, a, b, c, d, towards) {
   const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = d[0] - a[0], vy = d[1] - a[1], vz = d[2] - a[2];
@@ -418,6 +428,38 @@ const half = halfWidths(line);
 // room beyond the kerb, [left, right], at each cross-section: the gravel trap (it fades in and out over 30 m)
 // and, on a circuit drawn by hand, the grass after it
 const room = runoffs(line, half);
+// Spins (`spins` of a line drawn by hand, tools/forest_design.js): the road rolls the car right round along a helix
+// round a level axis, up a wall, upside down over the top and down the other wall, coming out on the road after it,
+// heading the same way, to one side. The line only goes through there to say where the road before it stops (E) and
+// the road after it starts (X): its points between them are hidden, not built as road. The helix is the one through
+// E and X that leaves E along the road: E to X is one turn along its axis, and the axis is at the angle psi to the
+// road such that tan(psi) = sideways / forwards (E to X); its radius is length(E to X) tan(psi) / 2 pi. Its road is a
+// band SPIN_HALF metres either side of the helix, with no barrier: whoever leaves it falls into the pit dug under it.
+const SPIN_HALF = 12, SLAB = 0.5, PIT_DEPTH = 24;
+const hidden = line.map(() => false);
+const SPINS = (lineFile.spins || []).map(([from, to]) => {
+  let E = -1, X = -1;
+  line.forEach((q, i) => { const u = gpsIndex(q[2]); if (u > from - 1 && u < to + 1) hidden[i] = true; else if (u <= from - 1 && u > from - 100) E = i; });
+  for (let i = E + 1; i < line.length && X < 0; i++) if (!hidden[i]) X = i;
+  if (E < 0 || X < 0 || X - E < 4 || line.slice(E + 1, X).some((_, k) => !hidden[E + 1 + k])) throw new Error('A spin runs over the start line');
+  return { E, X };
+});
+{
+  const n = line.length;
+  for (let i = 0; i < n; i++) if (hidden[i]) { half[i] = [SPIN_HALF, SPIN_HALF]; room[i] = [0, 0]; }
+  // the road before and after a spin: no verge over its last 20 m, its barriers stand where the band's edges are
+  for (const o of SPINS) for (let k = 0; k <= 20; k++) for (const i of [o.E - k, o.X + k]) {
+    const w = k * SPACING <= 20 ? 1 : 1 - ease((k * SPACING - 20) / 40);
+    room[i] = room[i].map((v, s) => v + (Math.max(0, SPIN_HALF - half[i][s] - KERB) - v) * w);
+  }
+}
+const tangentOf = i => {
+  const towards = (a, b) => { const l = Math.hypot(b[0] - a[0], b[1] - a[1]); return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; };
+  if (hidden[(i + 1) % line.length] && !hidden[i]) return towards(line[i - 4], line[i]);
+  if (hidden[(i - 1 + line.length) % line.length] && !hidden[i]) return towards(line[i], line[(i + 4) % line.length]);
+  return tangentAt(line, i, 1);
+};
+const drawn = i => !hidden[i] && !hidden[(i + 1) % line.length];       // the ribbon from cross-section i to the next
 const sand = line.map((q, i) => { const s = sandAt(gpsIndex(q[2])); return [Math.min(s[0], room[i][0]), Math.min(s[1], room[i][1])]; });
 // the stretch of the upper road that is a bridge (its barriers stop at the deck), and the pit lane: where it runs
 // beside the road, from 0 at the ends of its tapers to 1 along the pits (null: no pit lane there)
@@ -432,7 +474,7 @@ const pitAt = line.map(q => {
   return inU(u, from, to) ? Math.min(1, sinceU(u, from) / PIT.taper, sinceU(to, u) / PIT.taper) : null;
 });
 const section = line.map((q, i) => {
-  const t = tangentAt(line, i, 1), nx = -t[1], nz = t[0];                // unit vector across the road
+  const t = tangentOf(i), nx = -t[1], nz = t[0];                         // unit vector across the road
   const at = (u, y) => [q[0] + nx * u, y + height[i], q[1] + nz * u];
   const side = s => half[i][s < 0 ? 0 : 1];                                // asphalt width on the left (s < 0) or right side
   const gravel = s => sand[i][s < 0 ? 0 : 1], runoff = s => room[i][s < 0 ? 0 : 1];
@@ -450,8 +492,8 @@ const pitLane = (c, p) => {
 let folds = 0, closest = Infinity, tightest = Infinity;
 for (let i = 0; i < line.length; i++) {
   const a = section[i], b = section[(i + 1) % line.length];
-  for (const s of [-1, 1]) { const p0 = a.at(s * a.w(s), 0), p1 = b.at(s * b.w(s), 0); if ((p1[0] - p0[0]) * a.t[0] + (p1[2] - p0[2]) * a.t[1] <= 0) folds++; }
-  for (let j = i + 1; j < line.length; j++) if (alongRoad(i, j, line.length) > 80 && !crossing(line[i][2], line[j][2])) {
+  if (drawn(i)) for (const s of [-1, 1]) { const p0 = a.at(s * a.w(s), 0), p1 = b.at(s * b.w(s), 0); if ((p1[0] - p0[0]) * a.t[0] + (p1[2] - p0[2]) * a.t[1] <= 0) folds++; }
+  for (let j = i + 1; j < line.length; j++) if (alongRoad(i, j, line.length) > 80 && !crossing(line[i][2], line[j][2]) && !hidden[i] && !hidden[j]) {
     const dx = line[j][0] - line[i][0], dz = line[j][1] - line[i][1], d = Math.hypot(dx, dz);
     if (d > Math.max(60, REACH)) continue;
     const si = Math.sign(dx * a.n[0] + dz * a.n[2]) || 1, sj = -Math.sign(dx * section[j].n[0] + dz * section[j].n[2]) || 1;
@@ -471,17 +513,20 @@ if (BRIDGE) {                                                            // room
 const corner = line.map((_, i) => { let r = Infinity; for (let o = -4; o <= 4; o++) r = Math.min(r, radiusAt(line, (i + o + line.length) % line.length, 4)); return r < 110; });
 const MESH = NAME + 'Road', HIDDEN = NAME + 'RoadInvisible';           // the road part; what it has that is solid but not drawn (patch_bundle.js)
 for (let i = 0; i < line.length; i++) {
+  if (!drawn(i)) continue;                                               // a spin goes there
   const j = (i + 1) % line.length, a = section[i], b = section[j];
   // a strip between two offsets, each end at its own section's offset (the road is wider in the corners)
   const strip = (material, u0, y0, u1, y1, towards, mesh = MESH) => quad(mesh, material, a.at(u0(a), y0), a.at(u1(a), y1), b.at(u1(b), y1), b.at(u0(b), y0), towards);
   const kerb = corner[i] ? (Math.floor(i / 2) % 2 === 0 ? 'RoadEdgeRed' : 'RoadEdgeWhite') : 'RoadEdgeWhite';
-  // the asphalt in 8 lanes and 3 steps along: where the road turns and climbs at once its surface twists,
-  // and small facets spread the twist instead of folding it on a few long creases
-  for (let k = 0; k < STEPS; k++) for (let m = 0; m < LANES; m++) {
-    const P = (c, f) => c.at(-c.e(-1) + f * (c.e(-1) + c.e(1)), 0);
-    const along = (f, t) => { const p = P(a, f), q = P(b, f); return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t]; };
-    quad(MESH, 'Road', along(m / LANES, k / STEPS), along((m + 1) / LANES, k / STEPS), along((m + 1) / LANES, (k + 1) / STEPS), along(m / LANES, (k + 1) / STEPS), [0, 1, 0]);
-  }
+  // the asphalt in LANES lanes and STEPS steps along: where the road turns and climbs at once its surface twists,
+  // and small facets spread the twist instead of folding it on a few long creases. A road cut in fewer facets gets
+  // 8 x 3 of them wherever its single facet would fold by more than 4 mm (a bump the cars feel: on Forest Speedway
+  // the esses and the hairpins folded by up to 10 cm)
+  const P = (c, f) => c.at(-c.e(-1) + f * (c.e(-1) + c.e(1)), 0);
+  const along = (f, t) => { const p = P(a, f), q = P(b, f); return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t]; };
+  const [lanes, steps] = LANES * STEPS < 24 && fold(along(0, 0), along(1, 0), along(1, 1), along(0, 1)) > 0.004 ? [8, 3] : [LANES, STEPS];
+  for (let k = 0; k < steps; k++) for (let m = 0; m < lanes; m++)
+    quad(MESH, 'Road', along(m / lanes, k / steps), along((m + 1) / lanes, k / steps), along((m + 1) / lanes, (k + 1) / steps), along(m / lanes, (k + 1) / steps), [0, 1, 0]);
   const bridge = onBridge[i] && onBridge[j];
   for (const s of [-1, 1]) {
     const out = [a.n[0] * s, 0, a.n[2] * s], inward = [-out[0], 0, -out[2]], k = s < 0 ? 0 : 1;
@@ -528,6 +573,43 @@ function pillar(material, x, z, t, n, along, across, y0, y1) {
   for (const [u0, v0, u1, v1, o] of [[-along, -across, along, -across, [-n[0], 0, -n[2]]], [-along, across, along, across, [n[0], 0, n[2]]], [-along, -across, -along, across, [-t[0], 0, -t[1]]], [along, -across, along, across, [t[0], 0, t[1]]]])
     quad(MESH, material, P(u0, v0, y0), P(u1, v1, y0), P(u1, v1, y1), P(u0, v0, y1), o);
 }
+// the spins: the band, painted red and white along its edges, on a thin slab; a cross-section every 0.4 degrees of
+// roll (coarser facets shake the car off the road, as on Goofy Coaster), the slab's underside on every third one
+const v3 = { add: (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k], cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], unit: a => { const l = Math.hypot(...a) || 1; return a.map(v => v / l); } };
+const spinAreas = [];
+for (const o of SPINS) {
+  const E = section[o.E].at(0, 0), X = section[o.X].at(0, 0), t = section[o.E].t, d = v3.add(X, E, -1);
+  const forwards = d[0] * t[0] + d[2] * t[1], sideways = -d[0] * t[1] + d[2] * t[0], p = Math.hypot(d[0], d[2]);
+  const psi = Math.atan2(Math.abs(sideways), forwards), R = p * Math.tan(psi) / (2 * Math.PI);
+  if (!(forwards > 0) || psi < 0.5) throw new Error('A spin needs the road after it well to one side');
+  const axis = [d[0] / p, 0, d[2] / p], w = v3.unit(v3.add([t[0], 0, t[1]], axis, -Math.cos(psi))), up = [0, 1, 0];
+  const pos = th => v3.add(v3.add(v3.add(E, d, th / (2 * Math.PI)), w, R * Math.sin(th)), up, R * (1 - Math.cos(th)));
+  const count = 900, frames = [];
+  for (let k = 0; k <= count; k++) {
+    const th = 2 * Math.PI * k / count, c = pos(th), T = v3.unit(v3.add(pos(th + 1e-4), pos(th - 1e-4), -1));
+    const across = v3.unit(v3.cross(T, v3.add(v3.add([0, 0, 0], up, Math.cos(th)), w, -Math.sin(th)))), normal = v3.cross(across, T);
+    frames.push({ at: (u, y) => v3.add(v3.add(c, across, u), normal, y), across, normal });
+  }
+  const PAINT = SPIN_HALF - KERB, LANES = 6;
+  for (let k = 0; k < count; k++) {
+    const a = frames[k], b = frames[k + 1], n = a.normal;
+    const strip = (material, u0, y0, u1, y1, towards) => quad(MESH, material, a.at(u0, y0), a.at(u1, y1), b.at(u1, y1), b.at(u0, y0), towards);
+    for (let m = 0; m < LANES; m++) strip('Road', -PAINT + m * 2 * PAINT / LANES, 0, -PAINT + (m + 1) * 2 * PAINT / LANES, 0, n);
+    const paint = Math.floor(k / 25) % 2 ? 'RoadEdgeRed' : 'RoadEdgeWhite';
+    strip(paint, -SPIN_HALF, 0, -PAINT, 0, n); strip(paint, PAINT, 0, SPIN_HALF, 0, n);
+  }
+  for (let k = 0; k < count; k += 3) {
+    const a = frames[k], b = frames[k + 3];
+    const strip = (material, u0, y0, u1, y1, towards) => quad(MESH, material, a.at(u0, y0), a.at(u1, y1), b.at(u1, y1), b.at(u0, y0), towards);
+    strip('Concrete', -SPIN_HALF, -SLAB, SPIN_HALF, -SLAB, a.normal.map(v => -v));
+    for (const s of [-1, 1]) strip('Concrete', s * SPIN_HALF, 0, s * SPIN_HALF, -SLAB, a.across.map(v => v * s));
+  }
+  // what it stands over, seen from above: the pit (the land is dug there, apex-town.js plants nothing in it)
+  const c = [E[0] + d[0] / 2, E[2] + d[2] / 2], h2 = [axis[0], axis[2]], r2 = [w[0], w[2]], along = p / 2 + SPIN_HALF + 2, wide = R + SPIN_HALF + 2;
+  spinAreas.push({ c, t: h2, n: r2, along, wide, y: Math.min(height[o.E], height[o.X]), corners: [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [c[0] + h2[0] * a * along + r2[0] * b * wide, c[1] + h2[1] * a * along + r2[1] * b * wide].map(v => +v.toFixed(1))) });
+  o.report = `radius ${R.toFixed(1)} m, ${(psi * 180 / Math.PI).toFixed(0)} degrees to its axis, ${(2 * Math.PI * R / Math.sin(psi)).toFixed(0)} m round, coming out ${Math.abs(sideways).toFixed(0)} m to the ${sideways > 0 ? 'right' : 'left'}`;
+}
+if (SPINS.length) console.log('Spins: ' + SPINS.map(o => o.report).join('; '));
 // the bridge's piers: a pair on either side of the road below, just behind its barriers
 if (BRIDGE) {
   const low = line.map((q, i) => i).filter(i => inU(gpsIndex(line[i][2]), ...BRIDGE.zone.low) && !onBridge[i]);
@@ -604,9 +686,9 @@ if (DESIGN) {
   const fbm = (x, y) => noise(x, y) * 0.55 + noise(x * 2.1 + 5.2, y * 2.1 + 1.3) * 0.30 + noise(x * 4.3 + 9.1, y * 4.3 + 7.7) * 0.15;
   const smooth = (a, b, v) => ease(Math.min(1, Math.max(0, (v - a) / (b - a))));
   // the road's cross-sections in 30 m boxes, and how far each one reaches on the side of a place: the back of
-  // its barrier, or of the pit lane's outer wall
+  // its barrier, or of the pit lane's outer wall, leaving out the hidden line through the spins
   const BOX = 30, boxes = new Map();
-  line.forEach((q, i) => { const k = Math.floor(q[0] / BOX) + ',' + Math.floor(q[1] / BOX); if (!boxes.has(k)) boxes.set(k, []); boxes.get(k).push(i); });
+  line.forEach((q, i) => { if (hidden[i]) return; const k = Math.floor(q[0] / BOX) + ',' + Math.floor(q[1] / BOX); if (!boxes.has(k)) boxes.set(k, []); boxes.get(k).push(i); });
   const around = (x, z, r, f) => { const n = Math.ceil(r / BOX), bi = Math.floor(x / BOX), bj = Math.floor(z / BOX); for (let a = bi - n; a <= bi + n; a++) for (let b = bj - n; b <= bj + n; b++) for (const i of boxes.get(a + ',' + b) || []) f(i); };
   const reachOf = (i, x, z) => {
     const c = section[i], s = (x - line[i][0]) * c.n[0] + (z - line[i][1]) * c.n[2] > 0 ? 1 : -1;
@@ -637,6 +719,12 @@ if (DESIGN) {
     let h = hills(x, z), best = -1, d = Infinity;
     around(x, z, 150, i => { if (onBridge[i] || onTunnel[i]) return; const q = (line[i][0] - x) ** 2 + (line[i][1] - z) ** 2; if (q < d) { d = q; best = i; } });
     if (best >= 0) { const road = height[best] - 0.3, r = reachOf(best, x, z); h = road + (h - road) * smooth(r + 2, r + (T.blend ?? 42), Math.sqrt(d)); }
+    for (const L of spinAreas) {                                         // the pit under a spin, but not under the road before and after it
+      const dx = x - L.c[0], dz = z - L.c[1], a = dx * L.t[0] + dz * L.t[1], b = dx * L.n[0] + dz * L.n[1];
+      const out = Math.hypot(Math.max(0, Math.abs(a) - L.along), Math.max(0, Math.abs(b) - L.wide)), lane = best >= 0 ? Math.sqrt(d) - reachOf(best, x, z) : Infinity;
+      const k = Math.max(smooth(0, 6, out), 1 - smooth(1, 10, lane)), y = L.y - PIT_DEPTH;
+      h = Math.min(h, y + (h - y) * k);
+    }
     if (paddock) { const k = inPoly(x, z, paddock) ? 0 : toEdge(x, z, paddock); h = -0.3 + (h + 0.3) * smooth(0, 45, k); }
     return h;
   };
@@ -831,6 +919,9 @@ fs.writeFileSync(path.join(OUT, KEY + '.json'), JSON.stringify({
   // the land round a circuit drawn by hand, as drawn (heights of a 10 m lattice, x0 + step * column, z0 + step * row,
   // h[column * rows + row]); beyond it apex-town.js carries on from `border`
   terrain,
+  // the spins: what they stand over seen from above (apex-town.js plants nothing there), and the cross-sections
+  // of `fine` where the road before one stops and the road after it starts
+  spins: spinAreas.length ? spinAreas.map((L, k) => ({ area: L.corners, from: SPINS[k].E, to: SPINS[k].X })) : undefined,
   // the pit lane (apex-town.js dresses it): its side, its edges' offsets from the centreline along the pits, the
   // fronts of the garages, and the cross-sections along which it runs at full width, in lap order
   pit: PIT ? { side: PIT.side, inner: PIT.offset - PIT.half, outer: PIT.offset + PIT.half, front: PIT.offset + PIT.half + 1.5,

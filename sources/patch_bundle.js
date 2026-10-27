@@ -27,30 +27,38 @@ const circuitParts = c => [['Road', c.data.ids.road], ['Start', c.data.ids.start
 // The mod's car patterns (build_patterns.js), numbered 16 on after the game's: never reorder them, a car
 // saved with one keeps its number (apex-rarity.js names them in this order)
 const MOD_PATTERNS = ['monaco', 'bignumber', 'diagonal', 'wingtips', 'dotted', 'camo', 'lightning', 'flames', 'tiger', 'barcode', 'carbon',
-  'spa', 'strasbourg', 'dijon', 'montbeliard', 'coaster', 'killer_loop', 'goofy', 'champion', 'mp4_7a'];
+  'spa', 'strasbourg', 'dijon', 'montbeliard', 'coaster', 'killer_loop', 'goofy', 'champion', 'mp4_7a', 'r26'];
 // The mod's wings (build_car.js draws Wing0.., apex-rarity.js names them in this order)
-const WING_COUNT = 9;
+const WING_COUNT = 10;
 // The mod's bodies (build_car.js: the car's own Body, then Body1..), and its rims and exhausts after the game's
 // 12 and 8 (Wheel12.., Exhaust8..)
-const BODY_COUNT = 2, MOD_RIMS = 1, MOD_EXHAUSTS = 1;
+const BODY_COUNT = 3, MOD_RIMS = 2, MOD_EXHAUSTS = 1;
 // The rims whose tyres are lettered: on the side the game mirrors, turned round instead (build_car.js)
-const TURNED_RIMS = [12];
+const TURNED_RIMS = [12, 13];
 // The icons' patterns (apex-rarity.js): real cars' liveries, which keep their own colours. The car style gives
 // them in place of the primary and secondary colours (those picked stay for the other patterns), and their wings
-// take the pattern. [primary, secondary] by pattern.
-const ICONS = { mp4_7a: [0xf3f3ef, 0xf2361e] };
-const ICON_COLOURS = JSON.stringify(Object.fromEntries(Object.entries(ICONS).map(([name, colours]) => [16 + MOD_PATTERNS.indexOf(name), colours])));
+// take the pattern. [primary, secondary] by pattern, then the colours of its two inks when they are not black and
+// gold (build_patterns.js: blue and black there).
+const ICONS = { mp4_7a: [0xf3f3ef, 0xf2361e], r26: [0x1677cc, 0xf7c600, 0x0e1c48, 0xf2f4f7] };
+const ICON_COLOURS = JSON.stringify(Object.fromEntries(Object.entries(ICONS).map(([name, colours]) => [16 + MOD_PATTERNS.indexOf(name), colours.slice(0, 2)])));
+// The inks as the shader takes them (linear, as three.js turns the picked colours): by pattern, and the default
+const linear = hex => [hex >> 16 & 255, hex >> 8 & 255, hex & 255].map(c => c / 255).map(c => +(c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4).toFixed(4));
+const ICON_INKS = JSON.stringify(Object.fromEntries(Object.entries(ICONS).filter(([, colours]) => colours.length > 2).map(([name, colours]) => [16 + MOD_PATTERNS.indexOf(name), colours.slice(2).map(linear)])));
+const INKS = JSON.stringify([[0.012, 0.012, 0.012], [0.85, 0.55, 0.02]]);
 // The engine's sound by body (build_car.js), in audio/ (tools/make_engine_sound.js); the others have the game's
 const ENGINE_SOUNDS = { 1: 'engine_mp4_7a' };
-// The lettering of the tyres (build_car.js, TireText), from the rims' colour: gold on dark rims, black on light ones
-const LETTERING = rims => '(((' + rims + '>>16&255)*.299+(' + rims + '>>8&255)*.587+(255&' + rims + ')*.114)<150?15776808:1118481)';
+// The lettering of the tyres (build_car.js, TireText), from the rims' colour: on dark rims gold, or white on the
+// R26's (Wheel13); black on light ones
+const LETTERING = (hex, rims) => '(((' + hex + '>>16&255)*.299+(' + hex + '>>8&255)*.587+(255&' + hex + ')*.114)<150?13==' + rims + '?15263976:15776808:1118481)';
 // The paint, from the pattern's picture (build_patterns.js): green is the secondary colour, red the primary, and
-// two inks no picker changes, blue for black and none of the three for gold (every other pattern is red and
-// green only). shade(source) gives the shader lines, source scaling the pattern (the wings may leave it out).
+// two inks no picker changes, blue and none of the three: black and gold, unless the icon has its own (carInkA and
+// carInkB, from ICONS; every other pattern is red and green only). shade(source) gives the shader lines, source
+// scaling the pattern (the wings may leave it out), and INK_UNIFORMS what they read.
+const INK_UNIFORMS = 'uniform vec3 carInkA;\\nuniform vec3 carInkB;\\n';
 const shade = source => 'vec4 apxPattern = texture(carColorPattern, vUv);\\nfloat colorSource = apxPattern.g' + source + ';\\n'
   + 'vec3 apxColor = carColorSecondary * colorSource + diffuse * (1.0 - colorSource);\\n'
-  + 'apxColor = mix(apxColor, vec3(0.012), apxPattern.b' + source + ');\\n'
-  + 'apxColor = mix(apxColor, vec3(0.85, 0.55, 0.02), clamp(1.0 - apxPattern.r - apxPattern.g - apxPattern.b, 0.0, 1.0)' + source + ');\\n'
+  + 'apxColor = mix(apxColor, carInkA, apxPattern.b' + source + ');\\n'
+  + 'apxColor = mix(apxColor, carInkB, clamp(1.0 - apxPattern.r - apxPattern.g - apxPattern.b, 0.0, 1.0)' + source + ');\\n'
   + 'vec4 diffuseColor = vec4( apxColor, opacity );';
 const RIVIERA_GROUND = 6318394;    // 0x60693a: the Riviera plain (apex-scenery.js recognises the environment by it)
 
@@ -856,7 +864,9 @@ const patches = [
     // the chassis' geometry and materials, swapped (the exhaust and the wing stay on it)
     name: 'car: puts its wing on',
     find: '(0,l.gn)(this,ye,"f").add((0,l.gn)(this,we,"f"));for(const e of(0,l.gn)(this,xe,"f"))(0,l.gn)(this,me,"f").add(e);',
-    replace: '(0,l.gn)(this,ye,"f").add((0,l.gn)(this,we,"f")),this.apxWingMix={value:1},this.apxWing=B.models.wings.get((0,l.gn)(this,Me,"f").wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing),'
+    replace: '(0,l.gn)(this,ye,"f").add((0,l.gn)(this,we,"f")),this.apxWingMix={value:1},'
+      + 'this.apxInk=[{value:new c.Pq0},{value:new c.Pq0}],this.apxSetInks=e=>{const t=' + ICON_INKS + '[e]??' + INKS + ';this.apxInk[0].value.set(...t[0]),this.apxInk[1].value.set(...t[1])},this.apxSetInks((0,l.gn)(this,Me,"f").pattern),'
+      + 'this.apxWing=B.models.wings.get((0,l.gn)(this,Me,"f").wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing),'
       + 'this.apxSetBody=e=>{const t=B.models.bodies.get(e).clone();(0,l.gn)(this,D,"m",We).call(this,t);const n=(0,l.gn)(this,ye,"f");(0,l.gn)(this,ge,"f").removeMaterial(n.material),n.geometry=t.geometry,n.material=t.material},'
       + '0!=(0,l.gn)(this,Me,"f").body&&this.apxSetBody((0,l.gn)(this,Me,"f").body);for(const e of(0,l.gn)(this,xe,"f"))(0,l.gn)(this,me,"f").add(e);',
   },
@@ -864,7 +874,7 @@ const patches = [
     name: 'car: changes its wing and paints it',
     find: '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):',
     replace: 'e.wing!=(0,l.gn)(this,Me,"f").wing&&((0,l.gn)(this,ye,"f").remove(this.apxWing),(0,l.gn)(this,ge,"f").removeMaterial(this.apxWing.material),this.apxWing=B.models.wings.get(e.wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing)),'
-      + 'e.body!=(0,l.gn)(this,Me,"f").body&&(this.apxSetBody(e.body),null!=(0,l.gn)(this,O,"f")&&((0,l.gn)(this,O,"f").source.stop(),(0,l.GG)(this,O,null,"f"))),this.apxWingMix.value=null==e.wingHex||e.constructor.isIcon(e.pattern)?1:0,'
+      + 'e.body!=(0,l.gn)(this,Me,"f").body&&(this.apxSetBody(e.body),null!=(0,l.gn)(this,O,"f")&&((0,l.gn)(this,O,"f").source.stop(),(0,l.GG)(this,O,null,"f"))),this.apxWingMix.value=null==e.wingHex||e.constructor.isIcon(e.pattern)?1:0,this.apxSetInks(e.pattern),'
       + '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):"Wing"==t.name?t.color.set(e.wingColor):',
   },
   {
@@ -872,15 +882,25 @@ const patches = [
     // a function of its own, as three.js shares the programs of materials whose onBeforeCompile reads the same
     name: 'car: the wing material',
     find: 'for(const e of t)if("Main"==e.name){if(!(e instanceof c._4j))throw new Error("Main material must be MeshStandardMaterial");',
-    replace: 'for(const e of t)if("Wing"==e.name)e.onBeforeCompile=e=>{e.fragmentShader="uniform sampler2D carColorPattern;\\nuniform vec3 carColorSecondary;\\nuniform float carWingPattern;\\n"+e.fragmentShader,'
+    replace: 'for(const e of t)if("Wing"==e.name)e.onBeforeCompile=e=>{e.fragmentShader="uniform sampler2D carColorPattern;\\nuniform vec3 carColorSecondary;\\nuniform float carWingPattern;\\n' + INK_UNIFORMS + '"+e.fragmentShader,'
       + 'e.fragmentShader=e.fragmentShader.replace("vec4 diffuseColor = vec4( diffuse, opacity );","' + shade(' * carWingPattern') + '"),'
-      + 'e.uniforms.carColorPattern=(0,l.gn)(this,Te,"f"),e.uniforms.carColorSecondary=(0,l.gn)(this,Ee,"f"),e.uniforms.carWingPattern=this.apxWingMix,e.defines??(e.defines={}),e.defines.USE_UV=!0},e.needsUpdate=!0;'
+      + 'e.uniforms.carColorPattern=(0,l.gn)(this,Te,"f"),e.uniforms.carColorSecondary=(0,l.gn)(this,Ee,"f"),e.uniforms.carWingPattern=this.apxWingMix,e.uniforms.carInkA=this.apxInk[0],e.uniforms.carInkB=this.apxInk[1],e.defines??(e.defines={}),e.defines.USE_UV=!0},e.needsUpdate=!0;'
       + 'else if("Main"==e.name){if(!(e instanceof c._4j))throw new Error("Main material must be MeshStandardMaterial");',
   },
   {
     name: 'car: the body\'s paint has the patterns\' inks',
     find: '"float colorSource = texture(carColorPattern, vUv).g;\\nvec4 diffuseColor = vec4( carColorSecondary * colorSource + diffuse * (1.0 - colorSource), opacity );"',
     replace: '"' + shade('') + '"',
+  },
+  {
+    name: 'car: the body\'s paint reads the inks',
+    find: 'carColorSecondary;\\n"+e.fragmentShader',
+    replace: 'carColorSecondary;\\n' + INK_UNIFORMS + '"+e.fragmentShader',
+  },
+  {
+    name: 'car: the body\'s paint is given the inks',
+    find: 'e.uniforms.carColorSecondary=(0,l.gn)(this,Ee,"f"),e.defines',
+    replace: 'e.uniforms.carColorSecondary=(0,l.gn)(this,Ee,"f"),e.uniforms.carInkA=this.apxInk[0],e.uniforms.carInkB=this.apxInk[1],e.defines',
   },
   // ---------------------------------------------------------------- the engine's sound by body (ENGINE_SOUNDS)
   {
@@ -897,7 +917,7 @@ const patches = [
   {
     name: 'car: the tyres\' lettering follows the rims',
     find: '"Rim"==t.name&&t.color.set(e.rimsColor)',
-    replace: '"Rim"==t.name?t.color.set(e.rimsColor):"TireText"==t.name&&t.color.set(' + LETTERING('e.rimsHex') + ')',
+    replace: '"Rim"==t.name?t.color.set(e.rimsColor):"TireText"==t.name&&t.color.set(' + LETTERING('e.rimsHex', 'e.rims') + ')',
   },
   // ---------------------------------------------------------------- lettered tyres (build_car.js, TURNED_RIMS)
   {
@@ -1114,14 +1134,28 @@ const garagePatches = [
     replace: 'const f=[{title:' + LIVERY + '?' + LIVERY + '.bodyLabel():"Body",icon:"images/body.svg",panel:this.apxBodyPanel},{title:n.get("Paint"),icon:"images/paint.svg",panel:h},',
   },
   {
+    // the tabs from the car's shape to its colours: Body, Wing, Rims, Exhaust, Pattern, Paint. The game builds the
+    // garage on Paint; it then opens on Body (below)
     name: 'Paint is the tab open',
     find: 'let p=f[0];',
-    replace: 'let p=f.find((e=>e.panel==h));',
+    replace: '{const o=[this.apxBodyPanel,this.apxWingPanel,(0,i.gn)(this,sn,"f"),(0,i.gn)(this,an,"f"),(0,i.gn)(this,nn,"f"),h];f.sort(((e,t)=>o.indexOf(e.panel)-o.indexOf(t.panel)))}let p=f.find((e=>e.panel==h));',
   },
   {
     name: 'Paint is the tab picked',
     find: '0==u.length&&e.classList.add("selected")',
     replace: 'n.panel==h&&e.classList.add("selected")',
+  },
+  {
+    // the tab picked without its click sound, when the garage opens
+    name: 'a tab can be picked quietly',
+    find: 'e.addEventListener("click",(()=>{t.playUIClick();for(const t of u)t.classList.remove("selected");',
+    replace: 'e.addEventListener("click",(()=>{this.apxQuiet||t.playUIClick();for(const t of u)t.classList.remove("selected");',
+  },
+  {
+    // its panel shown and the camera moved to it, as when the player clicks it
+    name: 'the garage opens on Body',
+    find: 'r.appendChild(e),u.push(e)}}dispose(){',
+    replace: 'r.appendChild(e),u.push(e)}this.apxQuiet=!0,u[f.findIndex((e=>e.panel==this.apxBodyPanel))]?.click(),this.apxQuiet=!1}dispose(){',
   },
   // the Random button leaves out the items not unlocked (apex-rarity.js)
   ...[['Pattern', 'pattern'], ['Rims', 'rims'], ['Exhaust', 'exhaust']].map(([game, kind]) => ({

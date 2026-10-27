@@ -1,7 +1,8 @@
 // Generates the livery patterns for the F1 body: the game's 16, then the mod's (patch_bundle.js adds them to its list).
 // Texture space (1024 x 1024): X follows the angle around the body (512 = centreline, sides further out),
 // Y runs from the nose (0) to the tail (1024). Red = primary colour, green = secondary colour; the icons also have
-// two inks no picker changes (patch_bundle.js, shade): blue for black, and black (none of the three) for gold.
+// two inks no picker changes (patch_bundle.js, shade): blue, and black (none of the three), black and gold by
+// default, each icon's own otherwise (ICONS there).
 //
 // Landmarks (Y): front wing 12-90, front axle 175, cockpit 410-580, sidepods 400-850, rear wing 885-1005.
 // Landmarks (|X-512|): cockpit rim 85, tub side 180, sidepod top 200, sidepod flank 315, wing tips 440.
@@ -14,6 +15,8 @@ const OUT = process.argv[2] || path.join(require('./config').APP, 'images');
 const G = '#0f0';
 // the icons' inks and the primary colour, for a shape drawn in the secondary (paint)
 const INK = '#00f', GOLD = '#000', P = '#f00';
+// the same two inks on the R26, which has them navy and white (patch_bundle.js, ICONS)
+const NAVY = INK, WHITE = GOLD;
 const SERIF = "Georgia, 'Times New Roman', serif", BLACK = "'Arial Black', Arial, sans-serif";
 const sym = fn => fn(1) + fn(-1); // mirror a shape on both sides of the centreline
 const X = (s, d) => 512 + s * d;
@@ -168,6 +171,35 @@ const patterns = {
     + `<path d="M0 0h3v20h-3v-15l-3 2v-3z" transform="translate(512 104) scale(11 -3)" fill="${G}"/>`
     + word('HONTA', 512, 140, 'nose', 70, 16, { weight: 900 })
     + paint(rect(362, 912, 300, 50), P) + word('Malbarré', 512, 937, 0, 250, 34, { font: SERIF }),
+  // Renault R26 2006: blue (the primary colour), the yellow front with a blue band down the nose edged in white,
+  // navy low on the nose and the bargeboards, a yellow band along the sidepods, white feathers over the engine
+  // cover, navy wings; TEAM SPIROU on the front wing, the sidepods and the engine cover, elfe and HANJINX on the
+  // flanks of the tub, RENAUD along the sidepods, Telefolica on the wings, i-moche low on the sidepods and the
+  // rear endplates, MARELLE and a navy 1 on the nose
+  r26: sym(s => poly([[X(s, 0), 0], [X(s, 512), 0], [X(s, 512), 470], [X(s, 250), 445], [X(s, 205), 432], [X(s, 0), 432]])
+      + paint(poly([[X(s, 0), 140], [X(s, 20), 140], [X(s, 40), 230], [X(s, 66), 330], [X(s, 80), 432], [X(s, 0), 432]]), P)
+      + paint(line(X(s, 21), 140, X(s, 41), 230, 7) + line(X(s, 41), 230, X(s, 67), 330, 7) + line(X(s, 67), 330, X(s, 81), 432, 7), WHITE)
+      + paint(poly([[X(s, 70), 95], [X(s, 82), 175], [X(s, 160), 300], [X(s, 210), 420], [X(s, 255), 470], [X(s, 512), 500], [X(s, 512), 95]]), NAVY)
+      // the front wing: blue, its endplates navy
+      + paint(rect(Math.min(X(s, 138), X(s, 400)), 0, 262, 95), P) + paint(rect(Math.min(X(s, 400), X(s, 512)), 0, 112, 95), NAVY)
+      // the yellow band along the sidepods, RENAUD in it
+      + poly([[X(s, 150), 430], [X(s, 252), 430], [X(s, 238), 600], [X(s, 205), 760], [X(s, 176), 862], [X(s, 154), 862], [X(s, 166), 760], [X(s, 178), 600]])
+      + word('RENAUD', X(s, 208), 560, s, 150, 30, { font: BLACK, colour: NAVY })
+      // the white feathers over the engine cover and the sidepods
+      + [[0, 0], [26, 42], [52, 84]].map(([dd, dy]) => `<path d="M${X(s, 38 + dd)} ${600 + dy}Q${X(s, 70 + dd)} ${700 + dy} ${X(s, 140 + dd)} ${770 + dy * 0.6}L${X(s, 128 + dd)} ${786 + dy * 0.6}Q${X(s, 60 + dd)} ${716 + dy} ${X(s, 30 + dd)} ${606 + dy}Z" fill="${WHITE}"/>`).join('')
+      + word('TEAM SPIROU', X(s, 322), 655, s, 300, 52, { font: BLACK, colour: WHITE })
+      + word('TEAM SPIROU', X(s, 48), 860, s, 120, 18, { font: BLACK, colour: WHITE })
+      + word('TEAM SPIROU', X(s, 270), 52, 0, 190, 30, { font: BLACK, colour: WHITE })
+      + word('Telefolica', X(s, 428), 50, s, 74, 26, { italic: true, colour: G })
+      + word('elfe', X(s, 118), 245, s, 74, 38, { font: BLACK, colour: NAVY })
+      + `<circle cx="${X(s, 118)}" cy="291" r="8" fill="${P}"/>`
+      + word('HANJINX', X(s, 150), 368, s, 118, 26, { font: BLACK, colour: NAVY })
+      + word('i-moche', X(s, 300), 470, s, 62, 20, { colour: G })
+      + word('i-moche', X(s, 212), 945, s, 90, 26, { colour: G }))
+    // the rear wing and the gearbox under it, navy, Telefolica across
+    + paint(rect(212, 885, 600, 139), NAVY) + word('Telefolica', 512, 925, 0, 270, 44, { italic: true, colour: G })
+    + paint(`<path d="M0 0h3v20h-3v-15l-3 2v-3z" transform="translate(512 108) scale(9 -2.6)" fill="${G}"/>`, NAVY)
+    + word('MARELLE', 512, 128, 'nose', 56, 11, { colour: NAVY }),
 };
 // ---- shapes (function declarations: hoisted, used above)
 function paint(svg, colour) { return svg.replace(/fill="#0f0"/g, `fill="${colour}"`); }

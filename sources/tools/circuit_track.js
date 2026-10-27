@@ -13,12 +13,13 @@
   // The track's id is a hash of its data, not of its parts' meshes: when the road changes but not the gates,
   // the id would stay the same and the records made on the old road would be checked against the new one
   // ("Invalid replay detected"). Each road revision turns the sun by one step, which gives the track a new id.
-  const ROAD_REVISION = 1;
+  // (Forest Speedway's second road: its spins)
+  const ROAD_REVISION = { forest: 2 };
 
   async function build(key) {
     const circuit = await (await fetch('tracks/' + key + '.json')).json();
     const base = TrackData.fromExportString((await (await fetch('tracks/official/summer1.track')).text()).trim()).trackData;
-    const sun = new base.sunDirection.constructor(base.sunDirection.representation + ROAD_REVISION);
+    const sun = new base.sunDirection.constructor(base.sunDirection.representation + (ROAD_REVISION[key] || 1));
     const td = new TrackData(base.environment, sun);
     const { ids, level } = circuit;
     td.addPart(0, level, 0, ids.road, 0, 0, 0, null, null);              // the whole circuit is one part, at the start line

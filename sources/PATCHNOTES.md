@@ -15,6 +15,29 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.20 : Renault R26 2006 et les spins de Forest Speedway
+
+Une deuxième Icône, la Renault de 2006, un garage qui s'ouvre sur la carrosserie, et deux tonneaux sans barrières sur Forest Speedway.
+
+**Pack Renault R26 2006**, la deuxième Icône (à gagner en tournoi ou lors d'un événement GoofyTrack)
+- **Motif** : le bleu et le jaune de la voiture championne du monde en 2006, son nez jaune barré d'une bande bleue bordée de blanc, du bleu marine sur le nez, les déflecteurs et les ailerons, une bande jaune le long des pontons et des plumes blanches sur le capot moteur. Ses sponsors revisités : TEAM SPIROU, elfe, HANJINX, RENAUD, Telefolica, i-moche, MARELLE et un « 1 » bleu marine sur le nez.
+- **Carrosserie** : sans halo, un petit pare-brise, un nez haut qui plonge vers la suspension avant avec l'aileron avant suspendu dessous, une prise d'air étroite avec sa caméra en T et ses deux petites ailettes, des pontons creusés qui filent vers la boîte de vitesses avec leurs cheminées, des déflecteurs devant eux, et un casque bleu.
+- **Aileron** d'époque : à l'avant, un plan principal sous le nez et deux volets sur l'extérieur seulement, entre de hautes dérives courbes ; à l'arrière, un volet très incliné, le petit aileron bas et un seul support.
+- **Jantes** à dix branches fines et écrou central, aux couleurs de vos jantes, avec **MICHOULIN** sur les pneus (blanc sur des jantes sombres, noir sur des jantes claires).
+- Comme pour la MP4/7A, chaque pièce du pack se monte aussi sur les autres voitures, et les couleurs du motif sont verrouillées tant qu'il est posé.
+
+**Garage**
+- Les onglets vont maintenant de la forme de la voiture à ses couleurs : **Carrosserie**, **Aileron**, **Jantes**, **Échappement**, **Motif**, **Peinture**. Le garage s'ouvre sur Carrosserie.
+
+**Forest Speedway**
+- **Deux spins** : la route fait faire un tonneau complet à la voiture, sur le mur, la tête en bas au plafond, puis de l'autre côté, avant de la reposer une soixantaine de mètres sur le côté. Le premier remplace la chicane avant la vallée, le second se trouve en haut de la descente vers le pont.
+- **Sans barrières** : il faut arriver vite (environ 130 km/h au moins, sinon on tombe au sommet) et garder la voiture au milieu de la bande en corrigeant au volant. Qui le rate part dans le décor, au-dessus d'une fosse.
+- **Deux checkpoints de plus**, un avant chaque spin, avec assez d'élan pour repartir depuis l'arrêt après une chute (R) : le tour en compte maintenant 5. La ligne droite principale passe à 570 m environ.
+- **Route plus lisse** : les virages qui montent ou descendent (les esses, les épingles de la montagne, l'approche du second spin) ne font plus sentir de petites bosses, et la pente ne casse plus d'un coup aux checkpoints de la montagne.
+- La piste a changé : les records de Forest Speedway repartent de zéro.
+
+**Mise à jour** : « Mettre a jour GoofyTrack.bat » (ou `git pull` puis « Construire GoofyTrack.bat »). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.20. Le serveur (Render) doit être redéployé : pour l'Icône R26, et parce que Forest Speedway a changé d'identifiant (liste des pistes de la semaine). Par défaut la Renault va, comme la McLaren, aux comptes #7777 et #0001 (variable `UNLOCKS`, par exemple `mp4_7a:7777+1,r26:7777+1`), et un créateur peut la donner depuis la console du jeu : `ApexAccount.unlock('r26', numéro)`.
+
 ## V2.19 : rareté Icône, McLaren MP4/7A 1992 et Forest Speedway
 
 Une nouvelle rareté pour les vraies légendes de la F1, à gagner en tournoi, un nouvel onglet Carrosserie, et un nouveau circuit avec des bacs à graviers.

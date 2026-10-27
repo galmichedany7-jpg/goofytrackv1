@@ -787,6 +787,10 @@
       const [x0, z0, x1, z1] = boundsOf(b.p);
       for (let i = Math.floor(x0 / CELL); i <= Math.floor(x1 / CELL); i++) for (let j = Math.floor(z0 / CELL); j <= Math.floor(z1 / CELL); j++) { const k = i + ',' + j; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(b.p); }
     }
+    for (const { area: p } of data.spins || []) {                  // under the spins (make_circuit.js) nothing grows either
+      const [x0, z0, x1, z1] = boundsOf(p);
+      for (let i = Math.floor(x0 / CELL); i <= Math.floor(x1 / CELL); i++) for (let j = Math.floor(z0 / CELL); j <= Math.floor(z1 / CELL); j++) { const k = i + ',' + j; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(p); }
+    }
     const built = (x, z, margin = 0) => {
       for (let i = Math.floor((x - margin) / CELL); i <= Math.floor((x + margin) / CELL); i++) for (let j = Math.floor((z - margin) / CELL); j <= Math.floor((z + margin) / CELL); j++)
         for (const P of grid.get(i + ',' + j) || []) { if (inPoly(x, z, P)) return true; if (margin > 0) for (const q of P) if (Math.hypot(q[0] - x, q[1] - z) < margin) return true; }

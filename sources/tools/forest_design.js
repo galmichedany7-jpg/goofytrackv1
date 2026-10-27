@@ -23,6 +23,12 @@ const STEP = 5;                   // metres between two points of the line
 // at the end of the piece (between two of them it climbs or drops evenly); `verge` a narrower verge on that piece
 // (the mountain road, between rock and barrier); `tunnel` the piece runs through the mountain
 const MOUNTAIN = { verge: 3 };
+// A spin (tools/make_circuit.js): the road rolls the car right round, up a wall, upside down and back, along a
+// helix that comes out 50 m to one side. On the map it is a step to the left made of two tight bends, which only
+// says where the road before it stops and the road after it starts: `spin` pieces are not built as road.
+// The longer the step between the two bends, the more the spin rolls the car round rather than along (55 degrees
+// to its axis rolls it best: the car hardly has to steer), and the wider it is.
+const SPIN = (step, o = {}) => [['L', 90, 18.5, { spin: true }], ['S', step, { spin: true }], ['R', 90, 18.5, { spin: true, ...o }]];
 const SEG = [
   ['S', 280],                                                                                   // main straight: the grid, the pits
   ['R', 90, 32, { sand: 30, before: 70, after: 8, h: 5 }],                                      // T1
@@ -30,8 +36,8 @@ const SEG = [
   ['R', 90, 40, { sand: 24, before: 40, after: 10, h: 8 }],                                     // T2, at the top of a rise
   ['S', 40],
   ['L', 50, 40], ['R', 95, 34, { sand: 18, before: 20, after: 10 }], ['L', 95, 34, { sand: 18, before: 20, after: 10 }], ['R', 50, 40, { h: 4 }],   // the esses, downhill
-  ['S', 80],
-  ['L', 60, 40, { sand: 18, before: 40, after: 10 }], ['S', 25], ['R', 60, 40, { sand: 18, before: 20, after: 10, h: 2 }],   // a kink to the left and back
+  ['S', 150],
+  ...SPIN(30, { h: 2 }),                                                                        // the first spin, off to the left
   ['S', 330],                                                                                   // into the valley, under the bridge
   ['L', 90, 35, { sand: 26, before: 80, after: 8, h: 0 }],                                      // the hairpin at the bottom
   ['S', 60, { h: 1 }],
@@ -47,8 +53,10 @@ const SEG = [
   ['S', 30],
   ['L', 90, 40, { sand: 24, before: 60, after: 10, h: 24 }],
   ['S', 70],
-  ['R', 30, 45, { sand: 16, before: 40, after: 6 }], ['L', 30, 45, { sand: 16, before: 20, after: 6, h: 18 }],   // a last flick before the descent
-  ['B'],                                                                                        // down to the bridge, over the valley road
+  ['R', 30, 45, { sand: 16, before: 5, after: 6 }], ['L', 30, 45, { sand: 16, before: 20, after: 6, h: 18 }],   // a last flick before the descent
+  ['S', 60],
+  ...SPIN(30, { h: 14 }),                                                                        // the second spin, at the top of the descent
+  ['B'],                                                                                       // down to the bridge, over the valley road
   ['R', 90, 45, { sand: 22, before: 60, after: 10, h: 5 }],                                     // the last corner
   ['F'],
 ];
@@ -134,6 +142,9 @@ const runoffs = pieces.filter(p => opt(p.seg).sand).map(p => {
   const o = opt(p.seg), side = p.seg[0] === 'R' ? -1 : 1;                  // the outside of the corner
   return [(p.from - Math.round(o.before / STEP) + N) % N, (p.to + Math.round(o.after / STEP)) % N, side, o.sand];
 });
+// the spins, as ranges of points [from, to]: the last point of the road before one, the first of the road after it
+const spins = [];
+for (const p of pieces) if (opt(p.seg).spin) { const last = spins[spins.length - 1]; if (last && last[1] === p.from) last[1] = p.to; else spins.push([p.from, p.to]); }
 // ranges of points [from, to, side (0 both), width] where the grass verge differs from VERGE: none on the bridge,
 // a narrow one along the pit wall
 const span = (i, metres) => [(i - Math.round(metres / STEP) + N) % N, (i + Math.round(metres / STEP)) % N];
@@ -185,7 +196,7 @@ fs.writeFileSync(path.join(__dirname, 'forest_line.json'), JSON.stringify({
   source: 'Forest Speedway: drawn by tools/forest_design.js',
   metres: pts.map(p => [+p[0].toFixed(2), +p[1].toFixed(2)]),
   heights: heights.map(h => +h.toFixed(2)),
-  runoffs, verge: VERGE, verges, bridge, pit, tunnel, mountains, grid: GRID, paddock: cl,
+  runoffs, verge: VERGE, verges, bridge, pit, tunnel, mountains, spins, grid: GRID, paddock: cl,
   lake: lakeFits ? { at: [lake.x, lake.z], radius: R } : null,
 }));
 fs.writeFileSync(path.join(__dirname, 'forest_osm.json'), JSON.stringify({
@@ -207,4 +218,4 @@ if (process.argv[2] === '--svg') {
     + (lakeFits ? `<polygon fill="#58a" points="${lakeRing.map(p => p.join(',')).join(' ')}"/>` : '') + buildings.map(b => `<polygon fill="#888" points="${b.p.map(p => p.join(',')).join(' ')}"/>`).join('') + '</svg>';
   fs.writeFileSync(process.argv[3], svg);
 }
-if (process.argv[2] === '--pieces') for (const p of pieces) console.log(p.seg[0], p.seg[1] != null && typeof p.seg[1] !== 'object' ? p.seg[1] : '', (along[p.from] / length).toFixed(3), (along[Math.min(p.to, N)] / length).toFixed(3), opt(p.seg).sand ? 'sand' : '', opt(p.seg).tunnel ? 'tunnel' : '');
+if (process.argv[2] === '--pieces') for (const p of pieces) console.log(p.seg[0], p.seg[1] != null && typeof p.seg[1] !== 'object' ? p.seg[1] : '', (along[p.from] / length).toFixed(3), (along[Math.min(p.to, N)] / length).toFixed(3), opt(p.seg).sand ? 'sand' : '', opt(p.seg).tunnel ? 'tunnel' : '', opt(p.seg).spin ? 'spin' : '');

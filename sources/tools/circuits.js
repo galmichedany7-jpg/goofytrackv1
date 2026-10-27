@@ -57,7 +57,9 @@ module.exports = {
     roadHalf: 9,                     // 18 m of asphalt, room to overtake
     smoothing: 2, minRadius: 18, facets: [1, 1],
     heightPasses: 1, maxGrade: 0.11,                 // its heights are drawn already: hardly smoothed
-    gates: [[0.43, 0.47], [0.575, 0.605], [0.876, 0.886]],   // on straights, away from the gravel; the last one just past the bridge
+    // on straights, away from the gravel: one before each spin (whoever falls off starts again there, with room to get
+    // back up to speed), one after each hairpin of the mountain, the last one just past the bridge
+    gates: [[0.216, 0.228], [0.425, 0.46], [0.565, 0.60], [0.721, 0.728], [0.858, 0.868]],
     terrain: { hills: 70 },
     startHeight: 0.13,               // the car appears resting on the road (patch_bundle.js)
   },

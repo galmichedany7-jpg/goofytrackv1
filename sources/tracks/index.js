@@ -48,14 +48,14 @@ module.exports = [
   },
   {
     // a Grand Prix circuit drawn by hand in a wooded valley under the mountains: a figure of eight over a bridge, a main
-    // straight with a painted grid and a pit lane, gravel traps and grass that slow the cars down (tools/forest_design.js,
-    // tools/make_circuit.js, apex-sand.js)
+    // straight with a painted grid and a pit lane, gravel traps and grass that slow the cars down, two spins
+    // (tools/forest_design.js, tools/make_circuit.js, apex-sand.js)
     file: 'forest.track',
     thumbnail: 'forest.png',
-    id: 'b41bdbfeb22d59ee4d0dfada40459069ccf1f8f09db6c2b4616eaff05cb58878',
+    id: 'c096c62c6e0d265dd1cab23e73d67bfc21b27887429b4240ffccfbb2599aaa44',
     name: 'Forest Speedway',
     author: 'Julio',
-    lastModified: '2026-10-26T18:00:00.000Z',
+    lastModified: '2026-10-27T18:00:00.000Z',
     group: 'Circuits',
   },
   {

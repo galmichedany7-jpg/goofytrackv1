@@ -401,7 +401,7 @@
       const recovery = typeof out.recovery === 'boolean' ? out.recovery : acc.recovery;   // an older server does not say
       // the garage's items it unlocked (apex-rarity.js); a server older than 2.19 does not say: the owners its
       // UNLOCKS gives by default (server/accounts.js)
-      const unlocks = Array.isArray(out.unlocks) ? out.unlocks : [7777, 1].includes(out.id) ? ['mp4_7a'] : [];
+      const unlocks = Array.isArray(out.unlocks) ? out.unlocks : [7777, 1].includes(out.id) ? ['mp4_7a', 'r26'] : [];
       if (acc.id !== out.id || acc.verified !== out.verified || JSON.stringify(acc.badges) !== JSON.stringify(badges) || acc.recovery !== recovery || JSON.stringify(acc.unlocks) !== JSON.stringify(unlocks)) {
         acc.id = out.id; acc.verified = out.verified; acc.badges = badges; acc.recovery = recovery; acc.unlocks = unlocks; saveAccount();
       }

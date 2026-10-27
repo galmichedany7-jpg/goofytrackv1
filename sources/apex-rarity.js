@@ -64,6 +64,7 @@
     { fr: 'Goofy Signature',   en: 'Goofy Signature',   rarity: 'mythic' },
     { fr: 'Champion',          en: 'Champion',          rarity: 'mythic' },
     { fr: 'McLaren MP4/7A 1992', en: 'McLaren MP4/7A 1992', rarity: 'icon', unlock: 'mp4_7a' },
+    { fr: 'Renault R26 2006', en: 'Renault R26 2006', rarity: 'icon', unlock: 'r26' },
   ];
   // by the game's model index (Wheel0..11, PolyTrack's own; the first three were the free ones)
   const RIMS = [
@@ -81,6 +82,7 @@
     { fr: 'Étoile',            en: 'Star',              rarity: 'veryRare' },
     // the mod's (build_car.js, Wheel12..)
     { fr: 'McLaren MP4/7A 1992', en: 'McLaren MP4/7A 1992', rarity: 'icon', unlock: 'mp4_7a' },
+    { fr: 'Renault R26 2006', en: 'Renault R26 2006', rarity: 'icon', unlock: 'r26' },
   ];
   // by the game's model index (Exhaust0..7, PolyTrack's own; the first two were the free ones)
   const EXHAUSTS = [
@@ -106,11 +108,13 @@
     { fr: 'Biplan',            en: 'Biplane',           rarity: 'legendary' },
     { fr: 'Mouette',           en: 'Gull wing',         rarity: 'mythic' },
     { fr: 'McLaren MP4/7A 1992', en: 'McLaren MP4/7A 1992', rarity: 'icon', unlock: 'mp4_7a' },
+    { fr: 'Renault R26 2006', en: 'Renault R26 2006', rarity: 'icon', unlock: 'r26' },
   ];
   // by the mod's body index (build_car.js: Body, then Body1..)
   const BODIES = [
     { fr: 'GoofyTrack F1',     en: 'GoofyTrack F1',     rarity: 'common' },
     { fr: 'McLaren MP4/7A 1992', en: 'McLaren MP4/7A 1992', rarity: 'icon', unlock: 'mp4_7a' },
+    { fr: 'Renault R26 2006', en: 'Renault R26 2006', rarity: 'icon', unlock: 'r26' },
   ];
   const ITEMS = { pattern: PATTERNS, rims: RIMS, exhaust: EXHAUSTS, wing: WINGS, body: BODIES };
   const RANK = Object.keys(RARITIES);   // common first
@@ -129,6 +133,7 @@
   // how an unlockable item is won, by its unlock
   const HOW = {
     mp4_7a: () => tr('À gagner : premier tournoi GoofyTrack', 'To win: the first GoofyTrack tournament'),
+    r26: () => tr('À gagner : tournoi ou événement GoofyTrack', 'To win: a GoofyTrack tournament or event'),
   };
   // a car style as the game saves it (base64url): byte 1 is the pattern
   function ofStyle(style) {
