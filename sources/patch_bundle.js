@@ -32,7 +32,7 @@ const MOD_PATTERNS = ['monaco', 'bignumber', 'diagonal', 'wingtips', 'dotted', '
 const WING_COUNT = 10;
 // The mod's bodies (build_car.js: the car's own Body, then Body1..), and its rims and exhausts after the game's
 // 12 and 8 (Wheel12.., Exhaust8..)
-const BODY_COUNT = 3, MOD_RIMS = 2, MOD_EXHAUSTS = 1;
+const BODY_COUNT = 3, MOD_RIMS = 2, MOD_EXHAUSTS = 2;
 // The rims whose tyres are lettered: on the side the game mirrors, turned round instead (build_car.js)
 const TURNED_RIMS = [12, 13];
 // The icons' patterns (apex-rarity.js): real cars' liveries, which keep their own colours. The car style gives
@@ -46,7 +46,7 @@ const linear = hex => [hex >> 16 & 255, hex >> 8 & 255, hex & 255].map(c => c / 
 const ICON_INKS = JSON.stringify(Object.fromEntries(Object.entries(ICONS).filter(([, colours]) => colours.length > 2).map(([name, colours]) => [16 + MOD_PATTERNS.indexOf(name), colours.slice(2).map(linear)])));
 const INKS = JSON.stringify([[0.012, 0.012, 0.012], [0.85, 0.55, 0.02]]);
 // The engine's sound by body (build_car.js), in audio/ (tools/make_engine_sound.js); the others have the game's
-const ENGINE_SOUNDS = { 1: 'engine_mp4_7a' };
+const ENGINE_SOUNDS = { 1: 'engine_mp4_7a', 2: 'engine_r26' };
 // The lettering of the tyres (build_car.js, TireText), from the rims' colour: on dark rims gold, or white on the
 // R26's (Wheel13); black on light ones
 const LETTERING = (hex, rims) => '(((' + hex + '>>16&255)*.299+(' + hex + '>>8&255)*.587+(255&' + hex + ')*.114)<150?13==' + rims + '?15263976:15776808:1118481)';

@@ -96,6 +96,7 @@
     { fr: 'Canon XXL',         en: 'XXL barrel',        rarity: 'legendary' },
     // the mod's (build_car.js, Exhaust8..)
     { fr: 'McLaren MP4/7A 1992', en: 'McLaren MP4/7A 1992', rarity: 'icon', unlock: 'mp4_7a' },
+    { fr: 'Renault R26 2006', en: 'Renault R26 2006', rarity: 'icon', unlock: 'r26' },
   ];
   // by the mod's model index (Wing0..7, build_car.js draws them in this order)
   const WINGS = [

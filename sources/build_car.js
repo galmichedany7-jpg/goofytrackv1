@@ -600,6 +600,15 @@ const EXHAUSTS = [
       cap(b, ring(-1.902, { w: 0.029, top: -0.425 + 0.021, bot: -0.425 - 0.021, n: 2, xc: s * 0.17, N: 12 }), false);
     }
   },
+  // 9 R26 2006 (icon): two oval chimneys up through the top of the sidepods either side of the engine cover, ahead of
+  // the rear wing, each in a dark hollow of the bodywork, opening up and back towards the tail, black inside
+  ({ metal, black: b }) => {
+    for (const s of [1, -1]) {
+      tube(metal, smoothPath([[s * 0.15, -0.42, -0.90], [s * 0.158, -0.33, -1.02], [s * 0.165, -0.27, -1.12], [s * 0.17, -0.235, -1.19]], 3), 0.042, { sides: 16, flatten: 0.7, caps: false });
+      tube(b, [[s * 0.165, -0.27, -1.12], [s * 0.1695, -0.238, -1.185]], 0.035, { sides: 16, flatten: 0.7 });
+      tube(b, smoothPath([[s * 0.152, -0.36, -0.99], [s * 0.158, -0.31, -1.06], [s * 0.163, -0.285, -1.11]], 2), 0.062, { sides: 16, flatten: 0.5, caps: false });
+    }
+  },
 ];
 
 // ================================================================ GLB assembly

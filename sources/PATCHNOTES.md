@@ -15,6 +15,19 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.20.1 : le moteur et l'échappement de la R26
+
+La Renault R26 2006 a maintenant son propre bruit de moteur et son échappement, et des cartes simples montrent où tombe un design sur la voiture.
+
+**Pack Renault R26 2006**
+- **Moteur** : la carrosserie R26 a son propre bruit de V8, calqué sur un enregistrement embarqué de la vraie voiture. C'est un grondement grave, avec une note forte et un souffle derrière, plutôt qu'un sifflement aigu.
+- **Échappement** d'époque : deux sorties ovales qui remontent à travers le dessus des pontons, de part et d'autre du capot moteur, juste devant l'aileron arrière. Elles sont tournées vers le haut et l'arrière, noires à l'intérieur, chacune dans un creux sombre de la carrosserie. C'est une Icône, comme le reste du pack.
+
+**Designs de voitures**
+- Trois cartes, `docs/livery_map_standard.svg`, `docs/livery_map_mp4_7a.svg` et `docs/livery_map_r26.svg`, montrent où chaque partie de la voiture tombe sur l'image d'un motif (1024 × 1024) : ailerons, nez, cockpit, capot moteur, flancs et pontons, arrière. L'avant est en haut, et la moitié droite de l'image peint le flanc gauche de la voiture. On peut les garder sous son dessin dans un logiciel graphique.
+
+**Mise à jour** : « Mettre a jour GoofyTrack.bat » (ou `git pull` puis « Construire GoofyTrack.bat »). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.20.1. Le serveur n'a pas besoin d'être redéployé pour cette version.
+
 ## V2.20 : Renault R26 2006 et les spins de Forest Speedway
 
 Une deuxième Icône, la Renault de 2006, un garage qui s'ouvre sur la carrosserie, et deux tonneaux sans barrières sur Forest Speedway.

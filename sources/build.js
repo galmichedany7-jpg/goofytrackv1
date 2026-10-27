@@ -93,6 +93,7 @@ fs.copyFileSync(path.join(__dirname, 'goofytrack-logo.svg'), path.join(APP, 'ima
 fs.copyFileSync(path.join(__dirname, 'audio', 'goofytrack_music.mp3'), path.join(APP, 'audio', 'goofytrack_music.mp3'));   // "Vroum Vroum" by Teknah
 fs.copyFileSync(path.join(__dirname, 'audio', 'goofytrack_waiting.mp3'), path.join(APP, 'audio', 'goofytrack_waiting.mp3'));   // "WAITING" by Teknah (track selection menu)
 fs.copyFileSync(path.join(__dirname, 'audio', 'engine_mp4_7a.wav'), path.join(APP, 'audio', 'engine_mp4_7a.wav'));   // the MP4/7A body's V12 (tools/make_engine_sound.js)
+fs.copyFileSync(path.join(__dirname, 'audio', 'engine_r26.wav'), path.join(APP, 'audio', 'engine_r26.wav'));   // the R26 body's V8 (tools/make_engine_sound.js)
 for (const icon of ['riviera.svg', 'riviera_colored.svg']) fs.copyFileSync(path.join(__dirname, 'images', icon), path.join(APP, 'images', icon));   // Riviera environment
 fs.copyFileSync(path.join(__dirname, 'images', 'wing.svg'), path.join(APP, 'images', 'wing.svg'));   // the garage's Wing tab
 fs.copyFileSync(path.join(__dirname, 'images', 'body.svg'), path.join(APP, 'images', 'body.svg'));   // the garage's Body tab
