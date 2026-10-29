@@ -15,6 +15,32 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.21.2 : mode spectateur, vote de session et cartes de joueurs
+
+On peut maintenant regarder une room sans rouler, voler librement autour des replays, voter pour la session suivante, et ouvrir la carte de n'importe quel joueur.
+
+**Mode spectateur**
+- **Regarder une room** : le bouton « Regarder » du tableau de la room (ou de la liste des rooms, à côté de « Rejoindre ») gare votre voiture, la cache aux autres et met la caméra sur un autre pilote. « Reprendre le volant » vous remet en piste.
+- **Suivre un pilote** : ← → (ou Q D) pour changer de pilote, C pour changer de vue (Poursuite, Large, Embarquée, TV). La molette rapproche ou éloigne la caméra. Un bandeau donne le nom du pilote et son meilleur temps, ou en course sa position et son tour.
+- Un spectateur n'a pas de place sur la grille, pas de collisions, et la course ne l'attend ni au départ ni à l'arrivée. Le tableau compte les spectateurs, et la liste des joueurs les grise.
+
+**Caméra libre**
+- En spectateur et dans les replays des fantômes (F, ou le bouton en haut de l'écran) : Z Q S D ou les flèches pour avancer, E et A pour monter et descendre, Maj pour aller vite, la molette pour la vitesse, cliquer-glisser pour regarder. Le replay continue de défiler pendant qu'on vole autour. F ou Échap pour en sortir.
+
+**Rooms**
+- **Changer de piste** rouvre l'écran de l'hôte : le mode (Décontracté, Compétitif, Course) et la piste se choisissent ensemble.
+- **Vote** : avec au moins deux joueurs, la session proposée par l'hôte passe au vote (majorité absolue, l'hôte compte pour, 20 s pour répondre). Les résultats annoncent la session suivante.
+- **Tableau de la session** façon F1 : 8 lignes plus la vôtre, les places qui glissent, le record personnel en violet, les places gagnées et un bandeau sous le tableau quand quelqu'un s'améliore.
+
+**Profil et amis**
+- Un clic sur un joueur de la liste des joueurs de la room, ou sur un ami, ouvre sa carte (avec un retour vers l'onglet Amis). Les cartes des autres joueurs montrent toutes leurs statistiques.
+- Nouveau badge **Record du TGV** : atteindre 574,8 km/h.
+
+**Classements**
+- Un record garde la voiture avec laquelle il a été fait, sur les circuits du mod comme sur les classements officiels (pour les temps envoyés à partir de cette version).
+
+**Mise à jour** : « Mettre a jour GoofyTrack.bat » (ou `git pull` puis « Construire GoofyTrack.bat »). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.21.2. Le serveur (Render) doit être redéployé pour les statistiques des cartes, le badge TGV et la voiture des records officiels. Le mode spectateur, lui, ne demande rien au serveur.
+
 ## V2.20.1 : le moteur et l'échappement de la R26
 
 La Renault R26 2006 a maintenant son propre bruit de moteur et son échappement, et des cartes simples montrent où tombe un design sur la voiture.

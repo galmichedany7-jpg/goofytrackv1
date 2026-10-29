@@ -1115,6 +1115,13 @@ html body {
 #ui .player-list-ui > .content > div.self > .kick-button-placeholder {
 	background-color: var(--apx-accent-soft);
 }
+/* a click on a player opens their GoofyTrack card (apex-room.js, playerRow) */
+#ui .player-list-ui > .content > div.apex-openable { cursor: pointer; }
+#ui .player-list-ui > .content > div.apex-openable:hover > div:not(.kick-button-placeholder),
+#ui .player-list-ui > .content > div.apex-openable:hover > .car-thumbnail {
+	background-color: var(--apx-fill-hover);
+}
+#ui .player-list-ui > .content > div.apex-openable > .nickname > span:not(.self) { text-decoration: underline dotted; text-underline-offset: 3px; }
 
 /* ---------- 9. Toolbars (shared by garage, editor, replay) ------------------- */
 :is(#ui, dialog.message-box-ui) .button {
@@ -1397,6 +1404,101 @@ html body {
 	content: "  \25C8";
 	color: var(--apx-accent);
 }
+
+/* the live board: places gained, personal bests on purple (as on TV timing), a flash as a time comes in */
+#ui .apex-room-board > .row { position: relative; }
+#ui .apex-room-board > .row > .time {
+	margin: -2px -5px;
+	padding: 2px 5px;
+	border-radius: 5px;
+	font-variant-numeric: tabular-nums;
+}
+#ui .apex-room-board > .row.pb > .time {
+	animation: apex-pb 6s linear both;
+}
+@keyframes apex-pb {
+	0%, 82% { background-color: #8e2de2; color: #fff; box-shadow: 0 0 12px rgba(142, 45, 226, 0.55); }
+	100% { background-color: transparent; color: inherit; box-shadow: none; }
+}
+#ui .apex-room-board > .row.flash {
+	animation: apex-flash 1.2s ease-out both;
+}
+@keyframes apex-flash {
+	0% { background-color: rgba(190, 120, 255, 0.55); }
+	100% { background-color: transparent; }
+}
+#ui .apex-room-board > .row.self.flash {
+	animation-name: apex-flash-self;
+}
+@keyframes apex-flash-self {
+	0% { background-color: rgba(190, 120, 255, 0.55); }
+	100% { background-color: var(--apx-accent-soft); }
+}
+#ui .apex-room-board > .row > .name > .up {
+	margin-right: 6px;
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--apx-good, #3ccf6e);
+}
+/* your own row, when you are below the rows shown */
+#ui .apex-room-board > .row.detached {
+	margin-top: 6px;
+}
+#ui .apex-room-board > .row.detached::before {
+	content: "";
+	position: absolute;
+	left: 6px;
+	right: 6px;
+	top: -4px;
+	border-top: 1px dashed var(--apx-line);
+}
+
+/* the banner under the board: who just improved (apex-room.js, announce) */
+#ui .apex-room-banner {
+	position: absolute;
+	right: calc(16px + var(--safe-area-horizontal));
+	top: 200px;
+	min-width: 300px;
+	overflow: hidden;
+	border-radius: var(--apx-r-md);
+	background-color: var(--apx-glass-strong);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 4px 0 0 #8e2de2, 0 8px 24px rgba(0, 0, 0, 0.35);
+	color: var(--apx-fg);
+	pointer-events: none;
+	animation: apex-banner 4s var(--apx-ease, ease) both;
+}
+#ui .apex-room-banner.leader {
+	box-shadow: inset 4px 0 0 #8e2de2, inset 0 0 0 1px rgba(142, 45, 226, 0.6), 0 8px 28px rgba(142, 45, 226, 0.35);
+}
+@keyframes apex-banner {
+	0% { opacity: 0; transform: translateX(40px); }
+	8%, 90% { opacity: 1; transform: none; }
+	100% { opacity: 0; transform: translateX(20px); }
+}
+#ui .apex-room-banner > .head {
+	padding: 6px 14px 5px 18px;
+	background: linear-gradient(90deg, #8e2de2, rgba(142, 45, 226, 0.25));
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.22em;
+	color: #fff;
+}
+#ui .apex-room-banner > .body {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	padding: 8px 14px 9px 18px;
+	font-size: 18px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+#ui .apex-room-banner .pos { font-weight: 800; }
+#ui .apex-room-banner .up { font-size: 13px; font-weight: 700; color: var(--apx-good, #3ccf6e); }
+#ui .apex-room-banner .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+#ui .apex-room-banner.self .name { color: var(--apx-accent); }
+#ui .apex-room-banner .gain { font-size: 14px; color: #c99bff; }
 
 /* ---------- 14. Modal dialogs (rendered in the top layer, outside #ui) ----------- */
 dialog.message-box-ui,
@@ -1717,6 +1819,85 @@ html dialog.message-box-ui > div > p {
 #ui .multiplayer-ui .apex-race-options > .toggle {
 	margin: 0;
 }
+/* "Change track" in a room: the host screen again, the game's own boxes over the race (apex-room.js, changeTrack) */
+#ui .multiplayer-ui.apex-change-track {
+	position: absolute;
+	inset: 0;
+	z-index: 50;
+	background-color: rgba(0, 0, 0, 0.35);
+	pointer-events: auto;
+}
+#ui .multiplayer-ui.apex-change-track.hidden {
+	display: none;
+}
+/* the vote on a new session (apex-room.js): top centre, over the race, which goes on under it */
+#ui .multiplayer-ui.apex-vote {
+	position: absolute;
+	inset: 0;
+	z-index: 40;
+	pointer-events: none;
+}
+#ui .multiplayer-ui.apex-vote > .host {
+	left: 50%;
+	top: 90px;
+	transform: translateX(-50%);
+}
+#ui .multiplayer-ui.apex-vote > .host > .main-box {
+	width: 460px;
+	max-width: calc(100vw - 32px);
+	pointer-events: auto;
+}
+#ui .multiplayer-ui.apex-vote > .host > .main-box > h2 {
+	font-size: 24px;
+}
+#ui .apex-vote .details > .detail {
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 4px 0;
+	font-size: 19px;
+}
+#ui .apex-vote .details > .detail > .label {
+	color: var(--apx-fg-muted);
+}
+#ui .apex-vote .details > .detail > .value {
+	font-weight: 700;
+	text-align: right;
+}
+#ui .apex-vote .status {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 0 20px 10px 20px;
+	font-size: 17px;
+	color: var(--apx-fg-muted);
+	font-variant-numeric: tabular-nums;
+}
+#ui .apex-vote .buttons {
+	justify-content: flex-end;
+	gap: 8px;
+}
+#ui .apex-vote .buttons > .button.accept.selected {
+	background-color: #1f8f4a;
+	color: #fff;
+}
+#ui .apex-vote .buttons > .button.decline.selected {
+	background-color: var(--apx-accent);
+	color: var(--apx-accent-ink);
+}
+#ui .apex-vote .verdict {
+	flex: 1;
+	padding: 8px 4px;
+	font-size: 20px;
+	font-weight: 700;
+	text-align: center;
+}
+#ui .apex-vote.accepted .verdict {
+	color: #3ccf6e;
+}
+#ui .apex-vote.declined .verdict {
+	color: var(--apx-accent);
+}
 
 /* ---------- 16. Home screen: centred tiles, version badge ------------------------- */
 /* The tiles inherited the generic button padding, which pushed icon and label off centre. */
@@ -1989,4 +2170,190 @@ html dialog.message-box-ui > div > p {
 	display: block;
 	margin: 6px 16px 0;
 	pointer-events: auto;
+}
+
+/* ---------- Spectator and free camera (apex-spectate.js, apex-room.js, apex-lobby.js) ---------- */
+/* while watching a room, the HUD of your own (parked) car goes */
+#ui.apex-spectating .timer-ui,
+#ui.apex-spectating .speedometer-ui,
+#ui.apex-spectating .checkpoint-ui,
+#ui.apex-spectating .time-announcer-ui,
+#ui.apex-spectating .hint-ui,
+#ui.apex-spectating .input-visualizer-ui,
+#ui.apex-spectating .graph-ui,
+#ui.apex-spectating .apex-minimap,
+#ui.apex-spectating .apex-delta,
+#ui.apex-spectating .apex-race-hud {
+	display: none !important;
+}
+#ui .apex-spectate {
+	position: absolute;
+	left: 50%;
+	bottom: calc(22px + var(--safe-area-vertical, 0px));
+	transform: translateX(-50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	max-width: calc(100% - 32px);
+	padding: 10px 16px 12px;
+	border-radius: var(--apx-r-lg);
+	background-color: var(--apx-glass);
+	-webkit-backdrop-filter: var(--apx-blur);
+	backdrop-filter: var(--apx-blur);
+	box-shadow: inset 0 0 0 1px var(--apx-line), 0 8px 24px rgba(0, 0, 0, 0.3);
+	color: var(--apx-fg);
+	font-family: var(--apx-font);
+	pointer-events: none;
+	user-select: none;
+}
+/* the replay viewer: at the top, its time bar is at the bottom */
+#ui .apex-spectate.replay {
+	top: calc(16px + var(--safe-area-vertical, 0px));
+	bottom: auto;
+}
+#ui .apex-spectate.replay.off {
+	padding: 0;
+	background: none;
+	box-shadow: none;
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+}
+#ui .apex-spectate > .head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	white-space: nowrap;
+}
+#ui .apex-spectate > .head > .badge {
+	padding: 3px 9px;
+	border-radius: var(--apx-r-pill);
+	background: var(--apx-accent);
+	color: var(--apx-accent-ink);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.2em;
+}
+#ui .apex-spectate > .head > .name {
+	max-width: 320px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-size: 22px;
+	font-weight: 700;
+}
+#ui .apex-spectate > .head > .info {
+	font-size: 14px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	color: var(--apx-fg-muted);
+	font-variant-numeric: tabular-nums;
+}
+#ui .apex-spectate > .keys {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 6px 16px;
+	font-size: 12px;
+	letter-spacing: 0.04em;
+	color: var(--apx-fg-muted);
+}
+#ui .apex-spectate kbd {
+	display: inline-block;
+	min-width: 18px;
+	margin-right: 4px;
+	padding: 1px 5px;
+	border-radius: 5px;
+	background: var(--apx-fill-hover);
+	box-shadow: inset 0 0 0 1px var(--apx-line-strong);
+	color: var(--apx-fg);
+	font: inherit;
+	font-weight: 700;
+	text-align: center;
+}
+#ui .apex-spectate > .actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 8px;
+}
+#ui .apex-spectate button {
+	padding: 6px 12px;
+	border: none;
+	border-radius: var(--apx-r-md);
+	background: var(--apx-fill-hover);
+	box-shadow: inset 0 0 0 1px var(--apx-line-strong);
+	color: var(--apx-fg);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	cursor: pointer;
+	pointer-events: auto;
+}
+#ui .apex-spectate button:hover {
+	background: var(--apx-line-strong);
+}
+#ui .apex-spectate button.leave,
+#ui .apex-spectate button.open {
+	background: var(--apx-accent);
+	box-shadow: none;
+	color: var(--apx-accent-ink);
+}
+#ui .apex-spectate button.leave:hover,
+#ui .apex-spectate button.open:hover {
+	background: #ff3a42;
+}
+#ui .apex-spectate button.open > kbd {
+	margin: 0 0 0 8px;
+	background: rgba(0, 0, 0, 0.25);
+	box-shadow: none;
+}
+#ui .apex-spectate > .head > .step {
+	padding: 2px 10px;
+	font-size: 18px;
+	letter-spacing: 0;
+}
+/* the room board: the spectators, and the button to watch or drive again */
+#ui .apex-room-board > .watchers {
+	margin-top: 8px;
+	font-size: 11px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--apx-fg-subtle);
+}
+#ui .apex-room-board > .watchers::before {
+	content: "\25C9  ";
+}
+#ui .apex-room-board > .race-button.watch {
+	background: var(--apx-fill-hover);
+	box-shadow: inset 0 0 0 1px var(--apx-line-strong);
+	color: var(--apx-fg);
+}
+#ui .apex-room-board > .race-button.watch:hover {
+	background: var(--apx-line-strong);
+}
+#ui .apex-room-board > .race-button.watch.on {
+	background: var(--apx-accent);
+	box-shadow: none;
+	color: var(--apx-accent-ink);
+}
+/* the game's player list: those who watch */
+#ui .player-list-ui > .content > div.apex-watching {
+	opacity: 0.6;
+}
+#ui .player-list-ui > .content > div.apex-watching::after {
+	content: "\25C9";
+	align-self: center;
+	margin-left: 6px;
+	color: var(--apx-fg-muted);
+}
+/* the room list: Watch, next to Join */
+#ui .multiplayer-ui .apex-lobby .room > .watch-room {
+	flex: 0 0 auto;
+	margin: 0;
+	min-width: 110px;
+	pointer-events: auto;
+	background: var(--apx-fill-hover);
+	box-shadow: inset 0 0 0 1px var(--apx-line-strong);
 }

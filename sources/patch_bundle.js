@@ -107,10 +107,16 @@ const patches = [
     insert: HOOK + 'onPlayers(n);',
   },
   {
+    // a click on a player opens their GoofyTrack card (apex-account.js), to add them as a friend
+    name: 'player list rows open the player card',
+    find: 'i.isSelf&&r.classList.add("self"),(0,R.gn)(this,fr,"f").appendChild(r);',
+    replace: 'i.isSelf&&r.classList.add("self"),' + HOOK + 'playerRow(r,i),(0,R.gn)(this,fr,"f").appendChild(r);',
+  },
+  {
     name: 'remote car update',
     anchor: '((e,n,i,r)=>{if(e!=k.sessionId)return;',
     context: '((e,n,i,r)=>{if(e!=k.sessionId)return;const a=(0,R.gn)(this,as,"f").get(n);',
-    insert: HOOK + 'onRemoteState(n,i,r);window.ApexHud&&window.ApexHud.remote(n,r);window.ApexCollide&&window.ApexCollide.remote(n,i,r);',
+    insert: HOOK + 'onRemoteState(n,i,r);window.ApexHud&&!(window.ApexRoom&&window.ApexRoom.isSpectator(n))&&window.ApexHud.remote(n,r);window.ApexCollide&&window.ApexCollide.remote(n,i,r);',
   },
   {
     // in a race with collisions the other cars are drawn where they are now, not 150 ms ago (apex-collide.js)
@@ -164,13 +170,15 @@ const patches = [
     // at the start: a car that can be hit is always there, in full
     name: 'solid cars are drawn solid',
     find: 'for(const n of(0,R.gn)(this,as,"f").values()){const i=n.car.getPosition().distanceTo(e),r=Math.max(0,Math.min(1,i/5));n.car.hasStarted()?(',
-    replace: 'for(const n of(0,R.gn)(this,as,"f").values()){const i=n.car.getPosition().distanceTo(e),apexSolid=!!(window.ApexCollide&&window.ApexCollide.isSolid(n)),r=apexSolid?1:Math.max(0,Math.min(1,i/5));n.car.hasStarted()||apexSolid?(',
+    // (apex-spectate.js) the cars of those who watch are not drawn; the one watching sees every car in full: its own,
+    // parked at the start, is not where the camera is
+    replace: 'for(const n of(0,R.gn)(this,as,"f").values()){if(window.ApexRoom&&window.ApexRoom.hiddenCar(n)){n.car.setVisible(!1);continue}const i=n.car.getPosition().distanceTo(e),apexSolid=!!(window.ApexCollide&&window.ApexCollide.isSolid(n)||window.ApexRoom&&window.ApexRoom.watching()),r=apexSolid?1:Math.max(0,Math.min(1,i/5));n.car.hasStarted()||apexSolid?(',
   },
   {
     name: 'the name tag of a car can be faded (room ghost)',
     anchor: 'setVisible(e){(0,l.gn)(this,me,"f").visible=e}',
     before: true,
-    insert: 'apexTagOpacity(e){this.apexTagBase=e;const t=(0,l.gn)(this,Ae,"f");null!=t&&(t.material.opacity=e)}',
+    insert: 'apexTagOpacity(e){this.apexTagBase=e;const t=(0,l.gn)(this,Ae,"f");null!=t&&(t.material.opacity=e)}apexTag(){return(0,l.gn)(this,Ae,"f")}',
   },
   // ---------------------------------------------------------------- name tags (settings > Players)
   // The tags above the other cars (ghosts, opponents, room ghost): flag and name, time of the run.
@@ -278,6 +286,34 @@ const patches = [
     replace: 'for(const e of window.ApexRoom?[an.Casual,an.Competitive,"race"]:[an.Casual,an.Competitive]){const t=document.createElement("button");switch(t.className="button",e){case an.Casual:t.textContent=(0,R.gn)(this,bc,"f").get("Casual");break;case an.Competitive:t.textContent=(0,R.gn)(this,bc,"f").get("Competitive");break;case"race":t.textContent=window.ApexRoom.modeLabel()}',
   },
   {
+    // "Change track" in a room opens the host screen again (apex-room.js): the mode and the track, then Confirm.
+    // Its track button opens the game's track selection, whose pick goes back to it (or starts at once without it)
+    name: 'change track opens the host screen',
+    find: '(0,R.gn)(this,pi,"f").addEventListener("click",(()=>{t.playUIClick(),u()}))',
+    replace: '(0,R.gn)(this,pi,"f").addEventListener("click",(()=>{t.playUIClick(),window.ApexRoom?window.ApexRoom.changeTrack(u):u()}))',
+  },
+  {
+    name: 'change track: the track picked goes back to the host screen',
+    find: '((n,i,r)=>{(0,R.gn)(this,Fa,"f")?.hide()',
+    replace: '((n,i,r,apexA,apexB,apexThumbnail)=>{(0,R.gn)(this,Fa,"f")?.hide()',
+  },
+  {
+    name: 'change track: the session starts from the host screen',
+    find: 't.startNewSession(e.gameMode,n,i)',
+    replace: '(window.ApexRoom&&window.ApexRoom.trackPicked(n,i,apexThumbnail)||t.startNewSession(e.gameMode,n,i))',
+  },
+  {
+    // the results, as a session ends: "Next session: track - mode" (apex-room.js) when the host picked it with the mod
+    name: 'session results name the next session',
+    find: 'e.className="session-ended-text",e.textContent=(0,R.gn)(this,lr,"f").get("A new session will start shortly")',
+    replace: 'e.className="session-ended-text",e.textContent=window.ApexRoom&&window.ApexRoom.nextSessionText()||(0,R.gn)(this,lr,"f").get("A new session will start shortly")',
+  },
+  {
+    name: 'change track: back to the host screen when the track selection is cancelled',
+    find: '"cancel",!0,(()=>{(0,R.gn)(this,Fa,"f")?.dispose(),(0,R.GG)(this,Fa,null,"f"),(0,R.gn)(this,_a,"f").isVisible=!0})',
+    replace: '"cancel",!0,(()=>{(0,R.gn)(this,Fa,"f")?.dispose(),(0,R.GG)(this,Fa,null,"f"),(0,R.gn)(this,_a,"f").isVisible=!0,window.ApexRoom&&window.ApexRoom.trackCancelled()})',
+  },
+  {
     name: 'host screen describes the race mode and shows its options',
     find: 'case an.Competitive:c.textContent=(0,R.gn)(this,bc,"f").get("Players compete to set the best time in the session.")}},c=document.createElement("div")',
     replace: 'case an.Competitive:c.textContent=(0,R.gn)(this,bc,"f").get("Players compete to set the best time in the session.");break;case"race":c.textContent=window.ApexRoom.modeInfo()}window.ApexRoom&&window.ApexRoom.hostModeChanged(a,r)},c=document.createElement("div")',
@@ -303,8 +339,8 @@ const patches = [
     name: 'host exposes its connected players',
     anchor: 'getPlayers(){return(0,R.gn)(this,_n,"f").map(',
     before: true,
-    // and what the room list shows of the room: mode (0 casual, 1 competitive), track name, size
-    insert: 'apexPeers(){return(0,R.gn)(this,_n,"f")}apexInfo(){return{mode:(0,R.gn)(this,wn,"f"),track:(0,R.gn)(this,bn,"f")?.trackMetadata?.name??null,maxPlayers:(0,R.gn)(this,Sn,"f")}}',
+    // and what the room list shows of the room: mode (0 casual, 1 competitive), track name, size; and its track ({ trackMetadata, trackData }), which Change track keeps (apex-room.js)
+    insert: 'apexPeers(){return(0,R.gn)(this,_n,"f")}apexInfo(){return{mode:(0,R.gn)(this,wn,"f"),track:(0,R.gn)(this,bn,"f")?.trackMetadata?.name??null,maxPlayers:(0,R.gn)(this,Sn,"f")}}apexSession(){return(0,R.gn)(this,bn,"f")}',
   },
   {
     name: 'player can send mod messages to the host',
@@ -432,6 +468,35 @@ const patches = [
       + 'let d="version=0.6.3&userToken="+encodeURIComponent(apexMod?window.ApexRecords.secret(e):e)+(apexMod?"&userTokenHash="+window.ApexRecords.hash(e):"")+',
   },
 
+  // ---------------------------------------------------------------- the car a record was set with (apex-records.js)
+  // The official boards show the player's car of the moment: the car of each run uploaded to them also goes to
+  // our server, and the boards and runs the game gets from them show the car the record was set with.
+  {
+    name: 'official records keep their car: upload',
+    find: 'submitLeaderboard(e,t,n,i,r,a,s,o){',
+    replace: 'submitLeaderboard(e,t,n,i,r,a,s,o){return this.apexSubmitLeaderboard(e,t,n,i,r,a,s,o).then((t=>(window.ApexRecords&&!' + MOD_TRACK_IDS + '.includes(r)&&window.ApexRecords.uploaded(e,r,s.numberOfFrames,i.serialize()),t)))}'
+      + 'apexSubmitLeaderboard(e,t,n,i,r,a,s,o){',
+  },
+  {
+    name: 'official records keep their car: the player of each entry',
+    find: 'isSelf:t.userId==e}',
+    replace: 'isSelf:t.userId==e,apexUserId:t.userId}',
+  },
+  {
+    name: 'official records keep their car: board',
+    find: 'getLeaderboard(e,t,n,i,r){',
+    replace: 'getLeaderboard(e,t,n,i,r){const apexBoard=this.apexGetLeaderboard(e,t,n,i,r);return!window.ApexRecords||' + MOD_TRACK_IDS + '.includes(t)?apexBoard:'
+      + 'apexBoard.then((a=>window.ApexRecords.styles(t,a.entries.map((e=>({id:e.id,userId:e.apexUserId,frames:e.frames.numberOfFrames})))).then((s=>('
+      + 'a.entries.forEach((e=>{s.has(e.id)&&(e.carStyle=Zt.A.deserializeSafe(s.get(e.id)))})),a)))))}'
+      + 'apexGetLeaderboard(e,t,n,i,r){',
+  },
+  {
+    name: 'official records keep their car: runs replayed',
+    find: 'getRecordings(e){',
+    replace: 'getRecordings(e){return this.apexGetRecordings(e).then((t=>(window.ApexRecords&&t.forEach(((t,n)=>{const i=null!=t&&window.ApexRecords.recordingStyle(e[n]);i&&(t.carStyle=Zt.A.deserializeSafe(i))})),t)))}'
+      + 'apexGetRecordings(e){',
+  },
+
   // ---------------------------------------------------------------- driving HUD (apex-hud.js), every game mode
   // The mini-map gets a key binding of its own, set in the game's controls settings (M by default).
   // Saved bindings of a game without the mod skip the unknown "ApexToggleMinimap" name, and the other way round.
@@ -473,16 +538,17 @@ const patches = [
     before: true,
     insert: 'window.ApexHud&&window.ApexHud.begin({owner:this,track:(0,R.gn)(this,ra,"f"),getSelfCar:()=>(0,R.gn)(this,Xa,"f")}),window.ApexScenery&&window.ApexScenery.track(this,(0,R.gn)(this,ra,"f")),',
   },
-  // The replay viewer builds its own scene: circuits with their own town (Monaco GP) show it there too
+  // The replay viewer builds its own scene: circuits with their own town (Monaco GP) show it there too. It also has
+  // the free camera of apex-spectate.js
   {
     name: 'replay viewer shows the circuit\'s town',
     find: 't.loadTrackData(i),t.refreshMeshes(),a.generateMountains(t.getBounds());const f=t.getStartTransform();',
-    replace: 't.loadTrackData(i),t.refreshMeshes(),a.generateMountains(t.getBounds()),window.ApexScenery&&window.ApexScenery.track(this,{getTrackData:()=>i});const f=t.getStartTransform();',
+    replace: 't.loadTrackData(i),t.refreshMeshes(),a.generateMountains(t.getBounds()),window.ApexScenery&&window.ApexScenery.track(this,{getTrackData:()=>i}),window.ApexSpectate&&window.ApexSpectate.replay(this,(()=>(0,R.gn)(this,sg,"f")||[]));const f=t.getStartTransform();',
   },
   {
     name: 'replay viewer closed',
     find: 'dispose(){(0,R.gn)(this,Qp,"f").clear(),(0,R.gn)(this,Zp,"f").clearMountains();',
-    replace: 'dispose(){window.ApexScenery&&window.ApexScenery.trackEnd(this),(0,R.gn)(this,Qp,"f").clear(),(0,R.gn)(this,Zp,"f").clearMountains();',
+    replace: 'dispose(){window.ApexScenery&&window.ApexScenery.trackEnd(this),window.ApexSpectate&&window.ApexSpectate.replayEnd(this),(0,R.gn)(this,Qp,"f").clear(),(0,R.gn)(this,Zp,"f").clearMountains();',
   },
 
   // ---------------------------------------------------------------- graphics (apex-gfx.js)
@@ -492,10 +558,10 @@ const patches = [
     insert: ',window.ApexGfx&&window.ApexGfx.init((0,i.gn)(this,S,"f"),this)',
   },
   {
-    // apex-show.js borrows the camera for the picture only (race intro, podium)
+    // apex-show.js borrows the camera for the picture only (race intro, podium), apex-spectate.js too (spectator, free camera)
     name: 'before each frame: shadow strength',
     find: '(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f"))}addMaterial(e){',
-    replace: 'window.ApexGfx&&window.ApexGfx.frame((0,i.gn)(this,S,"f"),(0,i.gn)(this,E,"f")),window.ApexScenery&&window.ApexScenery.frame(),window.ApexShow&&window.ApexShow.before((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),window.ApexShow&&window.ApexShow.after((0,i.gn)(this,M,"f"))}addMaterial(e){',
+    replace: 'window.ApexGfx&&window.ApexGfx.frame((0,i.gn)(this,S,"f"),(0,i.gn)(this,E,"f")),window.ApexScenery&&window.ApexScenery.frame(),window.ApexSpectate&&window.ApexSpectate.before((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),window.ApexShow&&window.ApexShow.before((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),window.ApexShow&&window.ApexShow.after((0,i.gn)(this,M,"f")),window.ApexSpectate&&window.ApexSpectate.after((0,i.gn)(this,M,"f"))}addMaterial(e){',
   },
   {
     name: 'sky dome material',

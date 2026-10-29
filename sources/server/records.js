@@ -9,6 +9,14 @@
 //   GET  /recordings?ids=1,2                                    runs to replay (ghosts, "Watch")
 //   POST /leaderboard   userToken, userTokenHash, nickname, countryCode, carStyle, trackId, frames, recording
 //
+// The car shown on a record is the one it was set with: a slower run refreshes the name and flag, not the car.
+//
+// The official boards show the player's car of the moment instead, so the game also sends here the car of each
+// run it uploads to PolyTrack, and swaps it in on the boards it shows when the time is the one it was set with:
+//
+//   POST /carStyle      userToken, userTokenHash, trackId, frames, carStyle      the car of a run on an official board
+//   GET  /carStyles?trackId=&users=hash1,hash2                                    { hash: [frames, carStyle] }
+//
 // One entry per player and track: their best time. A player is known by the hash of their PolyTrack
 // token (the same public id as on the official boards). That hash is public, so a record is only
 // accepted with a secret derived from the token itself; the first record of a player ties the two.
@@ -23,6 +31,8 @@ const MAX_FRAMES = 6e6;                 // the game's own limit is 100 minutes
 const MAX_RECORDING = 10000;            // characters, as in the game
 const MAX_ENTRIES_PER_TRACK = 1000;
 const MAX_TRACKS = 200;
+const MAX_STYLES = 50000;               // cars of official records kept, all tracks together
+const MAX_STYLE_USERS = 100;            // players asked about at once
 const FIRST_ID = 8e15;                  // far above the official record ids: the game tells them apart by value
 const GIST_FILE = 'goofytrack-records.json';
 const GIST_DESCRIPTION = 'GoofyTrack records';
@@ -35,7 +45,9 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
   file = process.env.RECORDS_FILE || path.join(__dirname, 'records.json'), log = console.log } = {}) {
   // tracks: trackId -> [{ id, userId, nickname, countryCode, carStyle, frames, recording, time }]
   // keys:   userId -> sha256(secret)
-  let data = { nextId: FIRST_ID, tracks: {}, keys: {} };
+  // styles: trackId -> userId -> [frames, carStyle], the car of each player's best run on the official boards
+  let data = { nextId: FIRST_ID, tracks: {}, keys: {}, styles: {} };
+  let styleCount = 0;
   let ready = false, saveTimer = null, saving = Promise.resolve();
 
   // ---------------------------------------------------------------- storage
@@ -71,7 +83,9 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     // a host that wipes its disk (Render free plan) forgets every record on each restart
     if (!githubToken && process.env.RENDER) console.error('records: WARNING no GITHUB_TOKEN on Render: the records are lost on every restart (every sleep)');
     const count = Object.values(data.tracks).reduce((n, t) => n + t.length, 0);
-    log(`records: ${count} on ${Object.keys(data.tracks).length} track(s)`);
+    if (data.styles == null) data.styles = {};
+    styleCount = Object.values(data.styles).reduce((n, t) => n + Object.keys(t).length, 0);
+    log(`records: ${count} on ${Object.keys(data.tracks).length} track(s), ${styleCount} car(s) of official records`);
     ready = true;
   }
 
@@ -125,6 +139,13 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     });
   }
 
+  // the secret derived from the player's token: the first one sent ties it to their id
+  function signedBy(userId, secret) {
+    const key = sha256(secret);
+    if (data.keys[userId] == null) data.keys[userId] = key;
+    return data.keys[userId] === key;
+  }
+
   // -> [status, body]
   function submit(form) {
     const trackId = form.get('trackId'), userId = form.get('userTokenHash'), secret = form.get('userToken');
@@ -137,9 +158,7 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     if (typeof carStyle !== 'string' || carStyle.length > 200 || nickname === '') return [400, 'bad profile'];
     if (countryCode != null && !/^[a-z]{2}$/i.test(countryCode)) return [400, 'bad country'];
 
-    const key = sha256(secret);
-    if (data.keys[userId] == null) data.keys[userId] = key;
-    else if (data.keys[userId] !== key) return [403, 'wrong token'];
+    if (!signedBy(userId, secret)) return [403, 'wrong token'];
 
     if (!Object.prototype.hasOwnProperty.call(data.tracks, trackId)) {
       if (Object.keys(data.tracks).length >= MAX_TRACKS) return [507, 'too many tracks'];
@@ -149,9 +168,9 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     const previousPosition = positionOf(entries, userId);
     const old = entries.find(e => e.userId === userId);
     if (old != null && old.frames <= frames) {
-      // not better: keep the entry, refresh the name and car shown on it
-      if (old.nickname !== nickname || old.carStyle !== carStyle || old.countryCode !== (countryCode || null)) {
-        Object.assign(old, { nickname, carStyle, countryCode: countryCode || null });
+      // not better: keep the entry and the car it was set with, refresh the name shown on it
+      if (old.nickname !== nickname || old.countryCode !== (countryCode || null)) {
+        Object.assign(old, { nickname, countryCode: countryCode || null });
         scheduleSave();
       }
       return [200, { uploadId: old.id, previousPosition, newPosition: previousPosition }];
@@ -167,6 +186,33 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     return [200, { uploadId: entry.id, previousPosition, newPosition: positionOf(entries, userId) }];
   }
 
+  // ---------------------------------------------------------------- cars of the official records
+  // -> [status, body]: kept when it is the player's best run seen on that track (the first car of a time stays)
+  function submitStyle(form) {
+    const trackId = form.get('trackId'), userId = form.get('userTokenHash'), secret = form.get('userToken');
+    const frames = Number(form.get('frames')), carStyle = form.get('carStyle');
+    if (!HEX64.test(trackId || '') || !HEX64.test(userId || '') || !HEX64.test(secret || '')) return [400, 'bad request'];
+    if (!Number.isSafeInteger(frames) || frames <= 0 || frames > MAX_FRAMES) return [400, 'bad frames'];
+    if (typeof carStyle !== 'string' || carStyle === '' || carStyle.length > 200) return [400, 'bad car'];
+    if (!signedBy(userId, secret)) return [403, 'wrong token'];
+    const cars = Object.prototype.hasOwnProperty.call(data.styles, trackId) ? data.styles[trackId] : null;
+    const old = cars && Object.prototype.hasOwnProperty.call(cars, userId) ? cars[userId] : null;
+    if (old != null && old[0] <= frames) return [200, { kept: false }];
+    if (old == null && styleCount >= MAX_STYLES) return [507, 'full'];
+    if (old == null) styleCount++;
+    (data.styles[trackId] = cars || {})[userId] = [frames, carStyle];
+    scheduleSave();
+    return [200, { kept: true }];
+  }
+
+  function getStyles(q) {
+    const cars = Object.prototype.hasOwnProperty.call(data.styles, q.get('trackId')) ? data.styles[q.get('trackId')] : {};
+    const out = {};
+    for (const userId of String(q.get('users') || '').split(',').slice(0, MAX_STYLE_USERS))
+      if (Object.prototype.hasOwnProperty.call(cars, userId)) out[userId] = cars[userId];
+    return out;
+  }
+
   // ---------------------------------------------------------------- http
   const reply = (res, status, body) => {
     res.writeHead(status, { 'Content-Type': typeof body === 'string' ? 'text/plain' : 'application/json' });
@@ -175,19 +221,20 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
 
   // true when the request was one of ours
   function handle(req, res, url) {
-    const routes = { '/leaderboard': true, '/leaderboardUserEntry': true, '/recordings': true };
+    const routes = { '/leaderboard': true, '/leaderboardUserEntry': true, '/recordings': true, '/carStyle': true, '/carStyles': true };
     if (!routes[url.pathname]) return false;
     if (!ready) { reply(res, 503, 'records not loaded yet'); return true; }
-    if (req.method === 'GET') {
+    if (req.method === 'GET' && url.pathname !== '/carStyle') {
       if (url.pathname === '/leaderboard') reply(res, 200, getLeaderboard(url.searchParams));
       else if (url.pathname === '/leaderboardUserEntry') reply(res, 200, getUserEntry(url.searchParams));
+      else if (url.pathname === '/carStyles') reply(res, 200, getStyles(url.searchParams));
       else reply(res, 200, getRecordings(url.searchParams));
       return true;
     }
-    if (req.method === 'POST' && url.pathname === '/leaderboard') {
+    if (req.method === 'POST' && (url.pathname === '/leaderboard' || url.pathname === '/carStyle')) {
       let body = '';
       req.on('data', chunk => { body += chunk; if (body.length > 64 * 1024) req.destroy(); });
-      req.on('end', () => { const [status, out] = submit(new URLSearchParams(body)); reply(res, status, out); });
+      req.on('end', () => { const [status, out] = (url.pathname === '/leaderboard' ? submit : submitStyle)(new URLSearchParams(body)); reply(res, status, out); });
       return true;
     }
     reply(res, 405, 'method not allowed');

@@ -1,6 +1,6 @@
 // Apex room extras (multiplayer)
 //
-//   1. Top 5 board   best times set in the current room
+//   1. Session board best times set in the current room, live (places sliding, personal bests on purple, banners)
 //   2. Room ghost    the fastest run seen in the room, replayed alongside your own run
 //   3. Race rooms    hosted with the "Race" game mode. The host runs an event made of:
 //                      qualifying   (optional) free timed laps, the best one sets the grid order
@@ -43,6 +43,7 @@
   const TELEPORT_DISTANCE = 40;       // metres in one frame: a respawn, not a crossing
   const MAX_LAPS = 20;
   const SETTINGS_KEY = 'goofytrack.raceSettings';
+  const WATCH_JOIN_MS = 60000;        // "Watch" in the room list holds for the room joined within a minute
 
   // Game modules (webpack ids of PolyTrack 0.6.3)
   const MOD_TRACK_DATA = 9117, MOD_PARTS = 2600, MOD_ROTATION = 5494;
@@ -52,7 +53,7 @@
 
   // Texts follow the game's language setting (published by a hook), the system language until then
   const TEXTS_FR = {
-    top: 'TOP 5', race: 'COURSE', quali: 'QUALIFS', formation: 'FORMATION', results: 'RÉSULTATS', go: 'PARTEZ',
+    top: 'MEILLEURS TEMPS', race: 'COURSE', quali: 'QUALIFS', formation: 'FORMATION', results: 'RÉSULTATS', go: 'PARTEZ',
     mode: 'Course', modeInfo: 'Qualifications, tour de formation puis course en plusieurs tours, départ arrêté aux feux.',
     laps: 'Tours', qualiOpt: 'Qualifications', formationOpt: 'Tour de formation',
     lapsOf: (a, b) => `${a}/${b}`, lap: 'TOUR', best: 'Meilleur', last: 'Dernier',
@@ -60,9 +61,19 @@
     start: 'Lancer', toFormation: 'Tour de formation', toRace: 'Départ', stop: 'Arrêter', done: 'Terminer',
     qualiHud: 'QUALIFICATIONS', formationHud: 'TOUR DE FORMATION', resultsHud: 'COURSE TERMINÉE',
     buildMismatch: "Erreur : votre version de GoofyTrack n'est pas celle de l'hôte. Installez le même build que lui.",
+    gameMode: 'Mode de jeu', casual: 'Décontracté', competitive: 'Compétitif', changeTrack: 'Changer de piste',
+    casualInfo: 'Les joueurs jouent pour améliorer leurs meilleurs temps personnels.',
+    competitiveInfo: 'Les joueurs s\'affrontent pour établir le meilleur temps de la session.',
+    selectTrack: 'Sélectionner la piste', back: 'Retour', confirm: 'Valider', nextSession: 'Prochaine session', personalBest: 'RECORD PERSONNEL', sessionBest: 'MEILLEUR TEMPS DE LA SESSION',
+    youPropose: 'Vous proposez une nouvelle session', hostProposes: "L'hôte propose une nouvelle session", voteTrack: 'Circuit',
+    yes: 'Oui', no: 'Non', accept: 'Accepter', decline: 'Refuser', cancelVote: 'Annuler la proposition',
+    tally: (y, n, t) => `${y} pour · ${n} contre · ${t} joueurs`,
+    accepted: 'Proposition acceptée', declined: 'Proposition refusée', cancelled: "Proposition annulée par l'hôte",
+    startsIn: s => `Nouvelle session dans ${s} s`,
+    watch: 'Regarder', drive: 'Reprendre le volant', watchers: n => n + (n > 1 ? ' spectateurs' : ' spectateur'),
   };
   const TEXTS_EN = {
-    top: 'TOP 5', race: 'RACE', quali: 'QUALIFYING', formation: 'FORMATION', results: 'RESULTS', go: 'GO',
+    top: 'BEST TIMES', race: 'RACE', quali: 'QUALIFYING', formation: 'FORMATION', results: 'RESULTS', go: 'GO',
     mode: 'Race', modeInfo: 'Qualifying, formation lap, then a race over several laps from a standing start.',
     laps: 'Laps', qualiOpt: 'Qualifying', formationOpt: 'Formation lap',
     lapsOf: (a, b) => `${a}/${b}`, lap: 'LAP', best: 'Best', last: 'Last',
@@ -70,6 +81,16 @@
     start: 'Start', toFormation: 'Formation lap', toRace: 'Start race', stop: 'Stop', done: 'Finish',
     qualiHud: 'QUALIFYING', formationHud: 'FORMATION LAP', resultsHud: 'RACE OVER',
     buildMismatch: "Error: your GoofyTrack build is not the same as the host's. Install the same build.",
+    gameMode: 'Game Mode', casual: 'Casual', competitive: 'Competitive', changeTrack: 'Change Track',
+    casualInfo: 'Players play to improve their personal best times.',
+    competitiveInfo: 'Players compete to set the best time in the session.',
+    selectTrack: 'Select Track', back: 'Back', confirm: 'Confirm', nextSession: 'Next session', personalBest: 'PERSONAL BEST', sessionBest: 'FASTEST OF THE SESSION',
+    youPropose: 'You propose a new session', hostProposes: 'The host proposes a new session', voteTrack: 'Track',
+    yes: 'Yes', no: 'No', accept: 'Accept', decline: 'Decline', cancelVote: 'Cancel the proposal',
+    tally: (y, n, t) => `${y} for · ${n} against · ${t} players`,
+    accepted: 'Proposal accepted', declined: 'Proposal declined', cancelled: 'Proposal cancelled by the host',
+    startsIn: s => `New session in ${s} s`,
+    watch: 'Watch', drive: 'Back to driving', watchers: n => n + (n > 1 ? ' spectators' : ' spectator'),
   };
   const T = new Proxy({}, {
     get: (_, key) => ((window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr') ? TEXTS_FR : TEXTS_EN)[key],
@@ -91,6 +112,8 @@
   let parked = null;       // own car's state while it waits for the lights: what a car at rest looks like
   let stage = null;        // the podium: { cars: [{ car, state, placed }] }, no cars once the player has left it
   let runCounts = true;    // the own run began on the track's start line, on the real track (set when the car spawns)
+  let watchNext = 0;       // the room list's "Watch": when it was clicked, the room then joined is watched (apex-spectate.js)
+  let silenced = null;     // the own car, once its sound is off while watching
 
   const isHost = () => ctx != null && typeof ctx.connection.apexPeers === 'function';
   const room = () => (ctx != null && ctx.connection.apexRoom) || { race: false };
@@ -240,6 +263,127 @@
   };
   const roomMessage = r => ({ t: 'room', race: !!r.race, laps: r.laps, quali: r.quali, formation: r.formation });
 
+  // ================================================================== GoofyTrack accounts of the players
+  // Each player tells the host their account number (apex-account.js) once the host greets them ('acct'), and the
+  // host sends everybody the numbers by player id ('accts'), its own with them: a click on a player in the game's
+  // player list opens their card, from which they can be added as a friend. Kept on the connection, as the room
+  // settings: it can arrive while the track is still loading.
+  let lastConnection = null;           // the room's connection, between two tracks too (the player list)
+  const accountId = id => (Number.isSafeInteger(id) && id > 0 ? id : null);
+  const accountsOf = connection => (connection.apexAccounts ??= new Map());   // player id -> account number or null
+  const accountsMessage = connection => {
+    const list = [...accountsOf(connection)];
+    const self = connection.getPlayers?.().find(p => p.isSelf);
+    if (self != null) list.push([self.id, accountId(window.ApexAccount?.id)]);
+    return { t: 'accts', list };
+  };
+  function hostAccounts(connection) {   // to every player running the mod
+    const bytes = encode(accountsMessage(connection));
+    for (const peer of connection.apexPeers()) if (peer.apexMod) sendToPeer(peer, bytes);
+  }
+  function onAccountMessage(connection, msg, peer) {
+    if (peer != null && msg.t === 'acct') {
+      accountsOf(connection).set(peer.id, accountId(msg.id));
+      hostAccounts(connection);
+      return true;
+    }
+    if (peer == null && msg.t === 'accts' && Array.isArray(msg.list)) {
+      connection.apexAccounts = new Map(msg.list.filter(e => Array.isArray(e) && Number.isInteger(e[0])).map(([id, n]) => [id, accountId(n)]));
+      return true;
+    }
+    return false;
+  }
+  // a row of the game's player list (patch_bundle.js): a click opens the player's card, your own for your row
+  function playerRow(row, player) {
+    if (!window.ApexAccount) return;
+    row.classList.add('apex-openable');
+    row.addEventListener('click', event => {
+      if (event.target.closest('button') != null) return;          // the host's kick button
+      if (player.isSelf) { window.ApexAccount.open(); return; }
+      const known = lastConnection?.apexAccounts;
+      window.ApexAccount.openPlayer(known ? known.get(player.id) ?? null : null);
+    });
+    row.dataset.apexPlayer = player.id;
+    row.classList.toggle('apex-watching', spectatorsOf(lastConnection).has(player.id));
+  }
+
+  // ================================================================== spectators (apex-spectate.js)
+  // A player who watches the room tells the host ('spec'), and the host sends everybody the ids of those who watch
+  // ('specs'), its own with them. Their parked cars are hidden, and left out of the grid, the collisions and the
+  // mini-map. Kept on the connection, as the accounts: watching lasts from one track to the next.
+  const NOBODY = new Set();
+  const spectatorsOf = connection => (connection != null && connection.apexSpectators) || NOBODY;
+  const isSpectator = id => ctx != null && spectatorsOf(ctx.connection).has(id);
+  const watchingSelf = () => ctx != null && ctx.connection.apexWatching === true;
+  function hostSpectators(connection) {   // who watches now: to every player running the mod, when it changed
+    const ids = connection.apexPeers().filter(p => p.apexWatching).map(p => p.id);
+    const self = connection.getPlayers?.().find(p => p.isSelf);
+    if (connection.apexWatching && self != null) ids.push(self.id);
+    const was = spectatorsOf(connection);
+    if (ids.length === was.size && ids.every(id => was.has(id))) return;
+    connection.apexSpectators = new Set(ids);
+    const bytes = encode({ t: 'specs', ids });
+    for (const peer of connection.apexPeers()) if (peer.apexMod) sendToPeer(peer, bytes);
+    spectatorsChanged(connection);
+  }
+  function onSpectatorMessage(connection, msg, peer) {
+    if (peer != null && msg.t === 'spec') { peer.apexWatching = msg.on === true; hostSpectators(connection); return true; }
+    if (peer == null && msg.t === 'specs' && Array.isArray(msg.ids)) {
+      connection.apexSpectators = new Set(msg.ids.filter(Number.isInteger));
+      spectatorsChanged(connection);
+      return true;
+    }
+    return false;
+  }
+  function spectatorsChanged(connection) {
+    const ids = spectatorsOf(connection);
+    for (const r of document.querySelectorAll('#ui [data-apex-player]')) r.classList.toggle('apex-watching', ids.has(Number(r.dataset.apexPlayer)));
+    if (ctx == null || ctx.connection !== connection) return;
+    if (isHost() && race != null) hostCheckProgress();   // a car of the grid may have stopped driving
+    else renderBoard();
+  }
+
+  function setWatching(on) {
+    if (ctx == null || watchingSelf() === on) return;
+    ctx.connection.apexWatching = on;
+    if (isHost()) hostSpectators(ctx.connection);
+    else sendToHost({ t: 'spec', on });
+    if (!on) stopWatching();
+    ctx.restart();       // back on the start line: parked while watching, a fresh run when driving again
+    if (on) startWatching();
+    renderBoard();
+  }
+  function startWatching() {
+    const ui = document.getElementById('ui');
+    if (ui != null) ui.classList.add('apex-spectating');      // the HUD of your own car goes (apex-theme.css)
+    if (window.ApexSpectate) window.ApexSpectate.watch(ctx.owner, watchCars, () => setWatching(false));
+  }
+  function stopWatching() {
+    const ui = document.getElementById('ui');
+    if (ui != null) ui.classList.remove('apex-spectating');
+    if (window.ApexSpectate && ctx != null) window.ApexSpectate.unwatch(ctx.owner);
+  }
+  // The cars that can be watched: in race order during a race, as the game lists the players otherwise
+  function watchCars() {
+    if (ctx == null) return [];
+    const remotes = ctx.remotes(), order = race != null && race.grid != null ? raceOrder() : [];
+    const rank = id => { const i = order.indexOf(id); return i < 0 ? order.length : i; };
+    return players.filter(p => !p.isSelf && !isSpectator(p.id) && remotes.get(p.id)?.car != null)
+      .sort((a, b) => rank(a.id) - rank(b.id))
+      .map(p => ({ id: p.id, name: p.nickname, info: watchInfo(p, order), car: remotes.get(p.id).car }));
+  }
+  function watchInfo(p, order) {
+    if (race != null && race.phase === 'race' && race.grid != null) {
+      const done = race.results.findIndex(r => r.id === p.id);
+      if (done >= 0) return T.finished(done + 1);
+      const at = order.indexOf(p.id), progress = race.progress.get(p.id);
+      return at < 0 ? null : 'P' + (at + 1) + '  ·  ' + T.lap + ' ' + T.lapsOf(Math.min((progress ? progress.lap : 0) + 1, race.laps), race.laps);
+    }
+    if (race != null && race.phase === 'quali') return race.quali.has(p.id) ? formatTime(race.quali.get(p.id)) : null;
+    const frames = recordFrames(p);
+    return frames == null ? null : formatTime(frames);
+  }
+
   // ================================================================== track geometry
   const rotate = (q, v) => {           // rotate vector v by quaternion q
     const { x, y, z, w } = q, [vx, vy, vz] = v;
@@ -380,7 +524,7 @@
       if (race.quali.size > 0) return race.quali.has(p.id) ? race.quali.get(p.id) : null;
       return recordFrames(p);
     };
-    return players.filter(p => modIds.has(p.id)).sort((a, b) => {
+    return players.filter(p => modIds.has(p.id) && !isSpectator(p.id)).sort((a, b) => {
       const fa = timeOf(a), fb = timeOf(b);
       if (fa == null && fb == null) return a.id - b.id;
       if (fa == null) return 1;
@@ -397,12 +541,12 @@
   //   otherwise                     every car that is moving; cars start from the same spot there,
   //                                 and a car inside another one only turns solid once clear of it
   const collisionSession = () => {
-    if (ctx == null || !room().race) return null;
+    if (ctx == null || !room().race || watchingSelf()) return null;
     const onGrid = race != null && race.grid != null && (race.phase === 'formation' || race.phase === 'race');
-    if (!onGrid) return { remotes: ctx.remotes(), solid: () => true, moving: true };
+    if (!onGrid) return { remotes: ctx.remotes(), solid: id => !isSpectator(id), moving: true };
     if (slotFor(selfId) == null) return null;       // joined during the race: only watching
     const grid = race.grid;
-    return { remotes: ctx.remotes(), solid: id => grid.some(s => s.id === id), moving: false };
+    return { remotes: ctx.remotes(), solid: id => grid.some(s => s.id === id) && !isSpectator(id), moving: false };
   };
   // Phases where the cars drive ordinary runs: from the start line, on the real track, on their own clock
   const timeTrialPhase = () => race == null || race.phase === 'quali' || race.phase === 'results';
@@ -467,7 +611,7 @@
     broadcast({ t: 'end', n: race.n });
     endRace();
   }
-  const gridPresent = () => race.grid.filter(s => players.some(p => p.id === s.id)).map(s => s.id);
+  const gridPresent = () => race.grid.filter(s => players.some(p => p.id === s.id) && !isSpectator(s.id)).map(s => s.id);
   function hostCheckProgress() {
     if (race.phase === 'formation' && gridPresent().every(id => race.done.has(id))) { hostGoTo('race'); return; }
     if (race.phase === 'race' && gridPresent().every(id => race.results.some(r => r.id === id))) { race.phase = 'results'; publish(); return; }
@@ -542,6 +686,7 @@
     const now = performance.now();
     renderLights(now);
     if (self == null) return;
+    if (watchingSelf()) { setHud(''); return; }       // the lights are shown, the own car stays parked
     const state = self.getCarState();
     if (race.phase === 'race' && now < race.goAt && state.frames === 0 && !state.hasStarted) parked = state;
     if (state.frames < selfLastFrames && race.phase !== 'results') {   // the player restarted their run
@@ -710,8 +855,10 @@
     }
   }
 
-  function row(cls, cells) {
+  // id: the player's, by which the row slides to its new place (renderBoard)
+  function row(cls, cells, id) {
     const r = el('div', 'row' + cls);
+    if (id != null) r.dataset.id = id;
     for (const [c, text] of cells) r.appendChild(el('span', c, text));
     return r;
   }
@@ -738,14 +885,14 @@
       const pole = ranked.length ? ranked[0][1] : 0;
       ranked.forEach(([id, ms], i) => board.appendChild(row(selfCls(id), [
         ['rank', String(i + 1)], ['name', nameOf(id)], ['time', formatTime(ms)], ['gap', i === 0 ? '' : formatGap(ms - pole)],
-      ])));
+      ], id)));
       if (ranked.length === 0) board.appendChild(el('div', 'empty', '--:--.---'));
       return;
     }
     if (race.phase === 'formation') {
       race.grid.forEach((s, i) => board.appendChild(row(selfCls(s.id) + (race.done.has(s.id) ? '' : ' pending'), [
         ['rank', String(i + 1)], ['name', nameOf(s.id)], ['time', race.done.has(s.id) ? '✓' : ''], ['gap', ''],
-      ])));
+      ], s.id)));
       return;
     }
     const winner = race.results[0];
@@ -755,18 +902,90 @@
       const time = result ? formatTime(result.ms) : T.lapsOf(Math.min((p ? p.lap : 0) + 1, race.laps), race.laps);
       board.appendChild(row(selfCls(id) + (result ? '' : ' pending'), [
         ['rank', String(i + 1)], ['name', nameOf(id)], ['time', time], ['gap', result && result !== winner ? formatGap(result.ms - winner.ms) : ''],
-      ]));
+      ], id));
     });
   }
 
+  // The session board, live as on a TV timing tower: the best times, a player improving theirs gets their time on
+  // purple (a personal best) for a few seconds, a flash, and the places gained; the rows slide to their new places
+  // (renderBoard), and a banner tells it under the board (announce).
+  const BOARD_ROWS = 8;               // and your own row under them when you are further down
+  const IMPROVED_MS = 6000;           // the purple time and the places gained stay this long
+  const FLASH_MS = 1200;
+  const QUIET_MS = 3000;              // after a session starts: the casual mode's personal bests arrive, not news
+  let improved = new Map();           // player id -> { time, gain (ms, null for a first time), from (place or null), to }
+  let sessionStart = 0;
+  const rankedPlayers = list => list.filter(p => recordFrames(p) != null).sort((a, b) => recordFrames(a) - recordFrames(b) || a.id - b.id);
+
+  // the records that came with a new player list: who improved, from which place to which
+  function noteImprovements(before, list) {
+    if (race != null || performance.now() - sessionStart < QUIET_MS) return;
+    const oldRank = rankedPlayers(before).map(p => p.id), newRank = rankedPlayers(list).map(p => p.id);
+    const oldFrames = new Map(before.map(p => [p.id, recordFrames(p)]));
+    for (const p of list) {
+      const frames = recordFrames(p);
+      if (frames == null || !oldFrames.has(p.id)) continue;      // no time, or a player who just came in
+      const was = oldFrames.get(p.id);
+      if (was != null && frames >= was) continue;
+      const from = oldRank.indexOf(p.id), info = { time: performance.now(), gain: was == null ? null : was - frames, from: from < 0 ? null : from + 1, to: newRank.indexOf(p.id) + 1 };
+      improved.set(p.id, info);
+      announce(p, frames, info);
+    }
+    if (improved.size) setTimeout(renderBoard, IMPROVED_MS + 50);   // the purple goes
+  }
+
   function renderTopFive() {
-    const ranked = players.filter(p => recordFrames(p) != null).sort((a, b) => recordFrames(a) - recordFrames(b)).slice(0, 5);
+    const ranked = rankedPlayers(players);
     if (ranked.length === 0) board.appendChild(el('div', 'empty', '--:--.---'));
-    const leaderFrames = ranked.length ? recordFrames(ranked[0]) : 0;
-    ranked.forEach((p, i) => board.appendChild(row((p.isSelf ? ' self' : '') + (ghost != null && ghost.playerId === p.id ? ' ghost' : ''), [
-      ['rank', String(i + 1)], ['name', p.nickname], ['time', formatTime(recordFrames(p))],
-      ['gap', i === 0 ? '' : formatGap(recordFrames(p) - leaderFrames)],
-    ])));
+    const shown = ranked.slice(0, BOARD_ROWS), selfIndex = ranked.findIndex(p => p.isSelf);
+    if (selfIndex >= BOARD_ROWS) shown.push(ranked[selfIndex]);
+    const leaderFrames = ranked.length ? recordFrames(ranked[0]) : 0, now = performance.now();
+    for (const p of shown) {
+      const i = ranked.indexOf(p), info = improved.get(p.id), age = info ? now - info.time : Infinity;
+      const fresh = age < IMPROVED_MS, up = fresh && info.from != null && info.to < info.from ? info.from - info.to : 0;
+      const r = row((p.isSelf ? ' self' : '') + (ghost != null && ghost.playerId === p.id ? ' ghost' : '') + (fresh ? ' pb' : '')
+        + (age < FLASH_MS ? ' flash' : '') + (i >= BOARD_ROWS ? ' detached' : ''), [
+        ['rank', String(i + 1)], ['name', p.nickname], ['time', formatTime(recordFrames(p))],
+        ['gap', i === 0 ? '' : formatGap(recordFrames(p) - leaderFrames)],
+      ], p.id);
+      if (up) r.querySelector('.name').prepend(el('span', 'up', '▲' + up));
+      // the animations go on where they were: the board is drawn again often
+      if (fresh) for (const e of [r, r.querySelector('.time')]) e.style.animationDelay = -Math.round(age) + 'ms';
+      board.appendChild(r);
+    }
+  }
+
+  // ---- the banner: who improved, under the board, one after the other
+  const BANNER_MS = 4000;
+  let banners = [], bannerEl = null, bannerTimer = null;
+  function announce(p, frames, info) {
+    banners = banners.filter(b => b.id !== p.id);          // only their latest time
+    banners.push({ id: p.id, nickname: p.nickname, self: !!p.isSelf, frames, ...info });
+    if (bannerTimer == null) nextBanner();
+  }
+  function nextBanner() {
+    bannerTimer = null;
+    if (bannerEl != null) { bannerEl.remove(); bannerEl = null; }
+    const b = banners.shift();
+    if (b == null || ctx == null) return;
+    bannerEl = el('div', 'apex-room-banner' + (b.to === 1 ? ' leader' : '') + (b.self ? ' self' : ''));
+    const head = el('div', 'head', b.to === 1 ? T.sessionBest : T.personalBest);
+    const body = el('div', 'body');
+    body.appendChild(el('span', 'pos', 'P' + b.to));
+    if (b.from != null && b.to < b.from) body.appendChild(el('span', 'up', '▲' + (b.from - b.to)));
+    body.appendChild(el('span', 'name', b.nickname));
+    body.appendChild(el('span', 'time', formatTime(b.frames)));
+    if (b.gain != null) body.appendChild(el('span', 'gain', '−' + (b.gain / 1000).toFixed(3)));
+    bannerEl.append(head, body);
+    if (board != null) Object.assign(bannerEl.style, { top: (board.offsetTop + board.offsetHeight + 10) + 'px', width: board.offsetWidth + 'px', boxSizing: 'border-box' });
+    document.getElementById('ui').appendChild(bannerEl);
+    bannerTimer = setTimeout(nextBanner, BANNER_MS);
+  }
+  function clearBanners() {
+    clearTimeout(bannerTimer);
+    bannerTimer = null;
+    banners = [];
+    if (bannerEl != null) { bannerEl.remove(); bannerEl = null; }
   }
 
   function button(label, cls, onClick) {
@@ -813,6 +1032,8 @@
       board = el('div', 'apex-room-board');
       document.getElementById('ui').appendChild(board);
     }
+    // where each player's row was, to slide it from there (the rows are made again)
+    const was = new Map([...board.querySelectorAll('.row[data-id]')].map(r => [r.dataset.id, r.getBoundingClientRect().top]));
     board.textContent = '';
     const raceRoom = room().race;
     const titleText = race == null ? T.top
@@ -823,8 +1044,18 @@
 
     if (race != null) renderRaceRows();
     else renderTopFive();
+    for (const r of board.querySelectorAll('.row[data-id]')) {
+      const from = was.get(r.dataset.id), dy = from == null ? 0 : from - r.getBoundingClientRect().top;
+      if (Math.abs(dy) > 1 && r.animate) r.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 650, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+    }
 
-    if (!raceRoom) return;
+    if (raceRoom) renderRaceControls();
+    // watching the room (apex-spectate.js)
+    const watchers = spectatorsOf(ctx.connection).size;
+    if (watchers > 0) board.appendChild(el('div', 'watchers', T.watchers(watchers)));
+    board.appendChild(button(watchingSelf() ? T.drive : T.watch, 'watch' + (watchingSelf() ? ' on' : ''), () => setWatching(!watchingSelf())));
+  }
+  function renderRaceControls() {
     if (window.ApexCollide) board.appendChild(el('div', 'contact', T.contact));
     if (race == null) renderSettings(isHost());
     if (!isHost()) return;
@@ -855,6 +1086,340 @@
     }
   }
 
+  // ================================================================== "Change track": the host screen again
+  // In a room, the game's "Change track" opens its track selection and starts the next session as soon as a track is
+  // picked, in the same mode. The mod puts the host screen back in between, made of the game's own boxes (so it
+  // looks the same): the mode (the game's two and Race, with the race settings), the track (the current one until
+  // another is picked on the game's track selection), then Confirm. The room settings go to the players at once,
+  // the new session starts 5 s later (the game's countdown) in the mode picked.
+  const CASUAL = 0, COMPETITIVE = 1;  // the game's multiplayer modes
+  let changing = null;                // the box: { root, connection, mode, track: { trackMetadata, trackData } | null, thumbnail, select, show }
+  function closeChange() {
+    if (changing == null) return;
+    changing.root.remove();
+    document.removeEventListener('keydown', onChangeKey, true);
+    changing = null;
+  }
+  function onChangeKey(event) {
+    if (event.key !== 'Escape' || changing == null || changing.root.classList.contains('hidden')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeChange();
+  }
+  // select: the game's own "Change track" (its track selection)
+  function changeTrack(select) {
+    if (changing != null) { closeChange(); return; }   // the same button closes it
+    if (ctx == null || !isHost()) { select(); return; }
+    const connection = ctx.connection, info = connection.apexInfo ? connection.apexInfo() : {};
+    changing = {
+      connection, select, thumbnail: null,
+      mode: room().race ? 'race' : info.mode === COMPETITIVE ? COMPETITIVE : CASUAL,
+      track: connection.apexSession ? connection.apexSession() : null,   // the track of the room: the mode alone can change
+    };
+    const root = el('div', 'multiplayer-ui apex-change-track');
+    const host = el('div', 'host');
+    const box = el('div', 'main-box apex-lobby-host');   // apex-lobby.js: no room list toggle here
+    root.appendChild(host);
+    host.appendChild(box);
+    box.appendChild(el('h2', null, T.changeTrack));
+
+    const modes = el('div', 'game-mode-container');
+    box.appendChild(modes);
+    modes.appendChild(el('div', 'title', T.gameMode));
+    const description = el('div', 'info');
+    const describe = () => {
+      description.textContent = changing.mode === 'race' ? T.modeInfo : changing.mode === COMPETITIVE ? T.competitiveInfo : T.casualInfo;
+      renderHostOptions(modes, changing.mode);
+    };
+    const buttons = [[CASUAL, T.casual], [COMPETITIVE, T.competitive], ['race', T.mode]].map(([mode, label]) => {
+      const b = el('button', 'button' + (mode === changing.mode ? ' selected' : ''), label);
+      b.addEventListener('click', () => {
+        changing.mode = mode;
+        for (const other of buttons) other.classList.toggle('selected', other === b);
+        describe();
+      });
+      modes.appendChild(b);
+      return b;
+    });
+    modes.appendChild(description);
+    describe();
+
+    const trackButton = el('button', 'button track-button');
+    box.appendChild(trackButton);
+    trackButton.addEventListener('click', () => { root.classList.add('hidden'); select(); });
+
+    const bar = el('div', 'buttons');
+    box.appendChild(bar);
+    const back = el('button', 'button');
+    back.innerHTML = '<img class="button-icon" src="images/back.svg"> ';
+    back.append(T.back);
+    back.addEventListener('click', closeChange);
+    const confirm = el('button', 'button', T.confirm);
+    confirm.addEventListener('click', applyChange);
+    bar.append(back, confirm);
+
+    // the track, with its thumbnail once one was picked (the current track has none at hand)
+    changing.show = () => {
+      const { track, thumbnail } = changing;
+      trackButton.textContent = '';
+      let image;
+      if (thumbnail instanceof HTMLCanvasElement) {
+        image = el('canvas', 'thumbnail');
+        image.width = thumbnail.width;
+        image.height = thumbnail.height;
+        image.getContext('2d')?.drawImage(thumbnail, 0, 0);
+      } else {
+        image = el('img', 'thumbnail');
+        image.crossOrigin = 'anonymous';
+        image.src = typeof thumbnail === 'string' ? thumbnail : 'images/empty.svg';
+      }
+      trackButton.appendChild(image);
+      trackButton.appendChild(el('div', 'name' + (track ? '' : ' placeholder'), track ? track.trackMetadata.name : T.selectTrack));
+      confirm.disabled = track == null;
+    };
+    changing.show();
+    changing.root = root;
+    document.getElementById('ui').appendChild(root);
+    document.addEventListener('keydown', onChangeKey, true);
+  }
+  // a track picked on the game's track selection: back to the box (true), or the game's own way when it is not open
+  function trackPicked(trackMetadata, trackData, thumbnail) {
+    if (changing == null) return false;
+    changing.track = { trackMetadata, trackData };
+    changing.thumbnail = thumbnail ?? null;
+    changing.root.classList.remove('hidden');
+    changing.show();
+    return true;
+  }
+  function trackCancelled() {
+    if (changing != null) changing.root.classList.remove('hidden');
+  }
+  function applyChange() {
+    const { connection, mode, track } = changing;
+    if (track == null) return;
+    closeChange();
+    const plan = { connection, mode, track, room: mode === 'race' ? { race: true, ...settings } : { race: false } };
+    // with others in the room (running the mod: the others cannot vote), they vote on it first
+    if (electorate(connection).length >= 2) startVote(plan); else launch(plan);
+  }
+  // the next session starts: room settings to the players, then the game's 5 s countdown
+  function launch({ connection, mode, track, room: r }) {
+    connection.apexRoom = r;
+    // the next session, for the results' footer (before the game ends this one: the messages keep their order)
+    const next = { t: 'next', track: String(track.trackMetadata.name || ''), mode: mode === 'race' ? 'race' : mode === COMPETITIVE ? 'competitive' : 'casual' };
+    connection.apexNext = next;
+    for (const message of [roomMessage(r), next]) {
+      const bytes = encode(message);
+      for (const peer of connection.apexPeers()) if (peer.apexMod) sendToPeer(peer, bytes);
+    }
+    if (ctx != null && ctx.connection === connection) renderBoard();
+    connection.startNewSession(mode === 'race' ? COMPETITIVE : mode, track.trackMetadata, track.trackData);
+  }
+  // "Next session: track - mode" in place of the game's "A new session will start shortly" (the player list, as a
+  // session ends); null: the game's text (the host changed the track without the mod)
+  function nextSessionText() {
+    const next = lastConnection && lastConnection.apexNext;
+    if (next == null || !next.track) return null;
+    return `${T.nextSession} : ${next.track} - ${{ casual: T.casual, competitive: T.competitive, race: T.mode }[next.mode] || T.casual}`;
+  }
+  function onNextMessage(connection, msg) {
+    if (msg.t !== 'next' || typeof msg.track !== 'string') return false;
+    connection.apexNext = { track: msg.track.slice(0, 80), mode: msg.mode };
+    // the results may be shown already
+    const text = nextSessionText();
+    for (const e of document.querySelectorAll('#ui .player-list-ui .session-ended-text')) if (text) e.textContent = text;
+    return true;
+  }
+
+  // ================================================================== the vote on a new session
+  // With two players or more, the session the host picked on "Change track" is put to the vote: every player
+  // running the mod sees it (track, mode, race settings) and accepts or declines it; the host's own vote is for.
+  // An absolute majority of the voters (more than half, the host counted) wins: then the session starts (the
+  // game's 5 s countdown), counted down on the popup. It is declined as soon as that majority cannot be reached
+  // any more, or when the time runs out.
+  //   host -> players  { t: 'vote', n, track, mode, race: { laps, quali, formation } | null, yes, no, total, left }
+  //                    (again on every vote), then { t: 'voted', n, ok, yes, no, total, cancelled }
+  //   player -> host   { t: 'ballot', n, yes }
+  const VOTE_MS = 20000;              // to vote
+  const RESULT_MS = 5000;             // the result stays shown: the countdown to the new session
+  let voteCounter = 0;
+  let vote = null;                    // the host's: { n, plan, voters: [player id], yes: Set, no: Set, timer }
+  let popup = null;                   // the popup shown: { root, state, ballot, tick }
+  const selfPlayer = connection => (connection.getPlayers ? connection.getPlayers().find(p => p.isSelf) : null);
+  const electorate = connection => {
+    const self = selfPlayer(connection);
+    return [...(self ? [self.id] : []), ...connection.apexPeers().filter(p => p.apexMod).map(p => p.id)];
+  };
+  const modeName = mode => ({ casual: T.casual, competitive: T.competitive, race: T.mode }[mode] || T.casual);
+  const modeKey = mode => (mode === 'race' ? 'race' : mode === COMPETITIVE ? 'competitive' : 'casual');
+
+  function startVote(plan) {
+    if (vote != null) endVote(false, true);
+    const { connection } = plan;
+    const self = selfPlayer(connection);
+    vote = { n: ++voteCounter, plan, voters: electorate(connection), yes: new Set(self ? [self.id] : []), no: new Set(), deadline: performance.now() + VOTE_MS };
+    vote.timer = setTimeout(() => endVote(false), VOTE_MS);
+    publishVote();
+  }
+  // the voters still in the room
+  const presentVoters = () => {
+    const here = new Set(vote.plan.connection.getPlayers().map(p => p.id));
+    return vote.voters.filter(id => here.has(id));
+  };
+  function voteMessage() {
+    const voters = presentVoters(), { plan } = vote;
+    return {
+      t: 'vote', n: vote.n, track: String(plan.track.trackMetadata.name || ''), mode: modeKey(plan.mode),
+      race: plan.room.race ? { laps: plan.room.laps, quali: !!plan.room.quali, formation: !!plan.room.formation } : null,
+      yes: voters.filter(id => vote.yes.has(id)).length, no: voters.filter(id => vote.no.has(id)).length, total: voters.length,
+      left: Math.max(0, Math.round(vote.deadline - performance.now())),
+    };
+  }
+  function toVoters(message) {
+    const bytes = encode(message);
+    for (const peer of vote.plan.connection.apexPeers()) if (peer.apexMod) sendToPeer(peer, bytes);
+  }
+  // after every vote, and when a player leaves: decided yet?
+  function publishVote() {
+    if (vote == null) return;
+    const m = voteMessage();
+    if (m.yes * 2 > m.total) return endVote(true);
+    if (m.no * 2 >= m.total) return endVote(false);   // the majority is out of reach
+    toVoters(m);
+    showVote({ ...m, host: true });
+  }
+  function endVote(ok, cancelled = false) {
+    if (vote == null) return;
+    const m = voteMessage(), { plan } = vote;
+    clearTimeout(vote.timer);
+    const result = { t: 'voted', n: vote.n, ok, yes: m.yes, no: m.no, total: m.total, cancelled };
+    toVoters(result);
+    vote = null;
+    showResult({ ...m, ...result, host: true });
+    if (ok) launch(plan);
+  }
+  function onBallot(peer, msg) {
+    if (vote == null || msg.n !== vote.n || !vote.voters.includes(peer.id)) return;
+    vote.yes.delete(peer.id);
+    vote.no.delete(peer.id);
+    (msg.yes ? vote.yes : vote.no).add(peer.id);
+    publishVote();
+  }
+  // a player: the host's messages
+  function onVoteMessage(connection, msg) {
+    if (msg.t === 'vote' && Number.isInteger(msg.n) && typeof msg.track === 'string') {
+      showVote({ ...msg, track: msg.track.slice(0, 80), connection });
+      return true;
+    }
+    if (msg.t === 'voted' && popup != null && popup.state.n === msg.n) {
+      showResult({ ...popup.state, ...msg });
+      return true;
+    }
+    return false;
+  }
+
+  // ---- the popup (the game's boxes, as the host screen)
+  function closePopup() {
+    if (popup == null) return;
+    clearInterval(popup.tick);
+    clearTimeout(popup.close);
+    popup.root.remove();
+    popup = null;
+  }
+  function popupBox(title) {
+    const root = el('div', 'multiplayer-ui apex-vote');
+    const host = el('div', 'host');
+    const box = el('div', 'main-box apex-lobby-host');
+    root.appendChild(host);
+    host.appendChild(box);
+    box.appendChild(el('h2', null, title));
+    document.getElementById('ui').appendChild(root);
+    return { root, box };
+  }
+  function voteDetails(box, s) {
+    const details = el('div', 'game-mode-container details');
+    const line = (label, value) => {
+      const row = el('div', 'detail');
+      row.append(el('span', 'label', label), el('span', 'value', value));
+      details.appendChild(row);
+    };
+    line(T.voteTrack, s.track);
+    line(T.gameMode, modeName(s.mode));
+    if (s.race) {
+      line(T.laps, String(s.race.laps));
+      line(T.qualiOpt, s.race.quali ? T.yes : T.no);
+      line(T.formationOpt, s.race.formation ? T.yes : T.no);
+    }
+    box.appendChild(details);
+  }
+  const tallyText = s => T.tally(s.yes, s.no, s.total);
+  function showVote(s) {
+    if (popup != null && (popup.state.n !== s.n || popup.result)) closePopup();
+    if (popup == null) {
+      const { root, box } = popupBox(s.host ? T.youPropose : T.hostProposes);
+      voteDetails(box, s);
+      const status = el('div', 'status');
+      const tally = el('span', 'tally'), time = el('span', 'time');
+      status.append(tally, time);
+      box.appendChild(status);
+      const bar = el('div', 'buttons');
+      box.appendChild(bar);
+      popup = { root, box, tally, time, bar, ballot: null, deadline: 0, state: s };
+      if (s.host) {
+        const cancel = el('button', 'button', T.cancelVote);
+        cancel.addEventListener('click', () => endVote(false, true));
+        bar.appendChild(cancel);
+      } else {
+        const cast = yes => {
+          popup.ballot = yes;
+          decline.classList.toggle('selected', !yes);
+          accept.classList.toggle('selected', yes);
+          s.connection.apexSend(encode({ t: 'ballot', n: s.n, yes }));
+        };
+        const decline = el('button', 'button decline', T.decline), accept = el('button', 'button accept', T.accept);
+        decline.addEventListener('click', () => cast(false));
+        accept.addEventListener('click', () => cast(true));
+        bar.append(decline, accept);
+      }
+      popup.tick = setInterval(() => { if (popup) popup.time.textContent = Math.max(0, Math.ceil((popup.deadline - performance.now()) / 1000)) + ' s'; }, 250);
+      // the host gone: no result will come
+      popup.close = setTimeout(closePopup, (s.left ?? VOTE_MS) + 3000);
+    }
+    popup.state = { ...popup.state, ...s };
+    popup.deadline = performance.now() + (s.left ?? VOTE_MS);
+    popup.tally.textContent = tallyText(s);
+    popup.time.textContent = Math.ceil((s.left ?? VOTE_MS) / 1000) + ' s';
+  }
+  function showResult(s) {
+    if (popup == null || popup.state.n !== s.n) {     // a player who joined during the vote: no popup to update
+      closePopup();
+      const { root, box } = popupBox(s.host ? T.youPropose : T.hostProposes);
+      voteDetails(box, s);
+      const status = el('div', 'status');
+      const tally = el('span', 'tally'), time = el('span', 'time');
+      status.append(tally, time);
+      box.appendChild(status);
+      popup = { root, box, tally, time, bar: el('div', 'buttons'), state: s };
+      box.appendChild(popup.bar);
+    }
+    clearInterval(popup.tick);
+    clearTimeout(popup.close);
+    popup.result = true;
+    popup.state = { ...popup.state, ...s };
+    popup.bar.textContent = '';
+    popup.root.classList.add(s.ok ? 'accepted' : 'declined');
+    popup.tally.textContent = tallyText(s);
+    const verdict = el('div', 'verdict', s.ok ? T.accepted : s.cancelled ? T.cancelled : T.declined);
+    popup.bar.appendChild(verdict);
+    if (s.ok) {
+      const end = performance.now() + RESULT_MS;
+      const count = () => { if (popup) popup.time.textContent = T.startsIn(Math.max(0, Math.ceil((end - performance.now()) / 1000))); };
+      count();
+      popup.tick = setInterval(count, 250);
+    } else popup.time.textContent = '';
+    popup.close = setTimeout(closePopup, s.ok ? RESULT_MS : 3000);
+  }
+
   // ================================================================== hooks called by the game
   window.ApexRoom = {
     // Debug helpers for the console: a read-only snapshot, your own car, and a way to simulate laps
@@ -874,17 +1439,28 @@
     begin(context) {
       this.end();
       ctx = context;
+      sessionStart = performance.now();
+      lastConnection = ctx.connection;
+      ctx.connection.apexNext = null;           // announced for this session: done
       try { course = buildCourse(ctx.track()); } catch (e) { console.error('Apex: could not read the track', e); course = { checkpoints: [], finishes: [], loop: false }; }
       if (isHost() && ctx.connection.apexRoom == null) {
         ctx.connection.apexRoom = pendingRoom || { race: false };
         pendingRoom = null;
       }
       if (window.ApexLobby) window.ApexLobby.session(true);
+      if (watchNext > 0 && performance.now() - watchNext < WATCH_JOIN_MS) ctx.connection.apexWatching = true;
+      watchNext = 0;
+      if (watchingSelf()) {                     // still watching from the last track, or joined to watch
+        if (isHost()) hostSpectators(ctx.connection);
+        else sendToHost({ t: 'spec', on: true });
+        startWatching();
+      }
     },
     onPlayers(list) {
       if (ctx == null) return;
-      const previous = new Map(players.map(p => [p.id, recordFrames(p)]));
+      const previous = new Map(players.map(p => [p.id, recordFrames(p)])), before = players;
       players = list;
+      noteImprovements(before, list);
       const self = list.find(p => p.isSelf);
       selfId = self ? self.id : null;
       if (race == null) {
@@ -896,8 +1472,10 @@
       for (const id of [...best.keys()]) if (!list.some(p => p.id === id)) best.delete(id);
       for (const id of [...live.keys()]) if (!list.some(p => p.id === id)) live.delete(id);
       greetPeers();
+      if (isHost()) hostSpectators(ctx.connection);     // a spectator may have left
       refreshGhost();
       if (isHost() && race != null) hostCheckProgress(); // somebody may have left the grid
+      if (vote != null) publishVote();                   // a voter may have left
       else renderBoard();
     },
     onRemoteState(playerId, resetCounter, state) {
@@ -910,6 +1488,13 @@
       updateStage(dt);
       updateGhost(dt);
       if (window.ApexCollide) window.ApexCollide.frame(collisionSession());
+      if (watchingSelf()) {                     // the own car stays parked, out of sight and silent
+        const self = ctx.getSelfCar();
+        if (self != null) {
+          self.setVisible(false);
+          if (self !== silenced) { self.audioVolume = 0; silenced = self; }
+        }
+      }
       if (window.ApexLobby && isHost()) {               // what the room list shows of this room (apex-lobby.js)
         const self = players.find(p => p.isSelf);
         window.ApexLobby.hostFrame({
@@ -923,11 +1508,18 @@
       // A new session may already have taken over; only its owner can tear it down.
       if (owner !== undefined && ctx != null && ctx.owner !== owner) return;
       if (ctx != null && window.ApexLobby) window.ApexLobby.session(false);
+      stopWatching();
+      silenced = null;
+      closeChange();
+      if (vote != null) { clearTimeout(vote.timer); vote = null; }   // the room left during a vote
+      if (popup != null && !popup.result) closePopup();
       disposeGhost();
       closeStage();
       if (window.ApexShow) window.ApexShow.clear();
       if (window.ApexCollide) window.ApexCollide.frame(null);
       if (board != null) { board.remove(); board = null; }
+      improved = new Map();
+      clearBanners();
       if (lights != null) { lights.remove(); lights = null; }
       setHud('');
       ctx = null; players = []; live = new Map(); best = new Map(); selfId = null; selfLastFrames = -1;
@@ -944,8 +1536,19 @@
       const s = slotFor(selfId);
       return s == null ? null : { position: { x: s.p[0], y: s.p[1], z: s.p[2] }, quaternion: { x: s.q[0], y: s.q[1], z: s.q[2], w: s.q[3] } };
     },
-    locked() { return (race != null && race.phase === 'race' && performance.now() < race.goAt) || watching(); },
+    locked() { return (race != null && race.phase === 'race' && performance.now() < race.goAt) || watching() || watchingSelf(); },
     raceActive() { return race != null; },
+
+    // --- spectators (apex-spectate.js)
+    watchNext(on) { watchNext = on ? performance.now() : 0; },   // the room list: watch (true) or drive (false) the room it joins
+    watching: () => watchingSelf(),
+    isSpectator: id => isSpectator(id),
+    // a car of the game's list of other cars (patch_bundle.js): hidden, its driver watches
+    hiddenCar(entry) {
+      if (ctx == null || spectatorsOf(ctx.connection).size === 0) return false;
+      for (const [id, e] of ctx.remotes()) if (e === entry) return isSpectator(id);
+      return false;
+    },
     // A finished run becomes a personal record (and goes to the leaderboard) like in time trial, except
     // formation and race laps: they start from a grid slot, on the shared clock, on a track that never
     // finishes, so neither their time nor their replay stands on its own. Qualifying laps do count.
@@ -958,26 +1561,45 @@
     hostModeChanged(container, mode) { renderHostOptions(container, mode); },
     hosting(mode) { pendingRoom = mode === 'race' ? { race: true, ...settings } : null; },
     buildMismatch: () => T.buildMismatch,
+    playerRow,
+    changeTrack,
+    trackPicked,
+    trackCancelled,
+    nextSessionText,
 
     // --- mod messages
     fromPeer(connection, peer, payload) {          // host received a mod message from a player
       // The handshake does not depend on a game being loaded: it can arrive while the track is still loading.
+      lastConnection = connection;
       if (payload.length === 0) {
         peer.apexMod = true;
+        sendToPeer(peer, encode(accountsMessage(connection)));
         if (connection.apexRoom != null) sendToPeer(peer, encode(roomMessage(connection.apexRoom)));
+        if (spectatorsOf(connection).size > 0) sendToPeer(peer, encode({ t: 'specs', ids: [...spectatorsOf(connection)] }));
         if (ctx != null && race != null && connection === ctx.connection) sendToPeer(peer, encode(stateMessage()));
         if (ctx != null) renderBoard();
         return;
       }
+      if (!peer.apexMod) return;
+      const msg = decode(payload);
+      if (msg != null && typeof msg === 'object' && (onAccountMessage(connection, msg, peer) || onSpectatorMessage(connection, msg, peer))) return;
+      if (msg != null && msg.t === 'ballot') { onBallot(peer, msg); return; }
       if (ctx == null || connection !== ctx.connection) return;
-      if (peer.apexMod) onMessage(decode(payload), peer);
+      onMessage(msg, peer);
     },
     fromHost(connection, payload) {                // player received a mod message from the host
+      lastConnection = connection;
       if (payload.length === 0) {
-        if (!connection.apexHostIsMod) { connection.apexHostIsMod = true; connection.apexSend(HELLO); }
+        if (!connection.apexHostIsMod) {
+          connection.apexHostIsMod = true;
+          connection.apexSend(HELLO);
+          connection.apexSend(encode({ t: 'acct', id: accountId(window.ApexAccount?.id) }));
+          if (connection.apexWatching) connection.apexSend(encode({ t: 'spec', on: true }));
+        }
         return;
       }
       const msg = decode(payload);
+      if (msg != null && typeof msg === 'object' && (onAccountMessage(connection, msg, null) || onSpectatorMessage(connection, msg, null) || onNextMessage(connection, msg) || onVoteMessage(connection, msg))) return;
       if (msg != null && msg.t === 'room') { connection.apexRoom = roomMessage(msg); if (ctx != null) renderBoard(); return; }
       if (ctx == null || connection !== ctx.connection) return;
       onMessage(msg, null);

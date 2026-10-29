@@ -4,7 +4,7 @@ Jeu de course pour Windows, construit sur [PolyTrack](https://www.kodub.com) 0.6
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation copie votre propre PolyTrack dans ce dossier et le transforme en GoofyTrack.
 
-**Version actuelle : 2.14** 
+**Version actuelle : 2.21.2** 
 Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 
 ![Menu principal](sources/docs/menu.jpg)
@@ -39,6 +39,8 @@ Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 - Liste des rooms : l'écran Multijoueur affiche les rooms ouvertes (hôte, piste, mode, joueurs) ; un clic sur « Rejoindre » suffit, sans code. Le code d'invitation reste possible en dessous, et l'hôte peut garder sa room hors de la liste.
 - Tableau des 5 meilleurs temps de la room, affiché pendant la course.
 - Fantôme du meilleur tour vu dans la room, rejoué à côté de vous.
+- **Mode spectateur** : « Regarder » sur le tableau de la room (ou dans la liste des rooms, à côté de « Rejoindre ») gare votre voiture, la cache aux autres et met la caméra sur un autre pilote. ← → (ou Q D) change de pilote, C change de vue (poursuite, large, embarquée, TV), F passe en caméra libre. Un spectateur ne prend pas de place sur la grille d'une course, ne bloque pas son départ ni son arrivée et n'a pas de collisions. « Reprendre le volant » le remet en piste ([`apex-spectate.js`](sources/apex-spectate.js)).
+- **Caméra libre** (spectateur et replays) : Z Q S D ou les flèches pour avancer, E et A pour monter et descendre, Maj pour aller vite, la molette règle la vitesse, cliquer-glisser pour regarder. Dans le visionneur de replays, F (ou le bouton en haut) l'active et F ou Échap en sort.
 - Les rooms passent par le serveur GoofyTrack (voir plus bas) : un code d'invitation reste valable tant que l'hôte est dans la room, et seuls les joueurs qui ont exactement le même build du mod peuvent la rejoindre.
 
 **Environnement Riviera**

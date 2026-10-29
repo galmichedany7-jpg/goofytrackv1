@@ -391,8 +391,8 @@
       const s = p && await profileStats(p);
       const out = await call('POST', '/account/presence', {
         profile: p && { nickname: p.nickname, countryCode: p.countryCode, carStyle: p.carStyle, tokenHash: s.hash,
-          stats: { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom }, badges: pickedBadges(), bestTrack: get(BEST_KEY), frame: pickedFrame().id,
-          distance: Math.round(bestCount('metres')), driving: Math.round(bestCount('seconds')) },   // the counted badges (the server keeps the most)
+          stats: publicStats(s), badges: pickedBadges(), bestTrack: get(BEST_KEY), frame: pickedFrame().id,
+          distance: Math.round(bestCount('metres')), driving: Math.round(bestCount('seconds')), topSpeed: Math.floor(bestCount('topKmh') * 10) },   // the counted badges (the server keeps the most; tenths of km/h)
         state: homeReady() ? 'menu' : 'playing',
         room: window.ApexLobby ? window.ApexLobby.currentRoom() : null,
       }, acc.session);
@@ -412,16 +412,25 @@
     scheduleBadge();
   }
   setInterval(sendPresence, PRESENCE_EVERY);
+  // what the others see of the Stats tab (renderPlayer), whole numbers (the server takes nothing else)
+  const publicStats = s => {
+    const out = { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom, official: s.official };
+    for (const k of ['metres', 'timedMetres', 'seconds', 'topKmh', 'finishes', 'races', 'wins', 'podiums', 'places']) out[k] = Math.round(s[k] || 0);
+    return out;
+  };
 
   const friendsCall = (method, body) => call(method, '/account/friends', body, account.session);
 
   // ---------------------------------------------------------------- players (a track's author)
   // A track's author is linked to the account of that name: on a track's page, the name opens the player's card.
-  const players = new Map();   // lower-case name -> { time, promise of the card or null }
-  function fetchPlayer(name) {
-    const key = name.trim().toLowerCase(), known = players.get(key);
+  // A friend (friends list) or a player of the room (multiplayer, apex-room.js) is looked up by number.
+  const players = new Map();   // 'name:' + lower-case name, or 'id:' + number -> { time, promise of the card or null }
+  const playerKey = who => (typeof who === 'number' ? 'id:' + who : 'name:' + who.trim().toLowerCase());
+  function fetchPlayer(who) {
+    const key = playerKey(who), known = players.get(key);
     if (known && Date.now() - known.time < 60000) return known.promise;
-    const promise = call('GET', '/account/player?name=' + encodeURIComponent(name.trim()), null, account?.session)
+    const query = typeof who === 'number' ? 'id=' + who : 'name=' + encodeURIComponent(who.trim());
+    const promise = call('GET', '/account/player?' + query, null, account?.session)
       .catch(e => { if (e.status !== 404) players.delete(key); return null; });
     players.set(key, { time: Date.now(), promise });
     return promise;
@@ -633,7 +642,7 @@
       t.metres = Math.round(t.metres);
       t.timedMetres = Math.round(t.timedMetres);
       t.seconds = Math.round(t.seconds * 10) / 10;   // written often (every run's end): whole seconds would drop the short ones
-      t.topKmh = Math.round(t.topKmh);
+      t.topKmh = Math.floor(t.topKmh * 10) / 10;   // tenths: the TGV badge is won at 574.8 km/h
       all[hash] = t;
       pending.delete(token);
       changed = true;
@@ -645,13 +654,13 @@
   // the most among the profiles counted on this PC of one count (metres, seconds), all PCs together, with what is
   // not written yet (the counted badges)
   function bestCount(stat) {
-    const byHash = new Map();
+    const byHash = new Map(), more = (a, b) => (MAX_STATS.includes(stat) ? Math.max(a, b) : a + b);
     for (const key of Object.keys(storage)) {
       if (!key.startsWith(STATS_PREFIX)) continue;
       const all = readJson(key);
-      if (all && typeof all === 'object') for (const [hash, t] of Object.entries(all)) byHash.set(hash, (byHash.get(hash) || 0) + (Number(t?.[stat]) || 0));
+      if (all && typeof all === 'object') for (const [hash, t] of Object.entries(all)) byHash.set(hash, more(byHash.get(hash) || 0, Number(t?.[stat]) || 0));
     }
-    for (const [token, c] of pending) { const hash = hashes.get(token); if (hash) byHash.set(hash, (byHash.get(hash) || 0) + (c[stat] || 0)); }
+    for (const [token, c] of pending) { const hash = hashes.get(token); if (hash) byHash.set(hash, more(byHash.get(hash) || 0, c[stat] || 0)); }
     return Math.max(0, ...byHash.values());
   }
   // the profile's counts, from every PC, with what is not written yet
@@ -736,6 +745,7 @@
     overlay.remove();
     overlay = null;
     viewing = null;
+    viewingFrom = null;
     editing = false;
     securing = null;
     draft = null;
@@ -776,6 +786,8 @@
   const ROAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 4 21M15 3l5 18"/><path d="M12 4v3M12 10.5v3M12 17v3.5" stroke-width="2.6"/></svg>';
   // the time badges: a stopwatch, its button and its hand
   const CLOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M10 2.5h4M12 2.5v3.5M12 13.5V9.5M18.5 6.5l1.5-1.5"/></svg>';
+  // the speed badges: a high-speed train seen from the side, its long nose, its windows and the rail
+  const TRAIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 16.5h15c2.8 0 5-1.3 5-2.7 0-1.3-3.2-2.8-7.5-4.3H2"/><path d="M5 12.5h7.5" stroke-width="2"/><path d="M2.5 20h19" stroke-width="1.6"/></svg>';
   // the VIP diamond: a cut gem in a violet to pink gradient, its facets in light lines
   const DIAMOND = '<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="apx-vip" x1="0" y1="0" x2="1" y2="1">'
     + '<stop offset="0" stop-color="#6a3dff"/><stop offset="0.45" stop-color="#b45cff"/><stop offset="1" stop-color="#ff5fa8"/></linearGradient></defs>'
@@ -786,7 +798,7 @@
   // Shown next to a name, two at most: 'creator' (the check mark), 'vip' (the diamond: friends and the first
   // players), 'p1:<trackId>', 'p2:…', 'p3:…' while
   // first, second or third on that circuit of the mod (gold, silver and bronze), and the counted badges once a profile
-  // has driven that far or that long: 'km:<km>', 'h:<hours>' (COUNTED_BADGES). The server knows who owns what
+  // has driven that far or that long, or that fast: 'km:<km>', 'h:<hours>', 'kmh:<km/h>' (COUNTED_BADGES). The server knows who owns what
   // (server/accounts.js); the player picks theirs in the profile editor or on the Badges tab, and the others see them
   // on their cards, in their friends list, on a track's page.
   const BADGES_KEY = 'goofytrack.badges';     // the badges picked (synced): ids, or nothing for the default
@@ -811,10 +823,23 @@
       { n: 100, short: '100h', name: ['Pilote d\'endurance', 'Endurance driver'], tone: 'red' },
       { n: 250, short: '250h', name: ['Une vie au volant', 'A life at the wheel'], tone: 'world' },
     ] },
+    { kind: 'kmh', stat: 'topKmh', unit: 1, icon: TRAIN, title: ['Vitesse', 'Speed'], tiers: [
+      { n: 574.8, short: 'TGV', name: ['Record du TGV', 'TGV record'], tone: 'tgv' },   // the TGV V150, 3 April 2007
+    ] },
   ];
-  const countText = (family, n) => n.toLocaleString(french() ? 'fr-FR' : 'en-US', { maximumFractionDigits: n < 10 && family.kind === 'h' ? 1 : 0 }) + (family.kind === 'km' ? ' km' : ' h');
-  const doneText = (family, n) => (family.kind === 'km' ? tr(`${countText(family, n)} parcourus`, `${countText(family, n)} driven`) : tr(`${countText(family, n)} au volant`, `${countText(family, n)} at the wheel`));
-  const goalText = (family, n) => (family.kind === 'km' ? tr(`Parcourir ${countText(family, n)}`, `Drive ${countText(family, n)}`) : tr(`Rouler ${countText(family, n)}`, `Drive for ${countText(family, n)}`));
+  const UNITS = { km: ' km', h: ' h', kmh: ' km/h' };
+  const digitsOf = (family, n) => (family.kind === 'kmh' || (n < 10 && family.kind === 'h') ? 1 : 0);
+  const countText = (family, n) => n.toLocaleString(french() ? 'fr-FR' : 'en-US', { maximumFractionDigits: digitsOf(family, n) }) + UNITS[family.kind];
+  const doneText = (family, n) => ({
+    km: tr(`${countText(family, n)} parcourus`, `${countText(family, n)} driven`),
+    h: tr(`${countText(family, n)} au volant`, `${countText(family, n)} at the wheel`),
+    kmh: tr(`${countText(family, n)} atteints`, `${countText(family, n)} reached`),
+  })[family.kind];
+  const goalText = (family, n) => ({
+    km: tr(`Parcourir ${countText(family, n)}`, `Drive ${countText(family, n)}`),
+    h: tr(`Rouler ${countText(family, n)}`, `Drive for ${countText(family, n)}`),
+    kmh: tr(`Atteindre ${countText(family, n)}`, `Reach ${countText(family, n)}`),
+  })[family.kind];
   const earnedCounted = () => COUNTED_BADGES.flatMap(f => { const best = bestCount(f.stat); return f.tiers.filter(t => best >= t.n * f.unit).map(t => f.kind + ':' + t.n); });
   const trackName = id => MOD_TRACKS.find(t => t.id === id)?.name || tr('un circuit du mod', 'a mod circuit');
   function badgeInfo(id) {
@@ -1076,7 +1101,7 @@
         el(text, 'div', 'how', goalText(family, t.n));
         if (!won) {
           el(el(text, 'div', 'progress'), 'span').style.width = Math.min(100, best / t.n * 100) + '%';
-          el(text, 'div', 'how', `${number(best, family.kind === 'h' && best < 10 ? 1 : 0)} / ${countText(family, t.n)}`);
+          el(text, 'div', 'how', `${number(best, digitsOf(family, best))} / ${countText(family, t.n)}`);
         }
         if (on) el(text, 'div', 'shown', tr('Sur votre profil', 'On your profile'));
       }
@@ -1105,32 +1130,46 @@
     }
   }
 
+  // The sections of stats, on one's own Stats tab (from the save) and on another player's card (what their game sent
+  // with its presence: a count it did not send is a dash). circuits: how many; best: { position, trackId } or null,
+  // another player's best place (their own Stats tab lists every board)
+  function statSections(body, s, best) {
+    const section = title => { el(body, 'h3', null, title); return statTile(el(body, 'div', 'stats')); };
+    const known = n => typeof n === 'number' && Number.isFinite(n);
+    const count = n => (known(n) ? String(n) : '—');
+
+    if (known(s.metres)) {        // counted since 2.17, sent to the others since 2.21
+      let tile = section(tr('Au volant', 'Driving'));
+      tile(tr('Distance parcourue', 'Distance driven'), number(s.metres / 1000), 'km');
+      tile(tr('Temps au volant', 'Time driving'), ...(known(s.seconds) ? duration(s.seconds) : ['—']));
+      tile(tr('Vitesse moyenne', 'Average speed'), s.seconds > 0 ? number(s.timedMetres / s.seconds * 3.6, 0) : '—', s.seconds > 0 ? 'km/h' : null);
+      tile(tr('Vitesse max', 'Top speed'), s.topKmh > 0 ? number(s.topKmh, 0) : '—', s.topKmh > 0 ? 'km/h' : null);
+      tile(tr('Arrivées', 'Finishes'), count(s.finishes)).title = tr('Passages de la ligne d\'arrivée, en solo comme en ligne', 'Finish line crossings, solo or online');
+
+      tile = section(tr('Mode Course en multijoueur', 'Multiplayer race mode'));
+      tile(tr('Courses terminées', 'Races finished'), count(s.races));
+      tile(tr('Victoires', 'Wins'), count(s.wins), percent(s.wins, s.races));
+      tile(tr('Podiums', 'Podiums'), count(s.podiums), percent(s.podiums, s.races));
+      tile(tr('Place moyenne', 'Average place'), s.races > 0 ? 'P' + number(s.places / s.races, 1) : '—');
+    }
+
+    const tile = section(tr('Pistes', 'Tracks'));
+    if (best !== undefined) tile(tr('Meilleure place', 'Best place'), best ? 'P' + best.position : '—', best ? MOD_TRACKS.find(t => t.id === best.trackId)?.name : null);
+    if (known(s.official) || best === undefined) {
+      tile(tr('Pistes officielles', 'Official tracks'), `${count(s.official)} / ${OFFICIAL_TRACKS.length}`).title = tr('Bouclées au moins une fois, circuits du mod compris', 'Finished at least once, the mod\'s circuits included');
+    }
+    tile(tr('Circuits du mod', 'Mod circuits'), `${count(s.circuits)} / ${MOD_TRACKS.length}`);
+    tile(tr('Pistes avec un record', 'Tracks with a record'), count(s.tracks));
+    tile(tr('Pistes perso', 'Custom tracks'), count(s.custom));
+  }
+
   // The Stats tab of one's own card: everything the save and the counts know, in sections
   function renderStats(body, p) {
     const wait = el(body, 'p', 'hint', '…');
     profileStats(p).then(s => {
       if (!body.isConnected) return;
       wait.remove();
-      const section = title => { el(body, 'h3', null, title); return statTile(el(body, 'div', 'stats')); };
-
-      let tile = section(tr('Au volant', 'Driving'));
-      tile(tr('Distance parcourue', 'Distance driven'), number(s.metres / 1000), 'km');
-      tile(tr('Temps au volant', 'Time driving'), ...duration(s.seconds));
-      tile(tr('Vitesse moyenne', 'Average speed'), s.seconds > 0 ? number(s.timedMetres / s.seconds * 3.6, 0) : '—', s.seconds > 0 ? 'km/h' : null);
-      tile(tr('Vitesse max', 'Top speed'), s.topKmh > 0 ? number(s.topKmh, 0) : '—', s.topKmh > 0 ? 'km/h' : null);
-      tile(tr('Arrivées', 'Finishes'), String(s.finishes)).title = tr('Passages de la ligne d\'arrivée, en solo comme en ligne', 'Finish line crossings, solo or online');
-
-      tile = section(tr('Mode Course en multijoueur', 'Multiplayer race mode'));
-      tile(tr('Courses terminées', 'Races finished'), String(s.races));
-      tile(tr('Victoires', 'Wins'), String(s.wins), percent(s.wins, s.races));
-      tile(tr('Podiums', 'Podiums'), String(s.podiums), percent(s.podiums, s.races));
-      tile(tr('Place moyenne', 'Average place'), s.races > 0 ? 'P' + number(s.places / s.races, 1) : '—');
-
-      tile = section(tr('Pistes', 'Tracks'));
-      tile(tr('Pistes officielles', 'Official tracks'), `${s.official} / ${OFFICIAL_TRACKS.length}`).title = tr('Bouclées au moins une fois, circuits du mod compris', 'Finished at least once, the mod\'s circuits included');
-      tile(tr('Circuits du mod', 'Mod circuits'), `${s.circuits.length} / ${MOD_TRACKS.length}`);
-      tile(tr('Pistes avec un record', 'Tracks with a record'), String(s.tracks));
-      tile(tr('Pistes perso', 'Custom tracks'), String(s.custom));
+      statSections(body, { ...s, circuits: s.circuits.length });
 
       // the place on each circuit's online board, best first
       el(body, 'h3', null, tr('Classements des circuits du mod', 'Mod circuit boards'));
@@ -1155,7 +1194,8 @@
 
   // ---------------------------------------------------------------- profile card
   let mode = 'login', tab = 'profile';
-  let viewing = null;            // another player's card, shown instead of the profile (a track's author)
+  let viewing = null;            // another player's card, shown instead of the profile (a track's author, a friend)
+  let viewingFrom = null;        // 'friends': the card has a way back to the friends list
   let editing = false;           // the profile editor, shown instead of the profile
   let securing = null;           // the account's security (password, recovery code), shown instead: { code } just made
   function render() {
@@ -1419,15 +1459,21 @@
   }
 
   // ---------------------------------------------------------------- another player's card
-  async function openPlayer(name) {
-    const player = await fetchPlayer(name);
-    if (player == null) return;
+  // who: an account name (a track's author) or number (a friend, a player of the room); from: 'friends' when
+  // opened from the friends list, which the card then goes back to
+  async function openPlayer(who, from = null) {
+    const player = await fetchPlayer(who);
+    if (player == null) {
+      if (typeof who === 'number') notify(tr('Profil injoignable pour l\'instant.', 'This profile cannot be reached right now.'));
+      return;
+    }
     if (player.self) { viewing = null; tab = 'profile'; return overlay ? render() : open(); }   // your own: the profile card
     viewing = player;
+    viewingFrom = from;
     if (overlay) render(); else open();
     // the card may be a minute old: refresh it (online, stats)
-    players.delete(name.trim().toLowerCase());
-    fetchPlayer(name).then(fresh => { if (fresh && viewing?.id === fresh.id) { viewing = fresh; render(); } });
+    players.delete(playerKey(who));
+    fetchPlayer(who).then(fresh => { if (fresh && viewing?.id === fresh.id) { viewing = fresh; render(); } });
   }
 
   // ---------------------------------------------------------------- profile editor
@@ -1597,6 +1643,10 @@
 
   function renderPlayer(panel, v) {
     overlay.dataset.view = 'player';
+    if (viewingFrom === 'friends') {
+      const back = el(panel, 'button', 'back', '← ' + tr('Amis', 'Friends'));
+      back.addEventListener('click', () => { viewing = null; viewingFrom = null; tab = 'friends'; render(); });
+    }
     const header = el(panel, 'div', 'header');
     const car = el(header, 'img', 'car');
     car.src = 'images/car_thumbnail_placeholder.png';
@@ -1617,36 +1667,32 @@
     const body = el(panel, 'div', 'body');
     const line = el(body, 'p', 'state');
     line.append(tr('Compte ', 'Account '), Object.assign(document.createElement('strong'), { textContent: v.name }), ' · ' + stateText(v));
-    const grid = el(body, 'div', 'stats');
-    const tile = (label, value, sub) => {
-      const t = el(grid, 'div', 'stat');
-      el(t, 'div', 'label', label);
-      const valueEl = el(t, 'div', 'value', value);
-      if (sub) el(valueEl, 'span', 'sub', sub);
-    };
-    const st = v.stats || {}, dash = n => (n == null ? '—' : String(n));
-    tile(tr('Pistes bouclées', 'Tracks finished'), dash(st.tracks));
-    tile(tr('Circuits du mod', 'Mod circuits'), `${dash(st.circuits)} / ${MOD_TRACKS.length}`);
-    tile(tr('Meilleure place', 'Best place'), v.best ? 'P' + v.best.position : '—', v.best ? MOD_TRACKS.find(t => t.id === v.best.trackId)?.name : null);
-    tile(tr('Pistes perso', 'Custom tracks'), dash(st.custom));
-    madeList(body, v.name);
-
+    // the friend actions first: the stats run long
     const row = el(body, 'div', 'row');
     if (account == null) {
       el(body, 'p', 'hint', tr('Connectez-vous à un compte GoofyTrack pour ajouter ce joueur en ami.', 'Log in to a GoofyTrack account to add this player as a friend.'));
     } else if (v.friend) {
       el(row, 'span', 'tag', tr('Vous êtes amis', 'You are friends'));
+      if (v.room && homeReady()) el(row, 'button', 'primary', tr('Rejoindre sa room', 'Join their room')).addEventListener('click', () => joinRoom(v.room));
     } else if (v.requested) {
       el(row, 'span', 'tag', tr('Demande d\'ami envoyée', 'Friend request sent'));
     } else {
-      const add = el(row, 'button', 'primary', tr('Ajouter en ami', 'Add as a friend'));
+      // they asked first (a server older than 2.21 does not say): adding them makes you friends
+      const add = el(row, 'button', 'primary', v.asked ? tr('Accepter sa demande d\'ami', 'Accept their friend request') : tr('Ajouter en ami', 'Add as a friend'));
       add.addEventListener('click', () => {
         add.disabled = true;
         friendsCall('POST', { action: 'add', id: v.id })
-          .then(out => { viewing = { ...v, friend: !!out.friends, requested: !out.friends }; render(); })
+          .then(out => { viewing = { ...v, friend: !!out.friends, requested: !out.friends }; render(); sendPresence(); })
           .catch(() => { add.disabled = false; });
       });
     }
+
+    statSections(body, v.stats || {}, v.best || null);
+    if (v.stats && v.stats.metres == null) {
+      el(body, 'p', 'hint', tr('Distance, temps, vitesse et courses : visibles quand ce joueur aura lancé GoofyTrack 2.21.',
+        'Distance, time, speed and races: shown once this player has started GoofyTrack 2.21.'));
+    }
+    madeList(body, v.name);
   }
 
   // ---------------------------------------------------------------- friends tab
@@ -1735,6 +1781,12 @@
 
   function friendRow(list, f, actions) {
     const row = el(list, 'div', 'friend ' + f.state);
+    // a click (not on its buttons) opens the player's card
+    row.tabIndex = 0;
+    row.title = tr('Voir le profil de ', 'See the profile of ') + f.nickname;
+    const show = event => { if (event.target.closest('button') == null) openPlayer(f.id, 'friends'); };
+    row.addEventListener('click', show);
+    row.addEventListener('keydown', event => { if (event.key === 'Enter') show(event); });
     const car = el(row, 'img', 'car');
     car.src = 'images/car_thumbnail_placeholder.png';
     car.draggable = false;
@@ -1930,8 +1982,11 @@
 #ui .badge-km.gold { background: linear-gradient(160deg, #ffe58a 0%, #f2c230 45%, #c48f0a 100%); color: #2a1d02; text-shadow: none; }
 #ui .badge-km.red { background: linear-gradient(160deg, #ffa3a3 0%, #f20d16 45%, #8f070c 100%); }
 #ui .badge-km.world { background: linear-gradient(120deg, #2ecc71, #2f7bff 35%, #9b5cff 60%, #ff5fa8 80%, #f5c518); animation: apx-world-glow 2.8s ease-in-out infinite; }
+/* the TGV record: the V150's silver, steel blue and violet, a light running along it */
+#ui .badge-km.tgv { background: linear-gradient(100deg, #5a2bb3 0%, #2f5fd0 30%, #c9d3e6 55%, #2f5fd0 80%, #5a2bb3 100%); background-size: 220% 100%; animation: apx-tgv-run 2.2s linear infinite; }
+@keyframes apx-tgv-run { from { background-position: 100% 0; } to { background-position: -120% 0; } }
 @keyframes apx-world-glow { 50% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 0 9px rgba(155, 92, 255, 0.85); } }
-@media (prefers-reduced-motion: reduce) { #ui .badge-km.world { animation: none; } }
+@media (prefers-reduced-motion: reduce) { #ui .badge-km.world, #ui .badge-km.tgv { animation: none; } }
 #ui .apex-account h2 .badge-km { height: 24px; padding: 0 8px 0 5px; font-size: 14px; }
 #ui .apex-account h2 .badge-km svg { width: 19px; height: 19px; }
 /* the Badges tab (renderBadgeWall) */
@@ -2024,6 +2079,11 @@
 #ui .apex-account .friends-list { color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); font-size: 14px; }
 #ui .apex-account .friends-list h3 { margin: 14px 0 8px 0; color: var(--apx-fg, #f3f5f8); }
 #ui .apex-account .friend { display: flex; align-items: center; gap: 12px; padding: 8px 10px; margin-bottom: 6px; border-radius: var(--apx-r-md, 12px); background-color: var(--apx-fill, rgba(255, 255, 255, 0.055)); }
+#ui .apex-account .friend { cursor: pointer; outline: none; transition: background-color 0.15s; }
+#ui .apex-account .friend:hover, #ui .apex-account .friend:focus-visible { background-color: var(--apx-fill-hover, rgba(255, 255, 255, 0.11)); }
+#ui .apex-account > .panel > .back {
+  align-self: flex-start; margin: 12px 0 -6px 16px; padding: 5px 12px; font-size: 13px; border-radius: var(--apx-r-pill, 999px);
+}
 #ui .apex-account .friend .car {
   flex: none; width: 46px; height: 46px; border-radius: 50%; object-fit: cover;
   background: radial-gradient(circle at 50% 45%, #4a5266, #1c2029 75%);
@@ -2078,6 +2138,12 @@
     ready, sync, open,
     presence: () => sendPresence(),          // the room changed (apex-lobby.js): friends see it at once
     get name() { return account?.name ?? null; },
+    get id() { return account?.id ?? null; },     // the account's number, told to the players of a room (apex-room.js)
+    // a player's card by account number, from the room's player list (apex-room.js); null: a player with no account
+    openPlayer: id => {
+      if (Number.isSafeInteger(id) && id > 0) return openPlayer(id);
+      notify(tr('Ce joueur n\'est pas connecté à un compte GoofyTrack.', 'This player is not logged in to a GoofyTrack account.'));
+    },
     // the garage's unlockable items this account owns (apex-rarity.js), as the server last said
     get unlocks() { return Array.isArray(account?.unlocks) ? account.unlocks : []; },
     // a creator gives an unlockable item to a player by number, or takes it back (from the console:

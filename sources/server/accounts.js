@@ -24,13 +24,13 @@
 // Each account also has a public number (#0001, #0002... in the order they were made), by which players add
 // each other as friends. Friends see each other's profile (name, flag, car), whether they are playing, and
 // the invite code of the room they are in (hosting it or not), to join it in one click:
-//   POST /account/presence  { profile: { nickname, countryCode, carStyle, badges, distance, driving }, state: 'menu' | 'playing', room: code | null }
+//   POST /account/presence  { profile: { nickname, countryCode, carStyle, badges, distance, driving, topSpeed }, state: 'menu' | 'playing', room: code | null }
 //                           -> { id, verified, badges, unlocks, requests, online }     every 30 s while the game runs
 //   POST /account/unlock    { id, item, give }       -> { id, unlocks }    a creator gives an unlockable item (or takes it, give: false)
 //   GET  /account/friends                            -> { me, friends, requests, sent }
 //   POST /account/friends   { action: 'add' | 'accept' | 'decline' | 'cancel' | 'remove', id }
 //   GET  /account/player?name=<account name> | ?id=<number>   -> a player's public card, no session needed
-//        (with one: whether you are friends): profile, stats the game sends with its presence, best place
+//        (with one: whether you are friends, or asked): profile, stats the game sends with its presence, best place
 //        on the mod's boards. The game links a track's author to the account of that name.
 // Adding someone sends them a request; adding someone who has asked first makes you friends at once.
 // A hosted room comes from the multiplayer server itself (server.js): the game hosting a room says whose it is.
@@ -42,8 +42,8 @@
 // (Julio was #0001 until 2.17, Shyn #0002). CREATOR_IDS ("7777,1") are shown with the "creator" check mark.
 //
 // Badges, shown next to a player's name: 'creator' (CREATOR_IDS), 'vip' (VIP_IDS), 'p1:<trackId>', 'p2:…', 'p3:…' while the
-// player holds that place on a circuit of the mod (records.js), and the counted badges, 'km:<km>' and 'h:<hours>', once
-// they have driven that far or that long (COUNTED_BADGES: the game counts them, in the encrypted save, and gives the
+// player holds that place on a circuit of the mod (records.js), and the counted badges, 'km:<km>', 'h:<hours>' and 'kmh:<km/h>',
+// once they have driven that far, that long or that fast (topSpeed: tenths of km/h) (COUNTED_BADGES: the game counts them, in the encrypted save, and gives the
 // most of its profiles with the presence, profile.distance in metres and profile.driving in seconds; the account keeps
 // the most it heard, so a badge won stays). A player picks up to two of the badges they own (the presence's
 // profile.badges); others see those they still own. The presence answers with all they own.
@@ -71,7 +71,13 @@ const MAX_BADGES = 2;                   // shown next to a name
 const COUNTED_BADGES = {
   km: { count: 'distance', unit: 1000, tiers: [500, 1000, 2500, 5000, 10000, 40075], max: 1e10 },   // metres
   h: { count: 'driving', unit: 3600, tiers: [5, 10, 25, 50, 100, 250], max: 1e9 },                   // seconds
+  kmh: { count: 'topSpeed', unit: 10, tiers: [574.8], max: 20000 },                                  // tenths of km/h (the game's top speed)
 };
+// the stats a game sends with its presence, shown on the player's card (apex-account.js, publicStats), and the most
+// each may say: the tracks, then what the game counts (metres, seconds, km/h, races and the sum of their places)
+const STATS = { tracks: 1e6, circuits: 1e6, custom: 1e6, official: 1e6, metres: 1e11, timedMetres: 1e11, seconds: 1e10, topKmh: 1e4,
+  finishes: 1e8, races: 1e7, wins: 1e7, podiums: 1e7, places: 1e9 };
+const STATS_SAVE = 10 * 60 * 1000;      // the counts change all the time while driving: saved at most every 10 minutes, unless more changed
 const ONLINE = 75 * 1000;               // since the last presence: the game sends one every 30 s
 const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:7777,shyn:1').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([name, id]) => [name.normalize('NFC').toLowerCase(), Number(id)]));
@@ -121,6 +127,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   const bySession = new Map();          // sha256(session) -> key
   const byId = new Map();               // public number -> key
   const presence = new Map();           // key -> { time, state, room } (not saved: who is playing now, in which room)
+  const statsSaved = new Map();         // key -> when the account was last saved for its stats alone
   const rooms = new Map();              // key -> invite code of the room the player hosts
   const dirty = new Set();
   let ready = false, saveTimer = null, saving = Promise.resolve();
@@ -414,7 +421,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
     presence.set(s.key, { time: Date.now(), state, room });
     const p = body.profile;
     if (p && typeof p === 'object') {
-      const count = n => (Number.isSafeInteger(n) && n >= 0 && n < 1e6 ? n : null);
+      const count = (n, max = 1e6) => (Number.isSafeInteger(n) && n >= 0 && n < max ? n : null);
       const stats = p.stats && typeof p.stats === 'object' ? p.stats : {};
       const profile = {
         nickname: String(p.nickname || '').trim().slice(0, 32) || null,
@@ -424,9 +431,17 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
         badges: Array.isArray(p.badges) ? [...new Set(p.badges.filter(b => typeof b === 'string' && b.length <= 80))].slice(0, MAX_BADGES) : [],
         bestTrack: HEX64.test(p.bestTrack || '') ? p.bestTrack : null,   // the best place shown, when tied on several circuits
         frame: Object.hasOwn(FRAMES, p.frame) ? p.frame : null,          // the ring around the car (shown while allowed: view)
-        stats: { tracks: count(stats.tracks), circuits: count(stats.circuits), custom: count(stats.custom) },
+        stats: Object.fromEntries(Object.entries(STATS).map(([k, max]) => [k, count(stats[k], max)])),
       };
-      if (JSON.stringify(profile) !== JSON.stringify(s.account.profile)) { s.account.profile = profile; changed(s.key); }
+      const before = s.account.profile;
+      if (JSON.stringify(profile) !== JSON.stringify(before)) {
+        s.account.profile = profile;   // shown at once; saved now if more than the stats changed
+        const rest = p => JSON.stringify({ ...p, stats: null });
+        if (before == null || rest(profile) !== rest(before) || Date.now() - (statsSaved.get(s.key) ?? 0) > STATS_SAVE) {
+          statsSaved.set(s.key, Date.now());
+          changed(s.key);
+        }
+      }
       // the counted badges: the most the game gave, kept
       for (const c of Object.values(COUNTED_BADGES)) {
         const n = Number(p[c.count]);
@@ -508,6 +523,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       out.self = s.key === key;
       out.friend = friend;
       out.requested = a.requests.includes(s.account.id);
+      out.asked = s.account.requests.includes(a.id);   // they asked first: adding them makes you friends
     }
     return [200, out];
   }

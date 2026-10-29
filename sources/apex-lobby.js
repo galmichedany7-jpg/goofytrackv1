@@ -132,9 +132,14 @@
       el(what, 'span', 'phase', r.mode === 'race' ? (PHASE_TEXT[r.phase] || PHASE_TEXT.null)() : since(r.since));
       const full = r.maxPlayers != null && r.players >= r.maxPlayers;
       el(row, 'div', 'players' + (full ? ' full' : ''), r.players + (r.maxPlayers != null ? '/' + r.maxPlayers : ''));
+      // to watch: the player joins, then watches instead of driving (apex-room.js, apex-spectate.js)
+      const w = el(row, 'button', 'button watch-room', tr('Regarder', 'Watch'));
+      w.disabled = full;
+      w.title = tr('Rejoindre la room en spectateur : votre voiture reste au garage, la caméra suit les pilotes.', 'Join the room as a spectator: your car stays parked, the camera follows the drivers.');
+      w.addEventListener('click', () => { if (window.ApexRoom) window.ApexRoom.watchNext(true); join(r.code); });
       const b = el(row, 'button', 'button join-room', full ? tr('Pleine', 'Full') : tr('Rejoindre', 'Join'));
       b.disabled = full;
-      b.addEventListener('click', () => join(r.code));
+      b.addEventListener('click', () => { if (window.ApexRoom) window.ApexRoom.watchNext(false); join(r.code); });
     }
   }
 
