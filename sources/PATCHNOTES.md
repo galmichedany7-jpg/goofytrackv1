@@ -15,7 +15,7 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
-## V2.21.2 : mode spectateur, vote de session et cartes de joueurs
+## V2.20.2 : mode spectateur, vote de session et cartes de joueurs
 
 On peut maintenant regarder une room sans rouler, voler librement autour des replays, voter pour la session suivante, et ouvrir la carte de n'importe quel joueur.
 
@@ -39,7 +39,7 @@ On peut maintenant regarder une room sans rouler, voler librement autour des rep
 **Classements**
 - Un record garde la voiture avec laquelle il a été fait, sur les circuits du mod comme sur les classements officiels (pour les temps envoyés à partir de cette version).
 
-**Mise à jour** : « Mettre a jour GoofyTrack.bat » (ou `git pull` puis « Construire GoofyTrack.bat »). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.21.2. Le serveur (Render) doit être redéployé pour les statistiques des cartes, le badge TGV et la voiture des records officiels. Le mode spectateur, lui, ne demande rien au serveur.
+**Mise à jour** : « Mettre a jour GoofyTrack.bat » (ou `git pull` puis « Construire GoofyTrack.bat »). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.20.2. Le serveur (Render) doit être redéployé pour les statistiques des cartes, le badge TGV et la voiture des records officiels. Le mode spectateur, lui, ne demande rien au serveur.
 
 ## V2.20.1 : le moteur et l'échappement de la R26
 

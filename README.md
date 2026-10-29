@@ -4,7 +4,7 @@ Jeu de course pour Windows, construit sur [PolyTrack](https://www.kodub.com) 0.6
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation copie votre propre PolyTrack dans ce dossier et le transforme en GoofyTrack.
 
-**Version actuelle : 2.21.2** 
+**Version actuelle : 2.20.2** 
 Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 
 ![Menu principal](sources/docs/menu.jpg)

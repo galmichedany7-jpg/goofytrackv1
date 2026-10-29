@@ -1138,7 +1138,7 @@
     const known = n => typeof n === 'number' && Number.isFinite(n);
     const count = n => (known(n) ? String(n) : '—');
 
-    if (known(s.metres)) {        // counted since 2.17, sent to the others since 2.21
+    if (known(s.metres)) {        // counted since 2.17, sent to the others since 2.20.2
       let tile = section(tr('Au volant', 'Driving'));
       tile(tr('Distance parcourue', 'Distance driven'), number(s.metres / 1000), 'km');
       tile(tr('Temps au volant', 'Time driving'), ...(known(s.seconds) ? duration(s.seconds) : ['—']));
@@ -1677,7 +1677,7 @@
     } else if (v.requested) {
       el(row, 'span', 'tag', tr('Demande d\'ami envoyée', 'Friend request sent'));
     } else {
-      // they asked first (a server older than 2.21 does not say): adding them makes you friends
+      // they asked first (a server older than 2.20.2 does not say): adding them makes you friends
       const add = el(row, 'button', 'primary', v.asked ? tr('Accepter sa demande d\'ami', 'Accept their friend request') : tr('Ajouter en ami', 'Add as a friend'));
       add.addEventListener('click', () => {
         add.disabled = true;
@@ -1689,8 +1689,8 @@
 
     statSections(body, v.stats || {}, v.best || null);
     if (v.stats && v.stats.metres == null) {
-      el(body, 'p', 'hint', tr('Distance, temps, vitesse et courses : visibles quand ce joueur aura lancé GoofyTrack 2.21.',
-        'Distance, time, speed and races: shown once this player has started GoofyTrack 2.21.'));
+      el(body, 'p', 'hint', tr('Distance, temps, vitesse et courses : visibles quand ce joueur aura lancé GoofyTrack 2.20.2.',
+        'Distance, time, speed and races: shown once this player has started GoofyTrack 2.20.2.'));
     }
     madeList(body, v.name);
   }
