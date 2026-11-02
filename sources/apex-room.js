@@ -7,6 +7,14 @@
 //                      formation    (optional) one untimed lap from the grid slots
 //                      race         a look at the circuit, five lights, then N laps; live standings,
 //                                   and a podium once everybody is in (the two scenes: apex-show.js)
+//                    The host picks the event's format:
+//                      race         as above (any track)
+//                      tournament   "tournoi course": the same, on a circuit fit for tournaments (TOURNAMENT_CIRCUITS),
+//                                   two timed attempts each in qualifying, a grid drawn at random without
+//                                   qualifying; the winner counts a tournament won
+//                      endurance    each driver picks a strategy (apex-endurance.js), then a race against the clock
+//                                   (15 to 20 minutes) with fuel, tyres and pit stops; once the time is up, every car
+//                                   finishes as it next crosses the line; the most laps win
 //
 // 1 and 2 only use data the game already exchanges, so they work next to unmodified players.
 // 3 needs extra messages. They travel on the message type the game reserves for mods (255) and are
@@ -39,6 +47,16 @@
   // start part: behind the start line, the pole's box `first` metres back, `gap` metres between two boxes, staggered
   // `side` metres left and right of the middle of the road
   const PAINTED_GRIDS = { 229: { first: 8, gap: 8, side: 4.5, slots: 16 } };
+  // Circuits fit for tournaments, by the id of their start part: a grid painted behind the start line (above) and a
+  // pit lane the cars can drive into (Forest Speedway, tools/forest_design.js). pits, in the start line's frame
+  // (metres; z along the road, > 0 past the line; x across it, on either side): where the cars stop (box), the whole
+  // lane (lane, the speed limiter) and how far it is from the middle of the road. road: the circuit's road part, and
+  // the same road without the wall that closes the pit lane in the other modes (patch_bundle.js, OPEN_PITS)
+  const TOURNAMENT_CIRCUITS = { 229: { pits: { box: [-120, 110], lane: [-175, 165], across: [19, 37] }, road: [228, 227] } };
+  const KINDS = ['race', 'tournament', 'endurance'];
+  const QUALI_ATTEMPTS = 2;           // timed laps each in a tournament's qualifying
+  const MIN_MINUTES = 15, MAX_MINUTES = 20;   // an endurance race
+  const START_GATE = 40;              // metres either side of the middle of the road: the line that counts endurance laps, pit lane included
   const LOOP_DISTANCE = 50;           // metres; a finish this close to the start makes the track a circuit
   const TELEPORT_DISTANCE = 40;       // metres in one frame: a respawn, not a crossing
   const MAX_LAPS = 20;
@@ -71,6 +89,13 @@
     accepted: 'Proposition acceptée', declined: 'Proposition refusée', cancelled: "Proposition annulée par l'hôte",
     startsIn: s => `Nouvelle session dans ${s} s`,
     watch: 'Regarder', drive: 'Reprendre le volant', watchers: n => n + (n > 1 ? ' spectateurs' : ' spectateur'),
+    format: 'Format', kind_race: 'Course libre', kind_tournament: 'Tournoi course', kind_endurance: 'Endurance',
+    info_tournament: 'Tournoi : 2 tentatives chronométrées en qualifications (sinon grille tirée au sort), tour de formation, puis la course. Le vainqueur gagne le tournoi.',
+    info_endurance: 'Tournoi endurance : chacun choisit sa stratégie (essence, vitesse, pneus), puis course contre la montre avec ravitaillements aux stands. Le plus de tours gagne.',
+    minutes: 'Durée', minutesValue: m => `${m} min`, notEligible: 'Tournois : piste sans grille ni stands valides. Seul Forest Speedway convient pour l\'instant.',
+    attempt: (a, b) => `Tentative ${a}/${b}`, qualiDone: 'Qualifications terminées', strategy: 'STRATÉGIES', strategyHud: 'CHOIX DE LA STRATÉGIE',
+    waitStrategies: (a, b) => `${a}/${b} pilotes ont choisi`, timeLeft: t => `${t} restantes`, lastLap: 'DERNIER TOUR', lapsDone: n => `${n} T`,
+    tournamentWon: 'TOURNOI GAGNÉ', randomGrid: 'Grille tirée au sort',
   };
   const TEXTS_EN = {
     top: 'BEST TIMES', race: 'RACE', quali: 'QUALIFYING', formation: 'FORMATION', results: 'RESULTS', go: 'GO',
@@ -91,6 +116,13 @@
     accepted: 'Proposal accepted', declined: 'Proposal declined', cancelled: 'Proposal cancelled by the host',
     startsIn: s => `New session in ${s} s`,
     watch: 'Watch', drive: 'Back to driving', watchers: n => n + (n > 1 ? ' spectators' : ' spectator'),
+    format: 'Format', kind_race: 'Free race', kind_tournament: 'Race tournament', kind_endurance: 'Endurance',
+    info_tournament: 'Tournament: 2 timed attempts in qualifying (otherwise a grid drawn at random), formation lap, then the race. The winner wins the tournament.',
+    info_endurance: 'Endurance tournament: everybody picks a strategy (fuel, speed, tyres), then a race against the clock with pit stops. The most laps win.',
+    minutes: 'Duration', minutesValue: m => `${m} min`, notEligible: 'Tournaments: this track has no proper grid and pits. Only Forest Speedway fits for now.',
+    attempt: (a, b) => `Attempt ${a}/${b}`, qualiDone: 'Qualifying done', strategy: 'STRATEGIES', strategyHud: 'PICK YOUR STRATEGY',
+    waitStrategies: (a, b) => `${a}/${b} drivers have picked`, timeLeft: t => `${t} left`, lastLap: 'LAST LAP', lapsDone: n => `${n} L`,
+    tournamentWon: 'TOURNAMENT WON', randomGrid: 'Grid drawn at random',
   };
   const T = new Proxy({}, {
     get: (_, key) => ((window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr') ? TEXTS_FR : TEXTS_EN)[key],
@@ -132,7 +164,7 @@
   };
 
   // ================================================================== settings
-  const DEFAULT_SETTINGS = { laps: 3, quali: true, formation: true };
+  const DEFAULT_SETTINGS = { laps: 3, quali: true, formation: true, kind: 'race', minutes: MIN_MINUTES };
   function loadSettings() {
     try {
       const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
@@ -147,6 +179,8 @@
     laps: Math.max(1, Math.min(MAX_LAPS, Math.round(Number(s.laps)) || DEFAULT_SETTINGS.laps)),
     quali: s.quali !== false,
     formation: s.formation !== false,
+    kind: KINDS.includes(s.kind) ? s.kind : 'race',
+    minutes: Math.max(MIN_MINUTES, Math.min(MAX_MINUTES, Math.round(Number(s.minutes)) || MIN_MINUTES)),
   });
   let settings = loadSettings();
 
@@ -261,7 +295,10 @@
   const decode = payload => {
     try { return JSON.parse(new TextDecoder().decode(payload)); } catch (e) { return null; }
   };
-  const roomMessage = r => ({ t: 'room', race: !!r.race, laps: r.laps, quali: r.quali, formation: r.formation });
+  const roomMessage = r => ({ t: 'room', race: !!r.race, laps: r.laps, quali: r.quali, formation: r.formation, kind: KINDS.includes(r.kind) ? r.kind : 'race', minutes: r.minutes });
+  // the event's format (null: not a race room), and whether the track can hold a tournament
+  const kindOf = r => (r.race ? (KINDS.includes(r.kind) ? r.kind : 'race') : null);
+  const eligible = () => course != null && course.circuit != null && course.loop;
 
   // ================================================================== GoofyTrack accounts of the players
   // Each player tells the host their account number (apex-account.js) once the host greets them ('acct'), and the
@@ -377,6 +414,7 @@
       const done = race.results.findIndex(r => r.id === p.id);
       if (done >= 0) return T.finished(done + 1);
       const at = order.indexOf(p.id), progress = race.progress.get(p.id);
+      if (endurance()) return at < 0 ? null : 'P' + (at + 1) + '  ·  ' + T.lapsDone(progress ? progress.lap : 0);
       return at < 0 ? null : 'P' + (at + 1) + '  ·  ' + T.lap + ' ' + T.lapsOf(Math.min((progress ? progress.lap : 0) + 1, race.laps), race.laps);
     }
     if (race != null && race.phase === 'quali') return race.quali.has(p.id) ? formatTime(race.quali.get(p.id)) : null;
@@ -400,7 +438,9 @@
     const vec = v => (Array.isArray(v) ? v : [v.x, v.y, v.z]);
     const byOrder = new Map(), finishes = [];
     const track = sceneTrack.getTrackData();
+    let circuit = null;
     track.forEachPart((x, y, z, id, rotation, axis, color, checkpointOrder) => {
+      if (TOURNAMENT_CIRCUITS[id] != null && PAINTED_GRIDS[id] != null) circuit = TOURNAMENT_CIRCUITS[id];
       const detector = partConfig(id).detector;
       if (detector == null) return;
       const q = partRotation(rotation, axis);
@@ -423,7 +463,26 @@
       checkpoints: [...byOrder.keys()].sort((a, b) => a - b).map(k => byOrder.get(k)),
       finishes,
       loop: s != null && finishes.some(f => dist(f.c, s) < LOOP_DISTANCE),
+      circuit,
+      start: start ? { p: s, q: { x: start.quaternion.x, y: start.quaternion.y, z: start.quaternion.z, w: start.quaternion.w } } : null,
     };
+  }
+  // a point in the start line's frame: [across, up, along the road (> 0 past the line)]
+  const startFrame = p => unrotate(course.start.q, [p.x - course.start.p[0], p.y - course.start.p[1], p.z - course.start.p[2]]);
+  // where a point stands in the pit lane of the circuit: 'box', 'lane' or null (apex-endurance.js)
+  function pitAt(p) {
+    if (course == null || course.circuit == null || course.start == null) return null;
+    const { box, lane, across } = course.circuit.pits, [x, y, z] = startFrame(p), off = Math.abs(x);
+    if (Math.abs(y) > 6 || off < across[0] || off > across[1]) return null;
+    return z >= box[0] && z <= box[1] ? 'box' : z >= lane[0] && z <= lane[1] ? 'lane' : null;
+  }
+  // does the segment a -> b cross the start line forwards, on the road or in the pit lane? (endurance laps)
+  function crossesStart(a, b) {
+    if (course == null || course.start == null) return false;
+    const la = startFrame(a), lb = startFrame(b);
+    if (!(la[2] < 0 && lb[2] >= 0)) return false;
+    const k = -la[2] / (lb[2] - la[2]), x = la[0] + (lb[0] - la[0]) * k, y = la[1] + (lb[1] - la[1]) * k;
+    return Math.abs(x) < START_GATE && Math.abs(y) < 8;
   }
 
   // The game tests the whole car body against a detector, here only the car's centre moves:
@@ -450,15 +509,19 @@
 
   // The physics gets the track with one more checkpoint, out of reach above the track, so that a
   // multi-lap race never "finishes" for the game. Laps are counted by updateLaps() instead.
+  // An endurance race also opens the pit lane: the circuit's road is swapped for the same road without the wall
+  // that closes the pit lane everywhere else.
   function simTrack(track) {
     const save = track.toSaveString();
-    if (race == null || race.phase !== 'race' || race.laps <= 1) return save;
+    const endurance = race != null && race.kind === 'endurance' && race.phase === 'race';
+    if (race == null || race.phase !== 'race' || (race.laps <= 1 && !endurance)) return save;
     try {
       const TrackData = gameModule(MOD_TRACK_DATA).A;
       const copy = new TrackData(track.environment, track.sunDirection);
+      const road = endurance && course != null && course.circuit != null ? course.circuit.road : null;
       let maxOrder = -1, maxY = -Infinity, px = 0, pz = 0;
       track.forEachPart((x, y, z, id, rotation, axis, color, checkpointOrder, startOrder) => {
-        copy.addPart(x, y, z, id, rotation, axis, color, checkpointOrder, startOrder);
+        copy.addPart(x, y, z, road != null && id === road[0] ? road[1] : id, rotation, axis, color, checkpointOrder, startOrder);
         if (checkpointOrder != null) maxOrder = Math.max(maxOrder, checkpointOrder);
         if (y > maxY) { maxY = y; px = x; pz = z; }
       });
@@ -516,8 +579,20 @@
     });
   }
 
-  // Mod players, fastest first: qualifying times when there are some, room times otherwise.
+  // The mod players who can take part (not watching)
+  function contenders() {
+    const modIds = new Set(ctx.connection.apexPeers().filter(p => p.apexMod).map(p => p.id));
+    modIds.add(selfId);
+    return players.filter(p => modIds.has(p.id) && !isSpectator(p.id)).map(p => p.id);
+  }
+  // Mod players, fastest first: qualifying times when there are some, room times otherwise. A tournament without
+  // qualifying times draws its grid at random.
   function gridOrder() {
+    if (race.kind !== 'race' && race.quali.size === 0) {
+      const ids = contenders();
+      for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+      return ids;
+    }
     const modIds = new Set(ctx.connection.apexPeers().filter(p => p.apexMod).map(p => p.id));
     modIds.add(selfId);
     const timeOf = p => {
@@ -533,8 +608,8 @@
     }).map(p => p.id);
   }
 
-  const slotFor = id => (race == null || race.grid == null || (race.phase !== 'formation' && race.phase !== 'race')
-    ? null : race.grid.find(s => s.id === id) || null);
+  const gridPhase = () => race != null && (race.phase === 'formation' || race.phase === 'strategy' || race.phase === 'race');
+  const slotFor = id => (race == null || race.grid == null || !gridPhase() ? null : race.grid.find(s => s.id === id) || null);
   // Cars are solid for each other in a race room, all the time: free practice, qualifying,
   // formation lap and race. See apex-collide.js.
   //   on a grid (formation, race)   the cars of the grid, from the moment they sit on it
@@ -542,7 +617,7 @@
   //                                 and a car inside another one only turns solid once clear of it
   const collisionSession = () => {
     if (ctx == null || !room().race || watchingSelf()) return null;
-    const onGrid = race != null && race.grid != null && (race.phase === 'formation' || race.phase === 'race');
+    const onGrid = race != null && race.grid != null && gridPhase();
     if (!onGrid) return { remotes: ctx.remotes(), solid: id => !isSpectator(id), moving: true };
     if (slotFor(selfId) == null) return null;       // joined during the race: only watching
     const grid = race.grid;
@@ -558,32 +633,42 @@
 
   // ================================================================== race: state
   // The host owns the event and broadcasts it whole on every change; players report their own
-  // laps and times. Phases: quali -> formation -> race -> results (quali and formation optional).
+  // laps and times. Phases: quali -> formation -> race -> results (quali and formation optional),
+  // strategy -> race -> results for an endurance race.
   const newRace = () => ({
-    n: ++raceCounter, phase: null, laps: 1, grid: null, goAt: 0,
+    n: ++raceCounter, phase: null, laps: 1, grid: null, goAt: 0, kind: 'race', minutes: 0,
     quali: new Map(),    // id -> best qualifying time (ms)
+    attempts: new Map(), // id -> timed laps driven in a tournament's qualifying
     done: new Set(),     // ids that completed the formation lap
+    strat: new Map(),    // id -> strategy picked for an endurance race (apex-endurance.js)
     progress: new Map(), // id -> { lap, ms } laps completed, race clock at the last one
-    results: [],         // [{ id, ms }] finishing order
+    results: [],         // [{ id, ms, lap }] finishing order
   });
-  const newRun = () => ({ lap: 0, nextCp: 0, lastPos: null, lastLapMs: null, lastLapTime: null, best: null, sentDone: false, finished: false });
+  const newRun = () => ({ lap: 0, nextCp: 0, lastPos: null, lastLapMs: null, lastLapTime: null, best: null, sentDone: false, finished: false, attempts: 0, sentRun: false, strategy: null, picking: false, fuelled: false });
+  const endurance = () => race != null && race.kind === 'endurance';
+  const raceMs = () => race.minutes * 60000;
 
   const stateMessage = () => ({
-    t: 'state', n: race.n, phase: race.phase, laps: race.laps, grid: race.grid,
+    t: 'state', n: race.n, phase: race.phase, laps: race.laps, grid: race.grid, kind: race.kind, minutes: race.minutes,
     lights: race.phase === 'race' ? Math.max(0, Math.round(race.goAt - performance.now())) : 0,
-    quali: [...race.quali], done: [...race.done], progress: [...race.progress].map(([id, p]) => [id, p.lap, p.ms]), results: race.results,
+    quali: [...race.quali], attempts: [...race.attempts], done: [...race.done], strat: [...race.strat].map(([id]) => id),
+    progress: [...race.progress].map(([id, p]) => [id, p.lap, p.ms]), results: race.results,
   });
   const publish = () => { if (isHost() && race != null) broadcast(stateMessage()); renderBoard(); };
 
   function enterPhase(phase) {          // everybody, host included
+    const was = run;
     race.phase = phase;
     if (phase === 'race') race.goAt = performance.now() + INTRO_MS + LIGHTS_MS;
     if (phase !== 'results') {
       run = newRun();
+      if (was != null && phase === 'race') run.strategy = was.strategy;     // picked during the strategy phase
       live = new Map();
       selfLastFrames = -1;
       ctx.restart();
     }
+    if (phase !== 'strategy' && window.ApexEndurance) window.ApexEndurance.closePicker();
+    if (phase !== 'race' && window.ApexEndurance) window.ApexEndurance.stop();
     if (phase === 'race') showIntro();
     renderBoard();
   }
@@ -591,44 +676,76 @@
   // ---- host
   function hostStart() {
     if (!isHost() || race != null) return;
+    const r = room(), kind = kindOf(r);
+    if (kind !== 'race' && !eligible()) return;
     race = newRace();
-    race.laps = raceLaps();
-    const r = room();
-    hostGoTo(r.quali ? 'quali' : r.formation ? 'formation' : 'race');
+    race.kind = kind;
+    race.laps = kind === 'endurance' ? 0 : raceLaps();
+    race.minutes = kind === 'endurance' ? r.minutes : 0;
+    hostGoTo(kind === 'endurance' ? 'strategy' : r.quali ? 'quali' : r.formation ? 'formation' : 'race');
   }
   function hostNext() {
     if (!isHost() || race == null) return;
     if (race.phase === 'quali') hostGoTo(room().formation ? 'formation' : 'race');
-    else if (race.phase === 'formation') hostGoTo('race');
+    else if (race.phase === 'formation' || race.phase === 'strategy') hostGoTo('race');
   }
   function hostGoTo(phase) {
-    if (phase === 'formation' || (phase === 'race' && race.grid == null)) race.grid = buildGrid(gridOrder());
+    if (phase === 'formation' || phase === 'strategy' || (phase === 'race' && race.grid == null)) race.grid = buildGrid(gridOrder());
     enterPhase(phase);
     publish();
   }
   function hostStop() {
     if (!isHost() || race == null) return;
+    // an endurance race whose time is up: the order as it stands is the result, for those still out on the track
+    if (endurance() && race.phase === 'race' && performance.now() - race.goAt >= raceMs()) {
+      for (const id of raceOrder()) if (!race.results.some(r => r.id === id)) {
+        const p = race.progress.get(id);
+        race.results.push({ id, ms: p ? p.ms : Math.round(performance.now() - race.goAt), lap: p ? p.lap : 0 });
+      }
+      race.phase = 'results';
+      publish();
+      return;
+    }
     broadcast({ t: 'end', n: race.n });
     endRace();
   }
   const gridPresent = () => race.grid.filter(s => players.some(p => p.id === s.id) && !isSpectator(s.id)).map(s => s.id);
   function hostCheckProgress() {
+    if (race.phase === 'quali' && race.kind === 'tournament') {
+      const ids = contenders();
+      if (ids.length > 0 && ids.every(id => (race.attempts.get(id) || 0) >= QUALI_ATTEMPTS)) { hostNext(); return; }
+    }
+    if (race.phase === 'strategy' && gridPresent().every(id => race.strat.has(id))) { hostGoTo('race'); return; }
     if (race.phase === 'formation' && gridPresent().every(id => race.done.has(id))) { hostGoTo('race'); return; }
     if (race.phase === 'race' && gridPresent().every(id => race.results.some(r => r.id === id))) { race.phase = 'results'; publish(); return; }
     publish();
   }
+  // endurance results: the most laps first, then who completed them first
+  const byLaps = (a, b) => b.lap - a.lap || a.ms - b.ms;
   function hostReport(id, msg) {        // a player (or the host itself) reported something
     if (race == null || msg.n !== race.n) return;
     const onGrid = race.grid != null && race.grid.some(s => s.id === id); // players who joined later only watch
     if (msg.t !== 'q' && !onGrid) return;
     if (msg.t === 'q' && race.phase === 'quali' && Number.isFinite(msg.ms) && msg.ms > 0) {
+      if (race.kind === 'tournament') {               // two timed laps each, the best one counts
+        const n = race.attempts.get(id) || 0;
+        if (n >= QUALI_ATTEMPTS) return;
+        race.attempts.set(id, n + 1);
+      }
       if (!race.quali.has(id) || msg.ms < race.quali.get(id)) race.quali.set(id, msg.ms);
+    } else if (msg.t === 'st' && race.phase === 'strategy') {
+      race.strat.set(id, window.ApexEndurance ? window.ApexEndurance.strategyOf(msg.s) : msg.s);
     } else if (msg.t === 'fd' && race.phase === 'formation') {
       race.done.add(id);
     } else if (msg.t === 'lap' && race.phase === 'race' && Number.isInteger(msg.lap) && msg.lap >= 0 && Number.isFinite(msg.ms)) {
       if (race.results.some(r => r.id === id)) return;
-      race.progress.set(id, { lap: Math.min(msg.lap, race.laps), ms: msg.ms });
-      if (msg.lap >= race.laps) race.results.push({ id, ms: msg.ms });
+      if (race.kind === 'endurance') {
+        race.progress.set(id, { lap: msg.lap, ms: msg.ms });
+        if (msg.done === true) { race.results.push({ id, ms: msg.ms, lap: msg.lap }); race.results.sort(byLaps); }
+      } else {
+        race.progress.set(id, { lap: Math.min(msg.lap, race.laps), ms: msg.ms });
+        if (msg.lap >= race.laps) race.results.push({ id, ms: msg.ms });
+      }
     } else return;
     hostCheckProgress();
   }
@@ -646,7 +763,11 @@
     const phaseChanged = fresh || race.phase !== msg.phase;
     race.laps = msg.laps;
     race.grid = msg.grid;
+    race.kind = KINDS.includes(msg.kind) ? msg.kind : 'race';
+    race.minutes = Number(msg.minutes) || 0;
     race.quali = new Map(msg.quali);
+    race.attempts = new Map(Array.isArray(msg.attempts) ? msg.attempts : []);
+    race.strat = new Map((Array.isArray(msg.strat) ? msg.strat : []).map(id => [id, true]));   // who has picked, not what
     race.done = new Set(msg.done);
     race.progress = new Map(msg.progress.map(([id, lap, ms]) => [id, { lap, ms }]));
     race.results = msg.results;
@@ -662,6 +783,7 @@
   function endRace() {
     race = null;
     run = null;
+    if (window.ApexEndurance) { window.ApexEndurance.stop(); window.ApexEndurance.closePicker(); }
     closeStage();
     if (lights != null) { lights.remove(); lights = null; }
     setHud('');
@@ -690,24 +812,76 @@
     const state = self.getCarState();
     if (race.phase === 'race' && now < race.goAt && state.frames === 0 && !state.hasStarted) parked = state;
     if (state.frames < selfLastFrames && race.phase !== 'results') {   // the player restarted their run
-      const keepBest = run.best;
+      const was = run;
       run = newRun();
-      run.best = keepBest;
-      if (race.phase === 'race' && now >= race.goAt) report({ t: 'lap', lap: 0, ms: Math.round(now - race.goAt) });
+      run.best = was.best;
+      run.attempts = was.attempts;
+      run.strategy = was.strategy;
+      run.picking = was.picking;
+      if (endurance()) {
+        // back on the grid in an endurance race: the laps done stay, the lap under way starts again, so does the fuel
+        Object.assign(run, { lap: was.lap, lastLapMs: was.lastLapMs, lastLapTime: was.lastLapTime, finished: was.finished, fuelled: was.fuelled });
+      } else if (race.phase === 'race' && now >= race.goAt) report({ t: 'lap', lap: 0, ms: Math.round(now - race.goAt) });
     }
     selfLastFrames = state.frames;
 
     if (race.phase === 'quali' && self.hasFinished()) {
       const ms = self.getFinishTime().numberOfFrames;
-      if (run.best == null || ms < run.best) { run.best = ms; report({ t: 'q', ms }); }
+      if (race.kind === 'tournament') {               // each timed lap is an attempt, two of them
+        if (!run.sentRun && run.attempts < QUALI_ATTEMPTS) {
+          run.sentRun = true;
+          run.attempts++;
+          if (run.best == null || ms < run.best) run.best = ms;
+          report({ t: 'q', ms });
+        }
+      } else if (run.best == null || ms < run.best) { run.best = ms; report({ t: 'q', ms }); }
+    } else if (race.phase === 'strategy') {
+      pickStrategy();
     } else if (race.phase === 'formation' && self.hasFinished() && !run.sentDone) {
       run.sentDone = true;
       report({ t: 'fd' });
     } else if (race.phase === 'race' && now >= race.goAt) {
       if (!self.hasStarted()) self.start();
-      updateLaps(state, now);
+      if (endurance()) updateEndurance(state, now);
+      else updateLaps(state, now);
     }
     renderHud(now);
+  }
+
+  // The strategy of an endurance race, picked on a popup before the start (apex-endurance.js): it can be changed
+  // until the race starts; the host only learns that the driver has picked.
+  function pickStrategy() {
+    if (run.picking || !window.ApexEndurance || slotFor(selfId) == null) return;
+    run.picking = true;
+    window.ApexEndurance.pick(run.strategy, key => {
+      if (run == null || race == null || race.phase !== 'strategy') return;
+      run.strategy = key;
+      report({ t: 'st', s: key });
+    });
+  }
+
+  // Endurance laps: the start line crossed forwards after every checkpoint, by the road or the pit lane. Once the time
+  // is up, the next crossing ends the driver's race.
+  function updateEndurance(state, now) {
+    if (slotFor(selfId) == null) return;              // joined during the race: only watching
+    if (!run.fuelled && window.ApexEndurance) { run.fuelled = true; window.ApexEndurance.start(run.strategy); }
+    if (run.finished) { if (window.ApexEndurance) window.ApexEndurance.stop(); return; }
+    if (window.ApexEndurance) window.ApexEndurance.frame(state, pitAt);
+    const p = state.position, last = run.lastPos;
+    run.lastPos = { x: p.x, y: p.y, z: p.z };
+    if (last == null || Math.hypot(p.x - last.x, p.y - last.y, p.z - last.z) >= TELEPORT_DISTANCE) return;
+    if (run.nextCp < course.checkpoints.length) {
+      if (course.checkpoints[run.nextCp].some(d => crosses(d, last, p))) run.nextCp++;
+      return;
+    }
+    if (!crossesStart(last, p)) return;
+    const ms = Math.round(now - race.goAt);
+    run.lap++;
+    run.nextCp = 0;
+    run.lastLapTime = ms - (run.lastLapMs || 0);
+    run.lastLapMs = ms;
+    if (ms >= raceMs()) run.finished = true;
+    report({ t: 'lap', lap: run.lap, ms, done: run.finished });
   }
 
   // Race time is measured on the shared clock (since lights out), not on the car's own timer,
@@ -837,23 +1011,43 @@
     if (race == null || run == null) { setHud(''); return; }
     // the profile card counts the races finished against others, the wins and the podiums (apex-account.js);
     // the last car in may only learn its place with the results
-    if ((race.phase === 'race' || race.phase === 'results') && run.finished && !run.counted && race.grid != null && race.grid.length >= 2) {
+    // (an endurance race's places are only known with the results: the cars finish one lap after another)
+    // the winner of a tournament also counts a tournament won
+    const placed = race.phase === 'results' || (race.phase === 'race' && !endurance() && run.finished);
+    if (placed && !run.counted && race.grid != null && race.grid.length >= 2 && race.grid.some(s => s.id === selfId)) {
       const position = race.results.findIndex(r => r.id === selfId);
-      if (position >= 0) { run.counted = true; window.ApexStats?.race(position + 1); }
+      if (position >= 0) {
+        run.counted = true;
+        window.ApexStats?.race(position + 1);
+        if (race.kind !== 'race' && position === 0) { run.won = true; window.ApexStats?.tournament(); }
+      }
     }
-    if (race.phase === 'quali') setHud(T.qualiHud, run.best != null ? T.best + '  ' + formatTime(run.best) : null);
-    else if (race.phase === 'formation') setHud(T.formationHud, run.sentDone ? T.waitGrid : null);
+    if (race.phase === 'quali') {
+      if (race.kind === 'tournament') setHud(T.qualiHud, (run.attempts >= QUALI_ATTEMPTS ? T.qualiDone : T.attempt(run.attempts + 1, QUALI_ATTEMPTS))
+        + (run.best != null ? '  ·  ' + T.best + '  ' + formatTime(run.best) : ''));
+      else setHud(T.qualiHud, run.best != null ? T.best + '  ' + formatTime(run.best) : null);
+    } else if (race.phase === 'strategy') {
+      const grid = race.grid ? gridPresent() : [];
+      setHud(T.strategyHud, T.waitStrategies(grid.filter(id => race.strat.has(id)).length, grid.length));
+      if (window.ApexEndurance) window.ApexEndurance.pickerStatus(T.waitStrategies(grid.filter(id => race.strat.has(id)).length, grid.length));
+    } else if (race.phase === 'formation') setHud(T.formationHud, run.sentDone ? T.waitGrid : null);
     else if (race.phase === 'race') {
       if (now < race.goAt) { setHud(''); return; }
       const position = race.results.findIndex(r => r.id === selfId);
-      if (run.finished && position >= 0) setHud(T.finished(position + 1), formatTime(race.results[position].ms));
+      if (endurance()) {
+        const left = raceMs() - (now - race.goAt);
+        if (run.finished) setHud(T.finished(position >= 0 ? position + 1 : '-'), T.lapsDone(run.lap));
+        else setHud(left > 0 ? T.lap + '  ' + (run.lap + 1) : T.lastLap,
+          (left > 0 ? T.timeLeft(clock(left)) : '') + (run.lastLapTime != null ? (left > 0 ? '  ·  ' : '') + T.last + '  ' + formatTime(run.lastLapTime) : ''));
+      } else if (run.finished && position >= 0) setHud(T.finished(position + 1), formatTime(race.results[position].ms));
       else setHud(T.lap + '  ' + T.lapsOf(Math.min(run.lap + 1, race.laps), race.laps),
         run.lastLapTime != null ? T.last + '  ' + formatTime(run.lastLapTime) : null);
     } else if (race.phase === 'results') {
       const position = race.results.findIndex(r => r.id === selfId);
-      setHud(T.resultsHud, position >= 0 ? T.finished(position + 1) : null);
+      setHud(run.won ? T.tournamentWon : T.resultsHud, position >= 0 ? T.finished(position + 1) : null);
     }
   }
+  const clock = ms => { const s = Math.ceil(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 
   // id: the player's, by which the row slides to its new place (renderBoard)
   function row(cls, cells, id) {
@@ -865,26 +1059,46 @@
   const selfCls = id => (id === selfId ? ' self' : '');
 
   // Live order: finished cars by time, then by laps completed and when, then the grid order.
+  // (endurance: everybody by laps then time, finished or not; a car still out may yet complete one more lap)
   function raceOrder() {
     const finished = race.results.map(r => r.id);
     const others = race.grid.map(s => s.id).filter(id => !finished.includes(id));
     const gridIndex = id => race.grid.findIndex(s => s.id === id);
-    others.sort((a, b) => {
+    const byProgress = (a, b) => {
       const pa = race.progress.get(a), pb = race.progress.get(b);
       const la = pa ? pa.lap : 0, lb = pb ? pb.lap : 0;
       if (la !== lb) return lb - la;
       if (la > 0 && pa.ms !== pb.ms) return pa.ms - pb.ms;
       return gridIndex(a) - gridIndex(b);
-    });
+    };
+    if (endurance() && race.phase !== 'results') return race.grid.map(s => s.id).sort(byProgress);
+    others.sort(byProgress);
     return [...finished, ...others];
   }
 
   function renderRaceRows() {
+    if (race.phase === 'strategy') {
+      race.grid.forEach((s, i) => board.appendChild(row(selfCls(s.id) + (race.strat.has(s.id) ? '' : ' pending'), [
+        ['rank', String(i + 1)], ['name', nameOf(s.id)], ['time', race.strat.has(s.id) ? '✓' : ''], ['gap', ''],
+      ], s.id)));
+      return;
+    }
+    if (endurance() && race.phase !== 'quali') {
+      const order = raceOrder(), lead = race.progress.get(order[0]);
+      order.forEach((id, i) => {
+        const p = race.progress.get(id), done = race.results.some(r => r.id === id), laps = p ? p.lap : 0;
+        const gap = i === 0 || lead == null ? '' : laps < lead.lap ? '-' + (lead.lap - laps) + ' ' + T.lap : p ? formatGap(p.ms - lead.ms) : '';
+        board.appendChild(row(selfCls(id) + (done ? '' : ' pending'), [['rank', String(i + 1)], ['name', nameOf(id)], ['time', T.lapsDone(laps)], ['gap', gap]], id));
+      });
+      return;
+    }
     if (race.phase === 'quali') {
       const ranked = [...race.quali].sort((a, b) => a[1] - b[1]);
       const pole = ranked.length ? ranked[0][1] : 0;
+      // a tournament: the attempts each driver has left
+      const left = id => (race.kind === 'tournament' ? ' ' + '●'.repeat(Math.max(0, QUALI_ATTEMPTS - (race.attempts.get(id) || 0))) : '');
       ranked.forEach(([id, ms], i) => board.appendChild(row(selfCls(id), [
-        ['rank', String(i + 1)], ['name', nameOf(id)], ['time', formatTime(ms)], ['gap', i === 0 ? '' : formatGap(ms - pole)],
+        ['rank', String(i + 1)], ['name', nameOf(id) + left(id)], ['time', formatTime(ms)], ['gap', i === 0 ? '' : formatGap(ms - pole)],
       ], id)));
       if (ranked.length === 0) board.appendChild(el('div', 'empty', '--:--.---'));
       return;
@@ -996,24 +1210,47 @@
 
   // Event settings: editable by the host between events, read-only for everybody else
   function renderSettings(editable) {
-    const r = room();
+    const r = room(), kind = kindOf(r);
     const box = el('div', 'race-settings');
-    const laps = el('div', 'laps');
-    laps.appendChild(el('span', 'label', T.laps));
+    // the format: free race, race tournament, endurance
+    const formats = el('div', 'formats');
+    for (const k of KINDS) {
+      const opt = el(editable ? 'button' : 'div', 'toggle format' + (k === kind ? ' on' : ''), T['kind_' + k]);
+      if (editable) opt.addEventListener('click', () => updateRoom({ kind: k }));
+      formats.appendChild(opt);
+    }
+    box.appendChild(formats);
+    if (kind !== 'race' && !eligible()) box.appendChild(el('div', 'note', T.notEligible));
+    const stepper = (label, value, text, change) => {
+      const line = el('div', 'laps');
+      line.appendChild(el('span', 'label', label));
+      if (editable) {
+        line.appendChild(button('−', 'step', () => change(-1)));
+        line.appendChild(el('span', 'value', text));
+        line.appendChild(button('+', 'step', () => change(1)));
+      } else line.appendChild(el('span', 'value', text));
+      box.appendChild(line);
+    };
+    if (kind === 'endurance') {
+      stepper(T.minutes, r.minutes, T.minutesValue(r.minutes), d => updateRoom({ minutes: Math.max(MIN_MINUTES, Math.min(MAX_MINUTES, r.minutes + d)) }));
+      board.appendChild(box);
+      return;
+    }
     const loop = course == null || course.loop;
-    if (editable && loop) {
-      const change = d => updateRoom({ laps: Math.max(1, Math.min(MAX_LAPS, r.laps + d)) });
-      laps.appendChild(button('−', 'step', () => change(-1)));
-      laps.appendChild(el('span', 'value', String(r.laps)));
-      laps.appendChild(button('+', 'step', () => change(1)));
-    } else laps.appendChild(el('span', 'value', String(loop ? r.laps : 1)));
-    box.appendChild(laps);
-    if (!loop) box.appendChild(el('div', 'note', T.notLoop));
+    if (loop) stepper(T.laps, r.laps, String(r.laps), d => updateRoom({ laps: Math.max(1, Math.min(MAX_LAPS, r.laps + d)) }));
+    else {
+      const laps = el('div', 'laps');
+      laps.appendChild(el('span', 'label', T.laps));
+      laps.appendChild(el('span', 'value', '1'));
+      box.appendChild(laps);
+      box.appendChild(el('div', 'note', T.notLoop));
+    }
     for (const [key, label] of [['quali', T.qualiOpt], ['formation', T.formationOpt]]) {
       const opt = el(editable ? 'button' : 'div', 'toggle' + (r[key] ? ' on' : ''), label);
       if (editable) opt.addEventListener('click', () => updateRoom({ [key]: !r[key] }));
       box.appendChild(opt);
     }
+    if (kind === 'tournament' && !r.quali) box.appendChild(el('div', 'note subtle', T.randomGrid));
     board.appendChild(box);
   }
 
@@ -1037,7 +1274,7 @@
     board.textContent = '';
     const raceRoom = room().race;
     const titleText = race == null ? T.top
-      : race.phase === 'quali' ? T.quali : race.phase === 'formation' ? T.formation : race.phase === 'results' ? T.results : T.race;
+      : race.phase === 'quali' ? T.quali : race.phase === 'formation' ? T.formation : race.phase === 'strategy' ? T.strategy : race.phase === 'results' ? T.results : T.race;
     const title = el('div', 'title', titleText);
     title.appendChild(el('span', null, String(players.length)));
     board.appendChild(title);
@@ -1059,10 +1296,14 @@
     if (window.ApexCollide) board.appendChild(el('div', 'contact', T.contact));
     if (race == null) renderSettings(isHost());
     if (!isHost()) return;
-    if (race == null) board.appendChild(button(T.start, '', hostStart));
-    else if (race.phase === 'quali') board.appendChild(button(room().formation ? T.toFormation : T.toRace, '', hostNext));
-    else if (race.phase === 'formation') board.appendChild(button(T.toRace, '', hostNext));
-    if (race != null) board.appendChild(button(race.phase === 'results' ? T.done : T.stop, 'stop', hostStop));
+    if (race == null) {
+      const start = button(T.start, '', hostStart);
+      start.disabled = kindOf(room()) !== 'race' && !eligible();
+      board.appendChild(start);
+    } else if (race.phase === 'quali') board.appendChild(button(room().formation ? T.toFormation : T.toRace, '', hostNext));
+    else if (race.phase === 'formation' || race.phase === 'strategy') board.appendChild(button(T.toRace, '', hostNext));
+    const timeUp = race != null && endurance() && race.phase === 'race' && performance.now() - race.goAt >= raceMs();
+    if (race != null) board.appendChild(button(race.phase === 'results' || timeUp ? T.done : T.stop, 'stop', hostStop));
   }
 
   // ---- host screen: options of the "Race" game mode
@@ -1071,14 +1312,27 @@
     if (mode !== 'race') { if (box != null) box.remove(); return; }
     if (box == null) { box = el('div', 'apex-race-options'); container.appendChild(box); }
     box.textContent = '';
-    const laps = el('div', 'laps');
-    laps.appendChild(el('span', 'label', T.laps));
-    const value = el('span', 'value', String(settings.laps));
-    const slider = el('input', 'slider');
-    Object.assign(slider, { type: 'range', min: '1', max: String(MAX_LAPS), value: String(settings.laps) });
-    slider.addEventListener('input', () => { settings.laps = Number(slider.value); value.textContent = slider.value; saveSettings(settings); });
-    laps.append(slider, value);
-    box.appendChild(laps);
+    // the format, then its settings: laps and the two options, or the endurance race's duration
+    const formats = el('div', 'formats');
+    for (const k of KINDS) {
+      const b = el('button', 'button toggle format' + (settings.kind === k ? ' selected' : ''), T['kind_' + k]);
+      b.addEventListener('click', () => { settings.kind = k; saveSettings(settings); renderHostOptions(container, mode); });
+      formats.appendChild(b);
+    }
+    box.appendChild(formats);
+    if (settings.kind !== 'race') box.appendChild(el('div', 'format-info', T['info_' + settings.kind]));
+    const range = (label, min, max, key, text) => {
+      const line = el('div', 'laps');
+      line.appendChild(el('span', 'label', label));
+      const value = el('span', 'value', text(settings[key]));
+      const slider = el('input', 'slider');
+      Object.assign(slider, { type: 'range', min: String(min), max: String(max), value: String(settings[key]) });
+      slider.addEventListener('input', () => { settings[key] = Number(slider.value); value.textContent = text(settings[key]); saveSettings(settings); });
+      line.append(slider, value);
+      box.appendChild(line);
+    };
+    if (settings.kind === 'endurance') { range(T.minutes, MIN_MINUTES, MAX_MINUTES, 'minutes', T.minutesValue); return; }
+    range(T.laps, 1, MAX_LAPS, 'laps', String);
     for (const [key, label] of [['quali', T.qualiOpt], ['formation', T.formationOpt]]) {
       const opt = el('button', 'button toggle' + (settings[key] ? ' selected' : ''), label);
       opt.addEventListener('click', () => { settings[key] = !settings[key]; opt.classList.toggle('selected', settings[key]); saveSettings(settings); });
@@ -1206,7 +1460,7 @@
   function launch({ connection, mode, track, room: r }) {
     connection.apexRoom = r;
     // the next session, for the results' footer (before the game ends this one: the messages keep their order)
-    const next = { t: 'next', track: String(track.trackMetadata.name || ''), mode: mode === 'race' ? 'race' : mode === COMPETITIVE ? 'competitive' : 'casual' };
+    const next = { t: 'next', track: String(track.trackMetadata.name || ''), mode: mode === 'race' ? (kindOf(r) === 'race' ? 'race' : kindOf(r)) : mode === COMPETITIVE ? 'competitive' : 'casual' };
     connection.apexNext = next;
     for (const message of [roomMessage(r), next]) {
       const bytes = encode(message);
@@ -1220,7 +1474,7 @@
   function nextSessionText() {
     const next = lastConnection && lastConnection.apexNext;
     if (next == null || !next.track) return null;
-    return `${T.nextSession} : ${next.track} - ${{ casual: T.casual, competitive: T.competitive, race: T.mode }[next.mode] || T.casual}`;
+    return `${T.nextSession} : ${next.track} - ${{ casual: T.casual, competitive: T.competitive, race: T.mode, tournament: T.kind_tournament, endurance: T.kind_endurance }[next.mode] || T.casual}`;
   }
   function onNextMessage(connection, msg) {
     if (msg.t !== 'next' || typeof msg.track !== 'string') return false;
@@ -1270,7 +1524,7 @@
     const voters = presentVoters(), { plan } = vote;
     return {
       t: 'vote', n: vote.n, track: String(plan.track.trackMetadata.name || ''), mode: modeKey(plan.mode),
-      race: plan.room.race ? { laps: plan.room.laps, quali: !!plan.room.quali, formation: !!plan.room.formation } : null,
+      race: plan.room.race ? { laps: plan.room.laps, quali: !!plan.room.quali, formation: !!plan.room.formation, kind: plan.room.kind, minutes: plan.room.minutes } : null,
       yes: voters.filter(id => vote.yes.has(id)).length, no: voters.filter(id => vote.no.has(id)).length, total: voters.length,
       left: Math.max(0, Math.round(vote.deadline - performance.now())),
     };
@@ -1346,9 +1600,14 @@
     line(T.voteTrack, s.track);
     line(T.gameMode, modeName(s.mode));
     if (s.race) {
-      line(T.laps, String(s.race.laps));
-      line(T.qualiOpt, s.race.quali ? T.yes : T.no);
-      line(T.formationOpt, s.race.formation ? T.yes : T.no);
+      const kind = KINDS.includes(s.race.kind) ? s.race.kind : 'race';
+      line(T.format, T['kind_' + kind]);
+      if (kind === 'endurance') line(T.minutes, T.minutesValue(s.race.minutes));
+      else {
+        line(T.laps, String(s.race.laps));
+        line(T.qualiOpt, s.race.quali ? T.yes : T.no);
+        line(T.formationOpt, s.race.formation ? T.yes : T.no);
+      }
     }
     box.appendChild(details);
   }
@@ -1428,7 +1687,8 @@
     debug: () => ({
       players: players.length, host: isHost(), hostIsMod: !!(ctx && ctx.connection.apexHostIsMod), room: ctx && ctx.connection.apexRoom,
       modPeers: isHost() ? ctx.connection.apexPeers().filter(p => p.apexMod).map(p => p.id) : null,
-      course: course && { checkpoints: course.checkpoints.length, finishes: course.finishes.length, loop: course.loop },
+      course: course && { checkpoints: course.checkpoints.length, finishes: course.finishes.length, loop: course.loop, tournament: eligible() },
+      endurance: window.ApexEndurance ? window.ApexEndurance.debug() : null,
       live: [...live].map(([id, r]) => [id, r.states.length]),
       best: [...best].map(([id, r]) => [id, r.frames, r.states.length]),
       ghost: ghost && { playerId: ghost.playerId, frames: ghost.frames, lastT: ghost.lastT },
@@ -1499,7 +1759,7 @@
         const self = players.find(p => p.isSelf);
         window.ApexLobby.hostFrame({
           host: self ? self.nickname : null, countryCode: self ? self.countryCode : null, players: players.length,
-          race: !!room().race, phase: race ? race.phase : null, laps: room().race ? raceLaps() : null,
+          race: !!room().race, kind: kindOf(room()), phase: race ? race.phase : null, laps: room().race && kindOf(room()) !== 'endurance' ? raceLaps() : null,
           info: ctx.connection.apexInfo ? ctx.connection.apexInfo() : null,
         });
       }
@@ -1524,6 +1784,7 @@
       setHud('');
       ctx = null; players = []; live = new Map(); best = new Map(); selfId = null; selfLastFrames = -1;
       race = null; run = null; course = null; parked = null;
+      if (window.ApexEndurance) { window.ApexEndurance.stop(); window.ApexEndurance.closePicker(); }
     },
 
     // --- race hooks
@@ -1536,7 +1797,7 @@
       const s = slotFor(selfId);
       return s == null ? null : { position: { x: s.p[0], y: s.p[1], z: s.p[2] }, quaternion: { x: s.q[0], y: s.q[1], z: s.q[2], w: s.q[3] } };
     },
-    locked() { return (race != null && race.phase === 'race' && performance.now() < race.goAt) || watching() || watchingSelf(); },
+    locked() { return (race != null && (race.phase === 'strategy' || (race.phase === 'race' && performance.now() < race.goAt))) || watching() || watchingSelf(); },
     raceActive() { return race != null; },
 
     // --- spectators (apex-spectate.js)
@@ -1560,6 +1821,8 @@
     modeInfo: () => T.modeInfo,
     hostModeChanged(container, mode) { renderHostOptions(container, mode); },
     hosting(mode) { pendingRoom = mode === 'race' ? { race: true, ...settings } : null; },
+    // the Tournaments tab (apex-tournament.js): the Race mode's settings for the tournament about to be hosted
+    prepare(change) { settings = sanitizeSettings({ ...settings, ...change }); saveSettings(settings); },
     buildMismatch: () => T.buildMismatch,
     playerRow,
     changeTrack,

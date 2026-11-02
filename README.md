@@ -4,7 +4,7 @@ Jeu de course pour Windows, construit sur [PolyTrack](https://www.kodub.com) 0.6
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation copie votre propre PolyTrack dans ce dossier et le transforme en GoofyTrack.
 
-**Version actuelle : 2.20.2** 
+**Version actuelle : 2.21** 
 Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 
 ![Menu principal](sources/docs/menu.jpg)
@@ -52,7 +52,7 @@ Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 - **Spa-Francorchamps** : le circuit du Grand Prix de Belgique à l'échelle (7 km), avec son vrai relief : la descente vers l'Eau Rouge, le Raidillon, la montée de Kemmel jusqu'aux Combes, 100 m plus haut que Stavelot. Forêts des Ardennes, stands et tribunes à leur place.
 - **Strasbourg** : le tour des quais de la Grande Île (4 km), l'Ill tout autour, la cathédrale et sa flèche de 142 m au milieu, les Ponts Couverts et leurs tours, la place de la République.
 - **Dijon** : le tour des boulevards de la vieille ville (4,4 km) : place Darcy et la porte Guillaume, la République, le boulevard Carnot ; au centre, le palais des Ducs et la tour Philippe le Bon, Saint-Bénigne et son toit de tuiles vernissées.
-- **Forest Speedway** : un circuit de Grand Prix imaginaire dans une vallée boisée au pied des montagnes (3,1 km, un peu plus d'une minute au tour), dans l'esprit de Trial Mountain : un tracé en 8 qui repasse sur un pont au-dessus de sa propre route, des esses serrés, une montée en lacets à flanc de montagne entre des parois de roche, un tunnel sous le sommet, puis la descente vers le pont. Une ligne droite avec une grille de départ peinte (16 cases, où le mode Course place les voitures) et une voie des stands, fermée pour l'instant par un mur invisible. Une route de 18 m de large pour doubler, des barrières en retrait : de l'herbe qui freine un peu et des bacs à graviers qui freinent beaucoup. Le sol est solide jusqu'à la forêt : une voiture qui passe par-dessus une barrière retombe sur l'herbe. Stands (garages aux couleurs des équipes, muret des stands), tour de contrôle, tribunes, sapins, rochers et un lac. Sur Forest Speedway et Monaco GP, la voiture apparaît posée sur la route au départ au lieu d'y retomber.
+- **Forest Speedway** : un circuit de Grand Prix imaginaire dans une vallée boisée au pied des montagnes (3,1 km, un peu plus d'une minute au tour), dans l'esprit de Trial Mountain : un tracé en 8 qui repasse sur un pont au-dessus de sa propre route, des esses serrés, une montée en lacets à flanc de montagne entre des parois de roche, un tunnel sous le sommet, puis la descente vers le pont. Une ligne droite avec une grille de départ peinte (16 cases, où le mode Course place les voitures) et une voie des stands, fermée par un mur invisible sauf pendant les tournois endurance. Une route de 18 m de large pour doubler, des barrières en retrait : de l'herbe qui freine un peu et des bacs à graviers qui freinent beaucoup. Le sol est solide jusqu'à la forêt : une voiture qui passe par-dessus une barrière retombe sur l'herbe. Stands (garages aux couleurs des équipes, muret des stands), tour de contrôle, tribunes, sapins, rochers et un lac. Sur Forest Speedway et Monaco GP, la voiture apparaît posée sur la route au départ au lieu d'y retomber.
 - **Goofy Coaster** : un grand huit de 3,7 km dessiné dans le vide, pour s'amuser : grande descente, looping, sauts, virage relevé à 72°, tire-bouchon, vagues et dos de chameau.
 - Ces pistes ont leur propre classement en ligne, partagé entre tous les joueurs du mod et tenu par le serveur GoofyTrack : records, position, fantômes et replays comme sur les pistes officielles.
 
@@ -82,6 +82,15 @@ Sur l'écran « Héberger », un troisième mode **Course** s'ajoute à Casual e
 Les courses en plusieurs tours demandent un **circuit** : une piste dont la ligne d'arrivée est posée juste derrière le départ (à moins de 50 m), avec ses checkpoints sur le tour. Sur une piste qui ne boucle pas, la course se fait en un seul tour. Le mod ajoute une catégorie **Circuits** en tête des pistes officielles, avec le circuit « Killer Loop », un rectangle en route large ([`tracks/killer_loop.track`](sources/tracks/killer_loop.track), généré par [`tracks/make_loop_track.js`](sources/tracks/make_loop_track.js)). Les pistes du mod sont déclarées dans [`tracks/index.js`](sources/tracks/index.js) ; le classement en ligne du jeu ne les connaît pas, leurs records vont donc au [serveur GoofyTrack](#classements-des-circuits-du-mod).
 
 ![Départ d'une course](sources/docs/race.jpg)
+
+**Tournois**
+
+L'onglet **Tournois** de la sélection des pistes (à la place de l'ancien onglet Communauté) et le format des rooms Course proposent trois formes de tournoi. Gagner un tournoi compte +1 dans « Tournois gagnés » sur la carte de joueur.
+
+- **Tournoi chrono** (onglet Tournois) : un joueur choisit une piste (officielle ou du mod) et une durée de 10 minutes à 3 jours, il devient l'hôte et peut le terminer plus tôt. Chaque tour bouclé sur la piste pendant ce temps est envoyé au serveur GoofyTrack, en solo comme en room (pas les tours d'une course, partis de la grille). Le meilleur temps à la fin gagne. Le jeu du vainqueur compte la victoire dès qu'il voit le résultat ([`apex-tournament.js`](sources/apex-tournament.js), [`server/tournaments.js`](sources/server/tournaments.js)).
+- **Tournoi course** (Héberger > Course > format « Tournoi course ») : nombre de tours, tour de formation (l'hôte peut lancer la course avant que tout le monde l'ait bouclé), qualifications en **2 tentatives chronométrées** par pilote, sinon grille tirée au sort. Le premier arrivé gagne le tournoi.
+- **Tournoi endurance** (format « Endurance ») : une course de 15 à 20 minutes. Avant le départ, chacun choisit sa stratégie : **grand réservoir** (110 L, moteur bridé), **petit réservoir** (55 L, moteur à fond) ou **freins et pneus** (80 L, freins qui ne faiblissent pas, pneus qui s'usent beaucoup moins). L'accélérateur consomme l'essence, la distance, les freinages et les virages usent les pneus (la voiture tourne et freine moins bien). La voie des stands est ouverte : s'y arrêter remplit le réservoir, y rester 4 secondes change les pneus, limiteur à 80 km/h. Réservoir vide : la voiture se traîne jusqu'aux stands. Quand le temps est écoulé, chaque voiture termine en repassant la ligne ; le plus de tours gagne ([`apex-endurance.js`](sources/apex-endurance.js)).
+- Les tournois course et endurance demandent un circuit avec une vraie grille de départ et des stands : pour l'instant seul **Forest Speedway** (`TOURNAMENT_CIRCUITS` dans [`apex-room.js`](sources/apex-room.js)). Pour en ajouter un : une grille peinte (`PAINTED_GRIDS`), la position de sa voie des stands, et une seconde pièce de route sans le mur des stands (`openRoad` dans [`tools/circuits.js`](sources/tools/circuits.js), sa somme de contrôle dans `tracks/<circuit>/checksums.json`).
 
 ## Patch notes
 
@@ -216,7 +225,9 @@ Tout est dans `sources/`, sauf les deux `.bat` et les fichiers masqués du haut 
 | `build_car.js`, `meshlib.js` | Génération procédurale du modèle 3D de la voiture |
 | `build_patterns.js` | Génération des 16 livrées |
 | `patch_bundle.js` | Points d'accroche ajoutés au code du jeu |
-| `apex-room.js` | Tableau de room, fantôme, mode course |
+| `apex-room.js` | Tableau de room, fantôme, mode course et tournois course et endurance |
+| `apex-tournament.js` | Onglet Tournois : tournois chrono (liste, création, classement, bandeau en piste, envoi des temps, victoires comptées) |
+| `apex-endurance.js` | Tournoi endurance : choix de la stratégie, essence, pneus, arrêts aux stands (page du jeu et moteur physique) |
 | `apex-show.js` | Présentation du circuit avant les feux et podium à la fin d'une course |
 | `PATCHNOTES.md`, `apex-notes.js` | Notes de version, et le bouton « Patch notes » du menu principal qui les affiche (sans les paragraphes « Mise à jour » ni les sections « Outils ») |
 | `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
@@ -238,7 +249,7 @@ Tout est dans `sources/`, sauf les deux `.bat` et les fichiers masqués du haut 
 | `goofytrack-logo.svg` | Logo du menu principal |
 | `audio/` | Musiques du jeu (« Vroum Vroum » et, dans le menu des courses, « WAITING », Teknah) |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |
-| `server/`, `render.yaml` (en haut du dépôt) | Serveur multijoueur (codes d'invitation, mise en relation, classements des pistes du mod, comptes) et son déploiement sur Render |
+| `server/`, `render.yaml` (en haut du dépôt) | Serveur multijoueur (codes d'invitation, mise en relation, classements des pistes du mod, comptes, tournois chrono) et son déploiement sur Render |
 | `serve.js` | Développement : sert le jeu modé en http pour le tester dans un navigateur (`node sources/serve.js`, ou `node sources/serve.js "C:\chemin\vers\copie"`) |
 
 ## Licence

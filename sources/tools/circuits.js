@@ -14,6 +14,8 @@
 //   waterWidths  width of the rivers and canals mapped as lines, by name
 //   smoothing, minRadius, gates, maxGrade, heightScale, facets   road builder settings (tools/make_circuit.js)
 //   startHeight  how high above the start line the car appears (patch_bundle.js; 0.35 when absent)
+//   openRoad     id of a second road part, the same road with its pit lane open: the physics gets it during endurance
+//                races (patch_bundle.js, apex-room.js); its checksum in tracks/<circuit>/checksums.json
 module.exports = {
   montbeliard: {
     mesh: 'Montbeliard', ids: { road: 244, start: 245, checkpoint: 246, finish: 247 },
@@ -62,6 +64,7 @@ module.exports = {
     gates: [[0.216, 0.228], [0.425, 0.46], [0.565, 0.60], [0.721, 0.728], [0.858, 0.868]],
     terrain: { hills: 70 },
     startHeight: 0.13,               // the car appears resting on the road (patch_bundle.js)
+    openRoad: 227,                   // the road without the wall that closes the pit lane (endurance tournaments)
   },
   // not a place on a map: a stunt track drawn by tools/make_stunt.js (loop, jumps, wall ride, corkscrew).
   // It is listed here for its part ids and mesh names; the map tools do not apply to it.

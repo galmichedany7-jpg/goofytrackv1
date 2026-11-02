@@ -15,6 +15,46 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.21 : les tournois
+
+Trois formes de tournoi : chrono, course et endurance. Chaque victoire compte dans les statistiques du joueur.
+
+**Tournoi chrono**
+- Un onglet **Tournois** remplace l'onglet Communauté dans la sélection des pistes.
+- **Créer un tournoi** : on choisit le type (chrono, course ou endurance). Pour un chrono, « Choisir la piste » ramène à la liste des pistes du jeu : un clic sur une piste officielle ou un circuit du mod la choisit. Puis une durée de 10 minutes à 3 jours. Vous en êtes l'hôte et pouvez le terminer plus tôt.
+- Pour un tournoi course ou endurance, « Préparer la room » emmène sur l'écran Héberger avec tout déjà réglé (mode Course, format, tours ou durée, Forest Speedway) : il ne reste qu'à cliquer sur Héberger.
+- Pendant ce temps, chaque tour bouclé sur la piste compte, en solo comme en room. Un bandeau en haut de l'écran donne le temps restant, votre place et votre meilleur temps.
+- La liste montre les tournois en cours (avec leur classement complet) et ceux terminés depuis une semaine, avec leur vainqueur. « Jouer » ouvre directement la piste du tournoi.
+- À la fin, le meilleur temps gagne : le jeu du vainqueur compte la victoire dès qu'il voit le résultat, même s'il n'était pas connecté à la fin.
+
+**Tournoi course**
+- Dans Héberger > Course, un **format** : Course libre, Tournoi course ou Endurance. L'hôte peut encore le changer dans la room, entre deux courses.
+- **Qualifications en 2 tentatives** : deux tours chronométrés complets par pilote, le meilleur fixe la place sur la grille. La course passe à la suite quand tout le monde a fait ses deux tentatives (ou quand l'hôte le décide). Sans qualifications, la grille est tirée au sort.
+- Le tour de formation reste optionnel, et l'hôte peut lancer la course sans attendre les retardataires.
+- Le vainqueur gagne le tournoi.
+
+**Tournoi endurance**
+- Une course contre la montre de **15 à 20 minutes**.
+- **Choix de la stratégie** avant le départ, pour que tout le monde ne parte pas avec la même voiture :
+  - **Grand réservoir** : 110 L, moins d'arrêts, mais un moteur bridé, donc moins de vitesse.
+  - **Petit réservoir** : 55 L, le moteur à fond, mais plus d'arrêts.
+  - **Freins et pneus** : 80 L, des freins qui ne faiblissent pas et des pneus qui s'usent beaucoup moins.
+- Une jauge montre l'essence et les pneus. L'accélérateur consomme l'essence, la distance, les freinages et les virages usent les pneus : la voiture tourne et freine de moins en moins bien. Réservoir vide, elle se traîne jusqu'aux stands.
+- **Stands** : la voie des stands de Forest Speedway est ouverte pendant l'endurance. S'arrêter devant les garages remplit le réservoir, y rester 4 secondes met des pneus neufs. Limiteur à 80 km/h dans la voie.
+- Quand le temps est écoulé, chaque voiture termine en repassant la ligne, par la piste ou par les stands. Le plus de tours gagne.
+
+**Circuits des tournois**
+- Les tournois course et endurance demandent une vraie grille de départ et des stands : pour l'instant seul **Forest Speedway** convient. Ailleurs, la room l'indique et le bouton Lancer reste grisé.
+
+**Profil**
+- Nouvelle statistique **Tournois gagnés** sur la carte de joueur, la vôtre comme celle des autres.
+- La liste des rooms affiche « Tournoi course » ou « Tournoi endurance ».
+
+**Corrections**
+- La mini-carte et le jeu ne plantent plus au lancement (une ligne de `apex-hud.js` mettait la déclaration de `mapHidden` en commentaire).
+
+**Mise à jour** : « Mettre a jour GoofyTrack.bat » (ou `git pull` puis « Construire GoofyTrack.bat »). Nouvelle empreinte de build : tous les joueurs doivent passer en V2.21. Le serveur (Render) doit être redéployé pour les tournois chrono et la statistique des tournois sur les cartes ; avec `GITHUB_TOKEN`, les tournois sont gardés dans un troisième Gist secret (« GoofyTrack tournaments »). Les records de Forest Speedway ne changent pas : la route sans le mur des stands est une pièce à part, utilisée seulement en endurance.
+
 ## V2.20.2 : mode spectateur, vote de session et cartes de joueurs
 
 On peut maintenant regarder une room sans rouler, voler librement autour des replays, voter pour la session suivante, et ouvrir la carte de n'importe quel joueur.

@@ -23,7 +23,14 @@ const CIRCUITS = [
   { name: 'Monaco', model: 'monaco', data: MONACO, sums: sumsOf('monaco'), start: 0.18 },
   ...Object.entries(MAP_CIRCUITS).map(([key, c]) => ({ name: c.mesh, model: key, data: JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', key, key + '.json'), 'utf8')), sums: sumsOf(key), start: c.startHeight })),
 ];
-const circuitParts = c => [['Road', c.data.ids.road], ['Start', c.data.ids.start], ['Checkpoint', c.data.ids.checkpoint], ['Finish', c.data.ids.finish]].map(([part, id]) => [c.name + part, id]);
+// Circuits whose pit lane opens in an endurance race (apex-room.js, TOURNAMENT_CIRCUITS): one more road part, the same
+// road without the wall nobody sees that closes the pit lane (its road mesh alone, not the "Invisible" one), by circuit
+// (tools/circuits.js, openRoad). Its checksum is in tracks/<circuit>/checksums.json too. The physics gets it in place of
+// the road during those races.
+const OPEN_PITS = Object.fromEntries(Object.entries(MAP_CIRCUITS).filter(([, c]) => c.openRoad).map(([key, c]) => [key, c.openRoad]));
+// the road parts of the circuits that bring their own land (with their open pit lane road, OPEN_PITS)
+const LAND_ROADS = CIRCUITS.filter(c => c.data.terrain).flatMap(c => [c.data.ids.road, ...(OPEN_PITS[c.model] ? [OPEN_PITS[c.model]] : [])]);
+const circuitParts = c => [...(OPEN_PITS[c.model] ? [['RoadOpen', OPEN_PITS[c.model]]] : []), ['Road', c.data.ids.road], ['Start', c.data.ids.start], ['Checkpoint', c.data.ids.checkpoint], ['Finish', c.data.ids.finish]].map(([part, id]) => [c.name + part, id]);
 // The mod's car patterns (build_patterns.js), numbered 16 on after the game's: never reorder them, a car
 // saved with one keeps its number (apex-rarity.js names them in this order)
 const MOD_PATTERNS = ['monaco', 'bignumber', 'diagonal', 'wingtips', 'dotted', 'camo', 'lightning', 'flames', 'tiger', 'barcode', 'carbon',
@@ -64,7 +71,7 @@ const RIVIERA_GROUND = 6318394;    // 0x60693a: the Riviera plain (apex-scenery.
 
 // Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
 // so a modified game never meets an older one (their race messages or physics would not match).
-const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-show.js', 'apex-collide.js', 'apex-sand.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), ...Object.keys(require('./tools/circuits')).flatMap(key => [path.join('tracks', key, key + '.json'), path.join('tracks', key, 'checksums.json')]),   // the checksums stand for the road meshes
+const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-show.js', 'apex-collide.js', 'apex-sand.js', 'apex-endurance.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), ...Object.keys(require('./tools/circuits')).flatMap(key => [path.join('tracks', key, key + '.json'), path.join('tracks', key, 'checksums.json')]),   // the checksums stand for the road meshes
   ...MOD_TRACKS.map(t => path.join('tracks', t.file))];
 // Hashed as text with LF line endings and no BOM: git on Windows may check the same files out with
 // CRLF (and a ZIP download has LF), which must not make two copies of the same code look different.
@@ -379,12 +386,27 @@ const patches = [
       + 'window.ApexOfficialTracks=(0,R.gn)(this,eu,"f")}'
       + 'const i=(0,R.gn)(this,au,"f").getAllCustomTrackNames();',
   },
-  // The community tab is gone (the tournaments will take its place): the official tab is the first one again,
-  // swiping goes from it straight to the custom tracks, and a tab remembered as "community" opens the official one.
+  // The community tab is gone: the official tab is the first one again, swiping goes from it straight to the custom
+  // tracks, and a tab remembered as "community" opens the official one. Its button opens the tournaments instead
+  // (apex-tournament.js), which are handed the track selection's own way of starting a track: "Drive" on a time trial
+  // tournament starts its track as a click on it in the list would.
   {
-    name: 'no community tab',
+    name: 'tournaments tab in place of the community tab',
     find: '(0,i.gn)(this,A,"m",ae).call(this,"community")})),v.appendChild((0,i.gn)(this,P,"f"));',
-    replace: '(0,i.gn)(this,A,"m",ae).call(this,"community")}));',
+    replace: 'window.ApexTournament?window.ApexTournament.open():(0,i.gn)(this,A,"m",ae).call(this,"community")})),window.ApexTournament&&(v.appendChild((0,i.gn)(this,P,"f")),'
+      + 'window.ApexTournament.selection((apexT=>(0,i.gn)(this,_,"f").call(this,apexT.trackMetadata,apexT.environment,(async()=>(await apexT.loadCallback()).trackData),"official",apexT.id,apexT.thumbnail))));',
+  },
+  {
+    // the time trial's track is picked in the list itself: while the tournaments ask for one, the next track clicked
+    // goes to them instead of opening it
+    name: 'tournaments tab: a track clicked can be the tournament one',
+    find: '(0,i.GG)(this,_,f,"f"),(0,i.GG)(this,C,document.createElement("div"),"f")',
+    replace: '(0,i.GG)(this,_,window.ApexTournament?window.ApexTournament.wrapPick(f):f,"f"),(0,i.GG)(this,C,document.createElement("div"),"f")',
+  },
+  {
+    name: 'tournaments tab: its name',
+    find: '(0,i.gn)(this,P,"f").append(document.createTextNode((0,i.gn)(this,b,"f").get("Community tracks")))',
+    replace: '(0,i.gn)(this,P,"f").append(document.createTextNode(window.ApexTournament?window.ApexTournament.label():(0,i.gn)(this,b,"f").get("Community tracks")))',
   },
   {
     name: 'no community tab: swipe',
@@ -631,7 +653,7 @@ const patches = [
   {
     name: 'a track whose circuit brings its own land has its bounds say so',
     find: 'getBounds(){let e=1/0,t=1/0,n=-1/0,i=-1/0;return this.forEachPart(',
-    replace: 'getBounds(){const apexBounds=this.apexBounds();let apexLand=!1;return this.forEachPart(((e,t,n,i)=>{apexLand=apexLand||' + JSON.stringify(CIRCUITS.filter(c => c.data.terrain).map(c => c.data.ids.road)) + '.includes(i)})),apexLand&&(apexBounds.apexOwnLand=!0),apexBounds}'
+    replace: 'getBounds(){const apexBounds=this.apexBounds();let apexLand=!1;return this.forEachPart(((e,t,n,i)=>{apexLand=apexLand||' + JSON.stringify(LAND_ROADS) + '.includes(i)})),apexLand&&(apexBounds.apexOwnLand=!0),apexBounds}'
       + 'apexBounds(){let e=1/0,t=1/0,n=-1/0,i=-1/0;return this.forEachPart(',
   },
   {
@@ -639,7 +661,7 @@ const patches = [
     name: 'a track being played whose circuit brings its own land has its bounds say so',
     find: 'Number.isFinite(e)&&Number.isFinite(t)&&Number.isFinite(n)&&Number.isFinite(i)?(0,A.GG)(this,d,{min:new y.I9Y(e,t),max:new y.I9Y(n,i)},"f"):(0,A.GG)(this,d,{min:new y.I9Y,max:new y.I9Y},"f")',
     replace: 'Number.isFinite(e)&&Number.isFinite(t)&&Number.isFinite(n)&&Number.isFinite(i)?(0,A.GG)(this,d,{min:new y.I9Y(e,t),max:new y.I9Y(n,i)},"f"):(0,A.GG)(this,d,{min:new y.I9Y,max:new y.I9Y},"f");'
-      + 'for(const r of(0,A.gn)(this,l,"f"))' + JSON.stringify(CIRCUITS.filter(c => c.data.terrain).map(c => c.data.ids.road)) + '.includes(r.trackPartData?.configuration?.id)&&((0,A.gn)(this,d,"f").apexOwnLand=!0)',
+      + 'for(const r of(0,A.gn)(this,l,"f"))' + JSON.stringify(LAND_ROADS) + '.includes(r.trackPartData?.configuration?.id)&&((0,A.gn)(this,d,"f").apexOwnLand=!0)',
   },
   {
     name: 'no mountains round a circuit that brings its own land',
@@ -721,13 +743,15 @@ const patches = [
   {
     name: 'circuit track parts are registered',
     find: '],f=new Map;for(const e of u){if(f.has(e.id))throw new Error("Duplicate track part id "',
-    replace: CIRCUITS.map(({ name, data, sums, start }) => {
+    replace: CIRCUITS.map(({ name, model, data, sums, start }) => {
       const cell = '[[[-2,0,-2],[1,0,1]]]';
       const detector = type => '{type:o.A.' + type + ',center:[0,3.5,0],size:[' + data.gateWidth + ',7,1]}';
       const roadTiles = JSON.stringify(data.roadCells.map(([i, j]) => [[4 * i - 2, 0, 4 * j - 2], [4 * i + 1, 0, 4 * j + 1]]));
       // the road may have walls nobody sees, in a mesh of its own (tools/make_circuit.js)
       const part = (kind, id, rest) => ',new d(' + JSON.stringify(sums[id] || '') + ',r.A.Special,' + id + ',[["' + name + '","' + name + kind + '"]' + (kind === 'Road' && data.hidden ? ',["' + name + '","' + name + 'RoadInvisible"]' : '') + '],c,' + rest + ')';
-      return part('Road', data.ids.road, roadTiles) + part('Start', data.ids.start, cell + ',null,new i.Pq0(0,' + (start ?? 0.35) + ',0)')
+      // the road with its pit lane open (OPEN_PITS): the road mesh alone
+      const open = OPEN_PITS[model] ? ',new d(' + JSON.stringify(sums[OPEN_PITS[model]] || '') + ',r.A.Special,' + OPEN_PITS[model] + ',[["' + name + '","' + name + 'Road"]],c,' + roadTiles + ')' : '';
+      return part('Road', data.ids.road, roadTiles) + open + part('Start', data.ids.start, cell + ',null,new i.Pq0(0,' + (start ?? 0.35) + ',0)')
         + part('Checkpoint', data.ids.checkpoint, cell + ',' + detector('Checkpoint')) + part('Finish', data.ids.finish, cell + ',' + detector('Finish'));
     }).join('') + '],f=new Map;for(const e of u){if(f.has(e.id))throw new Error("Duplicate track part id "',
   },
@@ -1028,23 +1052,23 @@ const workerPatches = [
   {
     name: 'collision and gravel code are loaded next to the physics',
     find: 'importScripts("lib/polytrack_physics.js");',
-    replace: 'importScripts("lib/polytrack_physics.js","apex-collide.js","apex-sand.js");',
+    replace: 'importScripts("lib/polytrack_physics.js","apex-collide.js","apex-sand.js","apex-endurance.js");',
   },
   {
     name: 'the worker receives the other cars from the page',
     find: 'function r(i){const r=i.data;switch(r.messageType){case Ki.Init:',
-    replace: 'function r(i){const r=i.data;if(self.ApexCollide&&self.ApexCollide.message(r))return;switch(r.messageType){case Ki.Init:',
+    replace: 'function r(i){const r=i.data;if(self.ApexCollide&&self.ApexCollide.message(r)||self.ApexEndurance&&self.ApexEndurance.message(r))return;switch(r.messageType){case Ki.Init:',
   },
   {
     name: 'cars are tested against each other after every physics step',
     find: '[e.id,r.up,r.right,r.down,r.left,r.reset,i]);return new Uint8Array(t.HEAPU8.buffer,i,227).slice().buffer}',
-    replace: '[e.id,r.up,r.right,r.down,r.left,r.reset,i]);self.ApexCollide&&self.ApexCollide.afterStep(t,e,i);self.ApexSand&&self.ApexSand.afterStep(t,e,i);return new Uint8Array(t.HEAPU8.buffer,i,227).slice().buffer}',
+    replace: '[e.id,r.up,r.right,r.down,r.left,r.reset,i]);self.ApexCollide&&self.ApexCollide.afterStep(t,e,i);self.ApexSand&&self.ApexSand.afterStep(t,e,i);self.ApexEndurance&&self.ApexEndurance.afterStep(t,e,i);return new Uint8Array(t.HEAPU8.buffer,i,227).slice().buffer}',
   },
   // ---- gravel traps (apex-sand.js)
   {
     name: 'a car in the gravel has its controls filtered before each physics step',
     find: 'function n(e,r){t.ccall("updateCarModel"',
-    replace: 'function n(e,r){self.ApexSand&&(r=self.ApexSand.controls(e,r));t.ccall("updateCarModel"',
+    replace: 'function n(e,r){self.ApexSand&&(r=self.ApexSand.controls(e,r));self.ApexEndurance&&(r=self.ApexEndurance.controls(e,r));t.ccall("updateCarModel"',
   },
   {
     name: 'the gravel code learns where the circuit of each new car is',
@@ -1064,11 +1088,12 @@ const workerPatches = [
   {
     name: 'circuit track parts are registered (physics worker)',
     find: '],co=new Map;for(const t of ho){if(co.has(t.id))throw new Error("Duplicate track part id "',
-    replace: CIRCUITS.map(({ name, data, start }) => {
+    replace: CIRCUITS.map(({ name, model, data, start }) => {
       const cell = '[[[-2,0,-2],[1,0,1]]]';
       const detector = type => '{type:to.' + type + ',center:[0,3.5,0],size:[' + data.gateWidth + ',7,1]}';
       const part = (kind, id, rest) => ',new lo("",Xa.Special,' + id + ',[["' + name + '","' + name + kind + '"]],ao,' + cell + rest + ')';
-      return part('Road', data.ids.road, '') + part('Start', data.ids.start, ',null,new R(0,' + (start ?? 0.35) + ',0)')
+      const open = OPEN_PITS[model] ? ',new lo("",Xa.Special,' + OPEN_PITS[model] + ',[["' + name + '","' + name + 'Road"]],ao,' + cell + ')' : '';
+      return part('Road', data.ids.road, '') + open + part('Start', data.ids.start, ',null,new R(0,' + (start ?? 0.35) + ',0)')
         + part('Checkpoint', data.ids.checkpoint, ',' + detector('Checkpoint')) + part('Finish', data.ids.finish, ',' + detector('Finish'));
     }).join('') + '],co=new Map;for(const t of ho){if(co.has(t.id))throw new Error("Duplicate track part id "',
   },

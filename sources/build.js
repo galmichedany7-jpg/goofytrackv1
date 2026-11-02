@@ -52,7 +52,7 @@ run('patch_bundle.js');
 
 // The mod's scripts, loaded before the game in this order (the game calls into them from the hooks of patch_bundle.js)
 // (the account first: it watches the storage from the start)
-const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-spectate.js', 'apex-room.js', 'apex-lobby.js', 'apex-notes.js', 'apex-rarity.js', 'apex-livery.js'];
+const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-spectate.js', 'apex-endurance.js', 'apex-room.js', 'apex-tournament.js', 'apex-lobby.js', 'apex-notes.js', 'apex-rarity.js', 'apex-livery.js'];
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
 // The account keeps its save on our server, whose address it is handed in front of its script, with the mod's
 // tracks (the profile card counts the circuits finished and asks the server for their boards; the P1 badges
@@ -80,6 +80,7 @@ for (const [key, c] of Object.entries(require('./tools/circuits'))) {
   const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', key, key + '.json'), 'utf8'));
   if (!data.sand || data.sand.length === 0) continue;
   sandData[c.ids.road] = { fine: data.fine.flatMap(p => [p[0], p[1], p[2]]), half: data.fine.flatMap(p => [p[3], p[4]]), sand: data.sand, edge: data.fine[0].length > 5 ? data.fine.flatMap(p => [p[5], p[6]]) : null };
+  if (c.openRoad) sandData[c.openRoad] = sandData[c.ids.road];   // the same road, pit lane open (endurance races)
 }
 fs.writeFileSync(path.join(APP, 'apex-sand.js'), 'self.APEX_SAND = ' + JSON.stringify(sandData) + ';\n' + fs.readFileSync(path.join(__dirname, 'apex-sand.js'), 'utf8'));
 // The room list asks the server for the rooms of this very build: the one the patched game connects with

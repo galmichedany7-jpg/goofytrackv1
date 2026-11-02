@@ -3,6 +3,7 @@ original/
 node_modules/
 sources/server/records.json
 sources/server/accounts.json
+sources/server/tournaments.json
 sources/update-settings.json
 # where the updater of 2.17 and older kept its settings (moved to sources/ by update.js)
 /update-settings.json

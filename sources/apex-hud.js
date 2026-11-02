@@ -255,6 +255,7 @@
     begin(context) {
       this.end();
       ctx = context;
+      window.ApexTournament?.track(context.track);     // a time trial tournament on this track (apex-tournament.js)
     },
     remote(playerId, state) {
       if (ctx != null) remotes.set(playerId, { x: state.position.x, z: state.position.z, at: performance.now() });
@@ -273,7 +274,7 @@
       const dt = state.frames - statFrames, kmh = Math.abs(state.speedKmh);
       statFrames = state.frames;
       if (dt > 0 && dt < 500 && state.finishFrames == null) window.ApexStats?.drive(kmh / 3.6 * dt / 1000, dt / 1000, kmh);
-      if (state.finishFrames != null && !statFinished) window.ApexStats?.finish();
+      if (state.finishFrames != null && !statFinished) { window.ApexStats?.finish(); window.ApexTournament?.finished(state.finishFrames); }
       statFinished = state.finishFrames != null;
       if (++frame % 2 === 0) {                 // 30 redraws per second are plenty for both widgets
         if (map) drawMap(self);
@@ -340,6 +341,7 @@
       if (delta != null) { delta.remove(); delta = null; }
       ctx = null; map = null; remotes = new Map(); run = []; best = null; lastFrames = -1; refIndex = 0; lastDelta = null; statFrames = -1; statFinished = false;
       window.ApexStats?.flush();
+      window.ApexTournament?.track(null);
     },
   };
 })();

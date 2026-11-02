@@ -65,7 +65,8 @@
   }
 
   // ================================================================== host: what the list shows
-  // details: { host, countryCode, players, race, phase, laps, info: { mode, track, maxPlayers } }
+  // details: { host, countryCode, players, race, kind, phase, laps, info: { mode, track, maxPlayers } }
+  // (kind: the race room's format, apex-room.js: 'race', or a tournament: 'tournament', 'endurance')
   function hostFrame(details) {
     if (host == null || host.code == null || host.socket.readyState !== WebSocket.OPEN) return;
     const now = performance.now();
@@ -75,7 +76,7 @@
     try {
       host.socket.send(JSON.stringify({ version: '0.6.3', type: 'roomInfo', info: {
         host: details.host, countryCode: details.countryCode, track: info.track || '', players: details.players,
-        maxPlayers: info.maxPlayers ?? null, mode: details.race ? 'race' : info.mode === 1 ? 'competitive' : 'casual',
+        maxPlayers: info.maxPlayers ?? null, mode: details.race ? (details.kind === 'tournament' || details.kind === 'endurance' ? details.kind : 'race') : info.mode === 1 ? 'competitive' : 'casual',
         phase: details.phase, laps: details.laps, listed: listed(),
       } }));
     } catch (e) { /* the socket is closing */ }
@@ -89,10 +90,12 @@
     if (parent) parent.appendChild(e);
     return e;
   };
-  const MODE_TEXT = { casual: () => 'Casual', competitive: () => tr('Compétitif', 'Competitive'), race: () => tr('Course', 'Race') };
+  const MODE_TEXT = { casual: () => 'Casual', competitive: () => tr('Compétitif', 'Competitive'), race: () => tr('Course', 'Race'),
+    tournament: () => tr('Tournoi course', 'Race tournament'), endurance: () => tr('Tournoi endurance', 'Endurance tournament') };
+  const RACING = new Set(['race', 'tournament', 'endurance']);
   const PHASE_TEXT = {
     quali: () => tr('Qualifications', 'Qualifying'), formation: () => tr('Tour de formation', 'Formation lap'),
-    race: () => tr('En course', 'Racing'), results: () => tr('Résultats', 'Results'),
+    race: () => tr('En course', 'Racing'), results: () => tr('Résultats', 'Results'), strategy: () => tr('Stratégies', 'Strategies'),
     null: () => tr('Essais libres', 'Practice'),
   };
   const since = time => {
@@ -128,8 +131,8 @@
       el(who, 'span', 'host', r.host);
       el(who, 'span', 'track', r.track || '—');
       const what = el(row, 'div', 'what');
-      el(what, 'span', 'mode ' + r.mode, (MODE_TEXT[r.mode] || MODE_TEXT.casual)() + (r.mode === 'race' && r.laps ? ' · ' + r.laps + ' ' + tr(r.laps > 1 ? 'tours' : 'tour', r.laps > 1 ? 'laps' : 'lap') : ''));
-      el(what, 'span', 'phase', r.mode === 'race' ? (PHASE_TEXT[r.phase] || PHASE_TEXT.null)() : since(r.since));
+      el(what, 'span', 'mode ' + r.mode, (MODE_TEXT[r.mode] || MODE_TEXT.casual)() + (RACING.has(r.mode) && r.laps ? ' · ' + r.laps + ' ' + tr(r.laps > 1 ? 'tours' : 'tour', r.laps > 1 ? 'laps' : 'lap') : ''));
+      el(what, 'span', 'phase', RACING.has(r.mode) ? (PHASE_TEXT[r.phase] || PHASE_TEXT.null)() : since(r.since));
       const full = r.maxPlayers != null && r.players >= r.maxPlayers;
       el(row, 'div', 'players' + (full ? ' full' : ''), r.players + (r.maxPlayers != null ? '/' + r.maxPlayers : ''));
       // to watch: the player joins, then watches instead of driving (apex-room.js, apex-spectate.js)

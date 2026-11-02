@@ -2118,7 +2118,9 @@ html dialog.message-box-ui > div > p {
 	color: var(--apx-fg);
 	background-color: var(--apx-fill-hover);
 }
-#ui .multiplayer-ui .apex-lobby .room .mode.race {
+#ui .multiplayer-ui .apex-lobby .room .mode.race,
+#ui .multiplayer-ui .apex-lobby .room .mode.tournament,
+#ui .multiplayer-ui .apex-lobby .room .mode.endurance {
 	color: var(--apx-accent-ink);
 	background-color: var(--apx-accent);
 }
@@ -2356,4 +2358,55 @@ html dialog.message-box-ui > div > p {
 	pointer-events: auto;
 	background: var(--apx-fill-hover);
 	box-shadow: inset 0 0 0 1px var(--apx-line-strong);
+}
+/* the race room's format (apex-room.js): free race, race tournament, endurance; on the room board and the host screen */
+#ui .apex-room-board > .race-settings > .formats {
+	display: flex;
+	gap: 6px;
+	width: 100%;
+}
+#ui .apex-room-board > .race-settings > .formats > .toggle {
+	flex: 1;
+	padding: 6px 4px;
+	border: none;
+	border-radius: var(--apx-r-sm);
+	background: var(--apx-fill);
+	box-shadow: inset 0 0 0 1px var(--apx-line);
+	color: var(--apx-fg-subtle);
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	text-align: center;
+}
+#ui .apex-room-board > .race-settings > .formats > .toggle.on {
+	background: var(--apx-accent-soft);
+	box-shadow: inset 0 0 0 1px var(--apx-accent-ring);
+	color: var(--apx-fg);
+}
+#ui .apex-room-board > .race-settings > .formats > button.toggle {
+	cursor: pointer;
+	pointer-events: auto;
+}
+#ui .apex-room-board > .race-settings > .note.subtle {
+	color: var(--apx-fg-muted);
+}
+#ui .apex-room-board > .race-button:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+#ui .multiplayer-ui .apex-race-options > .formats {
+	display: flex;
+	gap: 8px;
+	width: 100%;
+}
+#ui .multiplayer-ui .apex-race-options > .formats > .toggle {
+	flex: 1;
+	margin: 0;
+	pointer-events: auto;
+}
+#ui .multiplayer-ui .apex-race-options > .format-info {
+	width: 100%;
+	font-size: 14px;
+	line-height: 1.4;
+	color: var(--apx-fg-muted);
 }

@@ -36,7 +36,10 @@
   const GAME = 'polytrack_v5_prod_';
   const PROFILES = 3;                                  // the game's slots
   const SETTINGS = [GAME + 'settings', GAME + 'key_bindings', GAME + 'is_music_enabled', GAME + 'unlocked_car_styles',
-    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries', 'goofytrack.badges', 'goofytrack.badgesSeen', 'goofytrack.bestPlace', 'goofytrack.frame'];   // not the keyboard layout: one per PC
+    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries', 'goofytrack.badges', 'goofytrack.badgesSeen', 'goofytrack.bestPlace', 'goofytrack.frame', 'goofytrack.profile', 'goofytrack.tournaments.credited'];   // not the keyboard layout: one per PC
+  // the profile played, the same on every PC of the account: its token hash, set when the game's profile changes
+  // (the game's user_slot is a slot of this PC); with none yet, the profile that drove the most (apply)
+  const PICK_KEY = 'goofytrack.profile';
   const STATS_PREFIX = 'goofytrack.stats.';           // + this PC's id: what it counted (synced: one entry per PC, summed)
   const PC_KEY = 'goofytrack.pc';                     // this PC's id (not synced)
   const KDF_ROUNDS = 310000;
@@ -95,8 +98,12 @@
     if (frozen(key, String(value))) return;
     const old = this.getItem(key);
     rawSet.call(this, key, value);
-    if (old !== String(value)) { touched(String(key), old, String(value)); watched(key); }
+    if (old !== String(value)) { touched(String(key), old, String(value)); watched(key); if (key === GAME + 'user_slot') pickProfile(value); }
   };
+  function pickProfile(slot) {
+    const token = parse(get(GAME + 'user_' + slot))?.token;
+    if (typeof token === 'string') sha256(token).then(hash => { if (get(PICK_KEY) !== hash) storage.setItem(PICK_KEY, hash); });   // watched: synced
+  }
   Storage.prototype.removeItem = function (key) {
     if (this !== storage || applying) return rawRemove.call(this, key);
     if (frozen(key, null)) return;
@@ -174,8 +181,17 @@
     }
     const slotOfHash = new Map();
     for (const [token, slot] of slotOf) slotOfHash.set(await sha256(token), slot);
+    // the account's profile (PICK_KEY), else the one that drove the most on all PCs, else one there is
+    const driven = new Map();
+    for (const [id, e] of Object.entries(entries)) {
+      if (!id.startsWith('s:' + STATS_PREFIX)) continue;
+      for (const [hash, t] of Object.entries(parse(e.v) || {})) driven.set(hash, (driven.get(hash) || 0) + (Number(t?.metres) || 0));
+    }
+    const mostDriven = [...slotOfHash.keys()].sort((a, b) => (driven.get(b) || 0) - (driven.get(a) || 0))[0];
+    const want = slotOfHash.get(entries['s:' + PICK_KEY]?.v) ?? (driven.get(mostDriven) > 0 ? slotOfHash.get(mostDriven) : undefined);
     const selected = Number(get(GAME + 'user_slot'));
-    if (slotOf.size && ![...slotOf.values()].includes(selected)) write(GAME + 'user_slot', String(Math.min(...slotOf.values())), 'other');
+    if (want != null && want !== selected) write(GAME + 'user_slot', String(want), 'other');
+    else if (slotOf.size && ![...slotOf.values()].includes(selected)) write(GAME + 'user_slot', String(Math.min(...slotOf.values())), 'other');
 
     for (const [id, e] of Object.entries(entries)) {
       if (id.startsWith('r:')) {
@@ -390,9 +406,9 @@
       // with the stats of the profile card, shown to whoever opens the player's card (a track's author)
       const s = p && await profileStats(p);
       const out = await call('POST', '/account/presence', {
-        profile: p && { nickname: p.nickname, countryCode: p.countryCode, carStyle: p.carStyle, tokenHash: s.hash,
+        profile: p && { nickname: p.nickname, countryCode: p.countryCode, carStyle: p.carStyle, tokenHash: s.hash, tokenHashes: s.hashes,
           stats: publicStats(s), badges: pickedBadges(), bestTrack: get(BEST_KEY), frame: pickedFrame().id,
-          distance: Math.round(bestCount('metres')), driving: Math.round(bestCount('seconds')), topSpeed: Math.floor(bestCount('topKmh') * 10) },   // the counted badges (the server keeps the most; tenths of km/h)
+          distance: Math.round(bestCount('metres')), driving: Math.round(bestCount('seconds')), vmax: Math.floor(bestCount('vmax') * 10) },   // the counted badges (the server keeps the most; tenths of km/h)
         state: homeReady() ? 'menu' : 'playing',
         room: window.ApexLobby ? window.ApexLobby.currentRoom() : null,
       }, acc.session);
@@ -415,7 +431,7 @@
   // what the others see of the Stats tab (renderPlayer), whole numbers (the server takes nothing else)
   const publicStats = s => {
     const out = { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom, official: s.official };
-    for (const k of ['metres', 'timedMetres', 'seconds', 'topKmh', 'finishes', 'races', 'wins', 'podiums', 'places']) out[k] = Math.round(s[k] || 0);
+    for (const k of ['metres', 'timedMetres', 'seconds', 'topKmh', 'finishes', 'races', 'wins', 'podiums', 'places', 'tournaments']) out[k] = Math.round(s[k] || 0);
     return out;
   };
 
@@ -582,19 +598,33 @@
 
   // stats of a profile, from this PC's save: tracks with a record, the official ones (the game's and the mod's)
   // and the mod's circuits among them, custom tracks; and what the mod counts as it is played (driven, races)
+  // With an account, of all its game profiles together (profileHashes): the same whichever is played, on any PC
   async function profileStats(p) {
-    const hash = await sha256(p.token), prefix = GAME + 'record_' + p.slot + '_', tracks = new Set();
+    const hash = await sha256(p.token), hashes = await profileHashes(p), tracks = new Set();
     for (const key of Object.keys(storage)) {
-      if (key.startsWith(prefix) && parse(get(key))?.tokenHash === hash) tracks.add(key.slice(-64));
+      if (key.startsWith(GAME + 'record_') && hashes.includes(parse(get(key))?.tokenHash)) tracks.add(key.slice(-64));
     }
     return {
       hash,
+      hashes,
       tracks: tracks.size,
       official: OFFICIAL_TRACKS.filter(id => tracks.has(id)).length,
       circuits: MOD_TRACKS.filter(t => tracks.has(t.id)),
       custom: Object.keys(storage).filter(k => k.startsWith(GAME + 'track_')).length,
-      ...countedStats(p.token, hash),
+      ...countedStats(hashes),
     };
+  }
+  // the game profiles counted as the player's (token hashes): logged in, every profile of the account's save (those in
+  // this PC's slots, and those counted on its other PCs); logged out, the one played
+  async function profileHashes(p) {
+    const all = new Set([await sha256(p.token)]);
+    if (account == null) return [...all];
+    for (let slot = 0; slot < PROFILES; slot++) {
+      const token = parse(get(GAME + 'user_' + slot))?.token;
+      if (typeof token === 'string') all.add(await sha256(token));
+    }
+    for (const key of Object.keys(storage)) if (key.startsWith(STATS_PREFIX)) for (const h of Object.keys(readJson(key) || {})) all.add(h);
+    return [...all];
   }
 
   // ---------------------------------------------------------------- counted stats
@@ -604,9 +634,11 @@
   // Kept in memory while driving, written at most every minute, and when the run ends or the game is left.
   // Every count adds up, but the top speed (MAX_STATS), the highest of them. places: the sum of the race places.
   // timedMetres: the metres driven while the time was counted too (the average speed), the time came after the distance
+  // vmax: the top speed. It took over from topKmh, counted before the TGV badge existed (speed tests gave it badges
+  // never driven for): topKmh is no longer read (the card still shows vmax under that name, countedStats)
   const STATS_EVERY = 60000;
-  const zero = () => ({ metres: 0, timedMetres: 0, seconds: 0, topKmh: 0, finishes: 0, races: 0, wins: 0, podiums: 0, places: 0 });
-  const MAX_STATS = ['topKmh'];
+  const zero = () => ({ metres: 0, timedMetres: 0, seconds: 0, vmax: 0, finishes: 0, races: 0, wins: 0, podiums: 0, places: 0, tournaments: 0 });
+  const MAX_STATS = ['vmax'];
   const addStat = (t, k, n) => { t[k] = MAX_STATS.includes(k) ? Math.max(t[k], n) : t[k] + n; };
   const pending = new Map();      // profile token -> counts not written yet
   const hashes = new Map();       // profile token -> its hash, worked out ahead: the last write (game left) cannot wait
@@ -642,7 +674,7 @@
       t.metres = Math.round(t.metres);
       t.timedMetres = Math.round(t.timedMetres);
       t.seconds = Math.round(t.seconds * 10) / 10;   // written often (every run's end): whole seconds would drop the short ones
-      t.topKmh = Math.floor(t.topKmh * 10) / 10;   // tenths: the TGV badge is won at 574.8 km/h
+      t.vmax = Math.floor(t.vmax * 10) / 10;   // tenths: the TGV badge is won at 574.8 km/h
       all[hash] = t;
       pending.delete(token);
       changed = true;
@@ -651,8 +683,8 @@
     if (pending.size) statsTimer = setTimeout(flushStats, 1000);
     if (changed) checkCountedBadges();
   }
-  // the most among the profiles counted on this PC of one count (metres, seconds), all PCs together, with what is
-  // not written yet (the counted badges)
+  // one count (metres, seconds) for the counted badges, all PCs together, with what is not written yet: logged in, the
+  // account's, all its profiles added up (the top speed: the highest); logged out, the most among the profiles
   function bestCount(stat) {
     const byHash = new Map(), more = (a, b) => (MAX_STATS.includes(stat) ? Math.max(a, b) : a + b);
     for (const key of Object.keys(storage)) {
@@ -661,19 +693,19 @@
       if (all && typeof all === 'object') for (const [hash, t] of Object.entries(all)) byHash.set(hash, more(byHash.get(hash) || 0, Number(t?.[stat]) || 0));
     }
     for (const [token, c] of pending) { const hash = hashes.get(token); if (hash) byHash.set(hash, more(byHash.get(hash) || 0, c[stat] || 0)); }
+    if (account != null) return [...byHash.values()].reduce(more, 0);
     return Math.max(0, ...byHash.values());
   }
-  // the profile's counts, from every PC, with what is not written yet
-  function countedStats(token, hash) {
+  // the counts of these profiles (token hashes) added up, from every PC, with what is not written yet
+  function countedStats(profiles) {
     const sum = zero();
     for (const key of Object.keys(storage)) {
       if (!key.startsWith(STATS_PREFIX)) continue;
-      const t = readJson(key)?.[hash];
-      if (t) for (const k of Object.keys(sum)) addStat(sum, k, Number(t[k]) || 0);
+      const all = readJson(key) || {};
+      for (const hash of profiles) if (all[hash]) for (const k of Object.keys(sum)) addStat(sum, k, Number(all[hash][k]) || 0);
     }
-    const c = pending.get(token);
-    if (c) for (const k of Object.keys(sum)) addStat(sum, k, c[k]);
-    return sum;
+    for (const [token, c] of pending) if (profiles.includes(hashes.get(token))) for (const k of Object.keys(sum)) addStat(sum, k, c[k]);
+    return { ...sum, topKmh: sum.vmax };
   }
   window.ApexStats = {
     // a frame driven (apex-hud.js): metres, seconds of race time, speed
@@ -683,7 +715,7 @@
       if (c == null) return;
       c.metres += metres;
       if (seconds > 0 && seconds < 1) { c.seconds += seconds; c.timedMetres += metres; }
-      if (kmh < 2000 && kmh > c.topKmh) c.topKmh = kmh;
+      if (kmh < 2000 && kmh > c.vmax) c.vmax = kmh;
       if (++drivenFrames % 600 === 0) checkCountedBadges();   // every ten seconds or so: a badge is announced as it is won
     },
     // a run that crossed the finish line, solo or online
@@ -697,29 +729,40 @@
       if (place <= 3) c.podiums++;
       flushStats();
     },
+    // a tournament won: a race or endurance tournament (apex-room.js), or a time trial one (apex-tournament.js)
+    tournament() {
+      const c = counting();
+      if (c == null) return;
+      c.tournaments++;
+      flushStats();
+    },
     flush: flushStats,
   };
   window.addEventListener('pagehide', () => flushStats());
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushStats(); });
-  // places on the mod's circuits, from the GoofyTrack server's boards: [{ position, id, name }], best first
-  const places = new Map();       // token hash -> { time, promise }
-  function boardPlaces(hash, circuits) {
-    const known = places.get(hash);
+  // places on the mod's circuits, from the GoofyTrack server's boards: [{ position, id, name }], best first; of several
+  // profiles (token hashes: the account's, profileHashes), the best of them on each circuit
+  const places = new Map();       // token hashes -> { time, promise }
+  function boardPlaces(profiles, circuits) {
+    const id = profiles.join(','), known = places.get(id);
     if (known && Date.now() - known.time < 120000) return known.promise;
-    const promise = Promise.all(circuits.map(t =>
-      fetch(`${SERVER}leaderboardUserEntry?trackId=${t.id}&userTokenHash=${hash}`)
-        .then(res => (res.ok ? res.json() : null))
-        .then(e => (e && e.position > 0 ? { position: e.position, id: t.id, name: t.name } : null))
-        .catch(() => null)))
+    const entry = (t, hash) => fetch(`${SERVER}leaderboardUserEntry?trackId=${t.id}&userTokenHash=${hash}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(e => (e && e.position > 0 ? e.position : null))
+      .catch(() => null);
+    const promise = Promise.all(circuits.map(t => Promise.all(profiles.map(hash => entry(t, hash))).then(all => {
+      const position = Math.min(...all.filter(Boolean));
+      return Number.isFinite(position) ? { position, id: t.id, name: t.name } : null;
+    })))
       .then(all => all.filter(Boolean).sort((a, b) => a.position - b.position));
-    places.set(hash, { time: Date.now(), promise });
+    places.set(id, { time: Date.now(), promise });
     return promise;
   }
   // the best place shown: the circuit the player picked when they hold that place on several (BEST_KEY), else the first
   const BEST_KEY = 'goofytrack.bestPlace';      // id of the circuit picked (synced)
   const tiedBest = list => list.filter(e => e.position === list[0]?.position);
   const shownPlace = list => tiedBest(list).find(e => e.id === get(BEST_KEY)) || list[0] || null;
-  const bestPlace = (hash, circuits) => boardPlaces(hash, circuits).then(shownPlace);
+  const bestPlace = (profiles, circuits) => boardPlaces(profiles, circuits).then(shownPlace);
 
   // ---------------------------------------------------------------- interface
   let overlay = null, toast = null;
@@ -823,7 +866,7 @@
       { n: 100, short: '100h', name: ['Pilote d\'endurance', 'Endurance driver'], tone: 'red' },
       { n: 250, short: '250h', name: ['Une vie au volant', 'A life at the wheel'], tone: 'world' },
     ] },
-    { kind: 'kmh', stat: 'topKmh', unit: 1, icon: TRAIN, title: ['Vitesse', 'Speed'], tiers: [
+    { kind: 'kmh', stat: 'vmax', unit: 1, icon: TRAIN, title: ['Vitesse', 'Speed'], tiers: [
       { n: 574.8, short: 'TGV', name: ['Record du TGV', 'TGV record'], tone: 'tgv' },   // the TGV V150, 3 April 2007
     ] },
   ];
@@ -905,6 +948,13 @@
   // A counted badge just won is announced once, at the top of the screen, even in a race. Those announced are kept
   // (synced): another PC of the account does not announce them again. A click on the notice opens the Badges tab.
   const SEEN_KEY = 'goofytrack.badgesSeen';
+  // the TGV badge seen before vmax came from the old topKmh: forgotten once on each PC, announced again when reached
+  const SEEN_VMAX_KEY = 'goofytrack.badgesSeenVmax';   // done on this PC (not synced)
+  if (get(SEEN_VMAX_KEY) == null) {
+    const seen = readJson(SEEN_KEY);
+    if (Array.isArray(seen) && seen.includes('kmh:574.8')) try { storage.setItem(SEEN_KEY, JSON.stringify(seen.filter(id => id !== 'kmh:574.8'))); } catch (e) { /* storage full */ }   // watched: synced
+    try { rawSet.call(storage, SEEN_VMAX_KEY, '1'); } catch (e) { /* storage full */ }
+  }
   const ANNOUNCE_MS = 6500;
   let badgeToast = null, announcing = [];
   function checkCountedBadges() {
@@ -1151,6 +1201,9 @@
       tile(tr('Victoires', 'Wins'), count(s.wins), percent(s.wins, s.races));
       tile(tr('Podiums', 'Podiums'), count(s.podiums), percent(s.podiums, s.races));
       tile(tr('Place moyenne', 'Average place'), s.races > 0 ? 'P' + number(s.places / s.races, 1) : '—');
+
+      tile = section(tr('Tournois', 'Tournaments'));
+      tile(tr('Tournois gagnés', 'Tournaments won'), count(s.tournaments)).title = tr('Tournois chrono, course et endurance', 'Time trial, race and endurance tournaments');
     }
 
     const tile = section(tr('Pistes', 'Tracks'));
@@ -1177,7 +1230,7 @@
       if (!s.circuits.length) el(list, 'p', 'hint', tr('Bouclez un circuit du mod pour entrer dans son classement.', 'Finish a mod circuit to get on its board.'));
       else {
         el(list, 'p', 'hint', '…');
-        boardPlaces(s.hash, s.circuits).then(all => {
+        boardPlaces(s.hashes, s.circuits).then(all => {
           list.textContent = '';
           if (!all.length) el(list, 'p', 'hint', tr('Classements injoignables pour l\'instant.', 'The boards cannot be reached right now.'));
           for (const e of all) {
@@ -1187,8 +1240,8 @@
           }
         });
       }
-      el(body, 'p', 'hint', tr('Distance, temps, vitesse et courses : comptés par GoofyTrack depuis la version 2.17, sur tous vos PC.',
-        'Distance, time, speed and races: counted by GoofyTrack since version 2.17, on all your PCs.'));
+      el(body, 'p', 'hint', tr('Distance, temps, vitesse et courses : comptés par GoofyTrack depuis la version 2.17, sur tous vos PC et, connecté à un compte, tous ses profils de jeu.',
+        'Distance, time, speed and races: counted by GoofyTrack since version 2.17, on all your PCs and, logged in to an account, all its game profiles.'));
     });
   }
 
@@ -1263,7 +1316,7 @@
           `Race mode in multiplayer: ${s.races} race${s.races === 1 ? '' : 's'} finished against other players`);
         tiles.place.title = tr('Sur les classements en ligne des circuits du mod', 'On the online boards of the mod\'s circuits');
         if (!s.circuits.length) return fill(tiles.place, '—');
-        bestPlace(s.hash, s.circuits).then(best => fill(tiles.place, best ? 'P' + best.position : '—', best ? best.name : null));
+        bestPlace(s.hashes, s.circuits).then(best => fill(tiles.place, best ? 'P' + best.position : '—', best ? best.name : null));
       });
     }
     madeList(body, account?.name);
@@ -1586,7 +1639,7 @@
 
     // the best place shown on the card, when the player holds it on several circuits (the boards come a moment later)
     const placeBox = el(body, 'div');
-    if (p) profileStats(p).then(s => boardPlaces(s.hash, s.circuits)).then(all => {
+    if (p) profileStats(p).then(s => boardPlaces(s.hashes, s.circuits)).then(all => {
       const tied = tiedBest(all);
       if (tied.length < 2 || !placeBox.isConnected) return;
       el(placeBox, 'h3', null, tr('Meilleure place affichée', 'Best place shown'));
@@ -2139,6 +2192,8 @@
     presence: () => sendPresence(),          // the room changed (apex-lobby.js): friends see it at once
     get name() { return account?.name ?? null; },
     get id() { return account?.id ?? null; },     // the account's number, told to the players of a room (apex-room.js)
+    // the profile picked in the game { token, nickname, countryCode, carStyle } or null (apex-tournament.js)
+    profile: () => currentProfile(),
     // a player's card by account number, from the room's player list (apex-room.js); null: a player with no account
     openPlayer: id => {
       if (Number.isSafeInteger(id) && id > 0) return openPlayer(id);
