@@ -15,6 +15,18 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.22 : le lanceur GoofyTrack
+
+**Nouveautés**
+- **GoofyTrack Launcher.exe** remplace « Construire GoofyTrack.bat » et « Mettre a jour GoofyTrack.bat ». Une seule fenêtre affiche la version installée et la dernière publiée, et propose selon le cas Installer, Mettre à jour, Reconstruire ou Jouer, avec le journal de l'installation.
+- Plus besoin de token GitHub : le dépôt est public, la recherche de nouvelles versions est automatique.
+- Le dossier GoofyTrack est rangé : on n'y voit plus que GoofyTrack Launcher.exe et GoofyTrack.exe. Le code (`sources`) est masqué comme les fichiers du jeu.
+
+**Corrections**
+- La mise à jour utilise le `tar` de Windows pour décompresser la nouvelle version, même quand un autre `tar` (celui de Git) passe en premier.
+
+**Mise à jour** : lancez une dernière fois « Mettre a jour GoofyTrack.bat ». Il installe la 2.22, puis les deux fichiers .bat disparaissent : utilisez ensuite GoofyTrack Launcher.exe. Si l'ancien script demande un token, supprimez `sources/update-settings.json` et relancez-le.
+
 ## V2.21 : les tournois
 
 Trois formes de tournoi : chrono, course et endurance. Chaque victoire compte dans les statistiques du joueur.

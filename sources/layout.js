@@ -1,6 +1,6 @@
-// The GoofyTrack folder as a player sees it: GoofyTrack.exe, "Mettre a jour GoofyTrack.bat", "Construire
-// GoofyTrack.bat" and sources/ (this code). Everything else at the top is hidden (Windows' hidden attribute,
-// like .git): the game's own files, which have to stay next to the exe (setup.js copies them there), and a few
+// The GoofyTrack folder as a player sees it: GoofyTrack.exe and "GoofyTrack Launcher.exe" (install, update,
+// rebuild). Everything else at the top is hidden (Windows' hidden attribute, like .git): sources/ (this code),
+// the game's own files, which have to stay next to the exe (setup.js copies them there), and a few
 // files that have to be at the top for git, GitHub and Render, or for older updaters.
 //
 // Up to 2.17 the code was at the top of the folder. The updater of those versions, which runs the update to
@@ -16,7 +16,7 @@ const { ROOT, GAME, MOD_VERSION } = require('./config');
 
 const ROOT_RELAYS = ['build.js', 'config.js'];
 // committed at the top, hidden
-const ROOT_FILES = [...ROOT_RELAYS, '.gitignore', 'render.yaml', 'README.md', 'LICENSE'];
+const ROOT_FILES = [...ROOT_RELAYS, '.gitignore', 'render.yaml', 'README.md', 'LICENSE', 'sources'];
 // the game's files next to the exe (setup.js), hidden
 const isGameFile = name => /\.(dll|pak|bin)$/i.test(name)
   || ['icudtl.dat', 'locales', 'resources', 'version', 'vk_swiftshader_icd.json', 'LICENSE.electron', 'LICENSES.chromium.html'].includes(name);
@@ -25,7 +25,9 @@ const isGameFile = name => /\.(dll|pak|bin)$/i.test(name)
 const OLD_FILES = ['apex-account.js', 'apex-collide.js', 'apex-gfx.js', 'apex-hud.js', 'apex-livery.js', 'apex-lobby.js', 'apex-monaco.js',
   'apex-notes.js', 'apex-rarity.js', 'apex-records.js', 'apex-room.js', 'apex-scenery.js', 'apex-show.js', 'apex-theme.css', 'apex-town.js',
   'asar.js', 'build_car.js', 'build_patterns.js', 'goofytrack-logo.svg', 'meshlib.js', 'patch_bundle.js', 'serve.js', 'setup.js',
-  'track_outlines.js', 'update.js', 'PATCHNOTES.md', 'Jouer a GoofyTrack.bat'];
+  'track_outlines.js', 'update.js', 'PATCHNOTES.md', 'Jouer a GoofyTrack.bat',
+  // 2.21 and older: the two scripts the launcher replaced
+  'Construire GoofyTrack.bat', 'Mettre a jour GoofyTrack.bat'];
 const OLD_FOLDERS = ['audio', 'docs', 'images', 'tools', 'tracks', 'server'];
 // what the old layout kept that is not in the repository: moved into sources/ rather than lost
 const OLD_KEPT = ['original', 'update-settings.json', path.join('server', 'records.json'), path.join('server', 'accounts.json')];

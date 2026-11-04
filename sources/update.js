@@ -1,18 +1,18 @@
 // Checks GitHub for a newer GoofyTrack, downloads it into the GoofyTrack folder and rebuilds the game (GoofyTrack.exe).
 //
-//   node sources/update.js [--play] [--check] [--force] ["C:\path\to\PolyTrack-v0.6.3-win32-x64"]
+//   node sources/update.js [--play] [--check] [--status] [--force] ["C:\path\to\PolyTrack-v0.6.3-win32-x64"]
 //
-//   --play   start the game afterwards (whether or not there was an update)
-//   --check  only say whether an update is available
-//   --force  rebuild the game even when everything is up to date
+//   --play    start the game afterwards (whether or not there was an update)
+//   --check   only say whether an update is available
+//   --status  print, as one line of JSON, what "GoofyTrack Launcher.exe" shows (installed and latest version…)
+//   --force   rebuild the game even when everything is up to date
 //
-// Or double-click "Mettre a jour GoofyTrack.bat".
+// Or open "GoofyTrack Launcher.exe" (sources/launcher/), which runs this script.
 //
 // - Folder cloned with git: `git pull`, i.e. the latest commits, with your own git credentials (refused if
 //   you have local changes).
-// - Folder downloaded as a ZIP: the latest release's source code is downloaded from GitHub and copied over
-//   the GoofyTrack folder (files you added are kept). The repository being private, the first run asks for a
-//   GitHub token, kept in sources/update-settings.json (never committed).
+// - Folder downloaded as a ZIP: the latest release's source code is downloaded from GitHub (public repository,
+//   no account or token needed) and copied over the GoofyTrack folder (files you added are kept).
 // Then build.js runs if the game does not have this version yet. The very first time, the game is made from
 // a PolyTrack 0.6.3 install (given as argument, found next to the folder, or asked), copied into the folder.
 const fs = require('fs');
@@ -25,10 +25,13 @@ const { findPolyTrack, isPolyTrack } = require('./setup');
 const layout = require('./layout');
 
 const REPO = 'galmichedany7-jpg/goofytrackv1';
+const LAUNCHER = path.join(ROOT, 'GoofyTrack Launcher.exe');
 const SETTINGS = path.join(__dirname, 'update-settings.json');
 const OLD_SETTINGS = path.join(ROOT, 'update-settings.json');    // where 2.17 and older kept them
 const flags = new Set(process.argv.slice(2).filter(a => a.startsWith('--')));
 const polyTrackArg = process.argv.slice(2).find(a => !a.startsWith('--'));
+// Run by the launcher (no console): nothing can be asked, the launcher asks beforehand
+const interactive = !!process.stdin.isTTY;
 
 const loadSettings = () => {
   if (!fs.existsSync(SETTINGS) && fs.existsSync(OLD_SETTINGS)) fs.renameSync(OLD_SETTINGS, SETTINGS);
@@ -46,11 +49,15 @@ const ask = async question => { rl ??= readline.createInterface({ input: process
 const fail = message => { console.error('\n' + message); process.exitCode = 1; };
 
 // The PolyTrack install the game is made from, the first time only
-async function findSource(settings) {
+function knownSource(settings) {
   if (polyTrackArg) return path.resolve(polyTrackArg);
   if (isPolyTrack(settings.game)) return settings.game;   // where older versions installed the mod
-  const found = findPolyTrack();
-  if (found) return found;
+  return findPolyTrack();
+}
+async function findSource(settings) {
+  const known = knownSource(settings);
+  if (known) return known;
+  if (!interactive) throw new Error('Dossier de PolyTrack 0.6.3 introuvable : indiquez celui qui contient PolyTrack.exe.');
   while (true) {
     const dir = (await ask('Dossier de PolyTrack (celui qui contient PolyTrack.exe) : ')).replace(/^"|"$/g, '');
     if (isPolyTrack(dir)) return path.resolve(dir);
@@ -58,49 +65,51 @@ async function findSource(settings) {
   }
 }
 
-async function github(url, settings, raw = false) {
-  while (true) {
-    const headers = { 'User-Agent': 'GoofyTrack-updater', Accept: 'application/vnd.github+json' };
-    if (settings.token) headers.Authorization = 'Bearer ' + settings.token;
-    const res = await fetch(url, { headers });
-    if (res.ok) return raw ? Buffer.from(await res.arrayBuffer()) : res.json();
-    // A private repository answers 404 (or 401 with a bad token) until we authenticate
-    if (res.status !== 404 && res.status !== 401) throw new Error(`GitHub a répondu ${res.status} ${res.statusText}`);
-    if (!process.stdin.isTTY) throw new Error('Le dépôt GitHub est privé : lancez la mise à jour une fois à la main pour enregistrer un token.');
-    console.log(settings.token ? '\nCe token ne donne pas accès au dépôt.' : '\nLe dépôt GitHub est privé : il faut un token GitHub pour le lire (une seule fois).');
-    console.log('Créez-le sur https://github.com/settings/personal-access-tokens/new :');
-    console.log(`  Repository access : Only select repositories > ${REPO}   Permissions : Contents > Read-only`);
-    settings.token = await ask('Token (laissez vide pour annuler) : ');
-    if (!settings.token) throw new Error('Mise à jour annulée.');
-    saveSettings(settings);
-  }
+async function github(url, raw = false) {
+  const res = await fetch(url, { headers: { 'User-Agent': 'GoofyTrack-updater', Accept: 'application/vnd.github+json' } });
+  if (res.ok) return raw ? Buffer.from(await res.arrayBuffer()) : res.json();
+  if (res.status === 404) throw new Error(`dépôt ${REPO} ou release introuvable sur GitHub (le dépôt doit être public).`);
+  if (res.status === 403 || res.status === 429) throw new Error('GitHub limite le nombre de vérifications : réessayez dans une heure.');
+  throw new Error(`GitHub a répondu ${res.status} ${res.statusText}`);
 }
+const latestRelease = () => github(`https://api.github.com/repos/${REPO}/releases/latest`);
 
 function gameRunning() {
   const name = path.basename(EXE);
   try { return execFileSync('tasklist', ['/FI', `IMAGENAME eq ${name}`, '/NH'], { encoding: 'utf8' }).includes(name); } catch { return false; }
 }
 
+const isGit = () => fs.existsSync(path.join(ROOT, '.git'));
+const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+
 // Folder downloaded as a ZIP: replace it with the latest release
-async function updateFromRelease(settings) {
-  const release = await github(`https://api.github.com/repos/${REPO}/releases/latest`, settings);
+async function updateFromRelease() {
+  const release = await latestRelease();
   const latest = release.tag_name.replace(/^v/i, ''), current = sourceVersion();
   if (!newer(latest, current)) { console.log(`GoofyTrack ${current} est la dernière version.`); return false; }
   console.log(`Nouvelle version disponible : ${release.name || release.tag_name} (vous avez la ${current})`);
   if (flags.has('--check')) return false;
 
   console.log('Téléchargement…');
-  const zip = await github(release.zipball_url, settings, true);
+  const zip = await github(release.zipball_url, true);
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'goofytrack-'));
   try {
     fs.writeFileSync(path.join(temp, 'release.zip'), zip);
     const out = path.join(temp, 'release');
     fs.mkdirSync(out);
-    execFileSync('tar', ['-xf', path.join(temp, 'release.zip'), '-C', out]);   // tar ships with Windows 10 and later
+    // Windows' own tar (10 and later), which reads ZIPs: another tar first in the PATH (Git's) does not
+    const windowsTar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+    execFileSync(fs.existsSync(windowsTar) ? windowsTar : 'tar', ['-xf', path.join(temp, 'release.zip'), '-C', out]);
     // GitHub puts everything in one folder named after the repository and the commit
     const [root] = fs.readdirSync(out);
     if (!root || !fs.existsSync(path.join(out, root, 'sources', 'build.js'))) throw new Error("L'archive téléchargée ne ressemble pas à GoofyTrack.");
     layout.reveal();   // a hidden file cannot be overwritten: the build hides them again
+    // The launcher may be the one running this: a running exe cannot be overwritten, but it can be renamed
+    // (the launcher deletes the .old file when it starts)
+    if (fs.existsSync(path.join(out, root, path.basename(LAUNCHER))) && fs.existsSync(LAUNCHER)) {
+      fs.rmSync(LAUNCHER + '.old', { force: true });
+      fs.renameSync(LAUNCHER, LAUNCHER + '.old');
+    }
     fs.cpSync(path.join(out, root), ROOT, { recursive: true, force: true });
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
@@ -111,7 +120,6 @@ async function updateFromRelease(settings) {
 
 // Folder cloned with git: pull, as the README says
 function updateFromGit() {
-  const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
   if (git('status', '--porcelain', '--untracked-files=no')) {
     console.log('Ce dossier a des modifications locales : pas de mise à jour automatique, faites `git pull` vous-même.');
     return false;
@@ -127,15 +135,36 @@ function updateFromGit() {
   return git('rev-parse', 'HEAD') !== before;
 }
 
+// What the launcher shows, as one line of JSON
+async function status(settings) {
+  const s = { hasGame: fs.existsSync(EXE), installed: installedVersion(), source: sourceVersion(), latest: null, updateAvailable: false, git: isGit(), polyTrack: null, gameRunning: gameRunning(), error: null };
+  if (!s.hasGame) s.polyTrack = knownSource(settings);
+  try {
+    if (s.git) {
+      git('fetch', '--quiet');
+      const behind = Number(git('rev-list', '--count', 'HEAD..@{u}'));
+      s.updateAvailable = behind > 0;
+      s.latest = behind ? `${behind} commit(s)` : s.source;
+    } else {
+      s.latest = (await latestRelease()).tag_name.replace(/^v/i, '');
+      s.updateAvailable = newer(s.latest, s.source);
+    }
+  } catch (e) {
+    s.error = e.message;
+  }
+  process.stdout.write(JSON.stringify(s) + '\n');
+}
+
 async function main() {
   const settings = loadSettings();
-  const isGit = fs.existsSync(path.join(ROOT, '.git'));
+  if ('token' in settings) { delete settings.token; saveSettings(settings); }   // the repository is public now
+  if (flags.has('--status')) return status(settings);
   try {
-    isGit ? updateFromGit() : await updateFromRelease(settings);
+    isGit() ? updateFromGit() : await updateFromRelease();
   } catch (e) {
     // Offline or GitHub unreachable: still let the player in with what they have
     fail(`Impossible de vérifier les mises à jour : ${e.message}`);
-    if (!flags.has('--play')) return;
+    if (!flags.has('--play') && fs.existsSync(EXE)) return;
     process.exitCode = 0;
   }
   if (flags.has('--check')) return;
@@ -145,7 +174,10 @@ async function main() {
   const version = sourceVersion(), installed = installedVersion();
   if (source || installed !== version || flags.has('--force')) {
     console.log(installed ? `Construction de GoofyTrack ${version} (le jeu avait la ${installed})…` : `Construction de GoofyTrack ${version}…`);
-    while (gameRunning()) await ask('GoofyTrack est ouvert : fermez le jeu puis appuyez sur Entrée.');
+    while (gameRunning()) {
+      if (!interactive) throw new Error('GoofyTrack est ouvert : fermez le jeu puis recommencez.');
+      await ask('GoofyTrack est ouvert : fermez le jeu puis appuyez sur Entrée.');
+    }
     // a fresh process, so the build runs the scripts just downloaded
     execFileSync(process.execPath, [path.join(__dirname, 'build.js'), ...(source ? [source] : [])], { stdio: 'inherit' });
     if (source && 'game' in settings) { delete settings.game; saveSettings(settings); }

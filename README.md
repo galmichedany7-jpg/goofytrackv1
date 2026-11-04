@@ -4,7 +4,7 @@ Jeu de course pour Windows, construit sur [PolyTrack](https://www.kodub.com) 0.6
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation copie votre propre PolyTrack dans ce dossier et le transforme en GoofyTrack.
 
-**Version actuelle : 2.21** 
+**Version actuelle : 2.22** 
 Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 
 ![Menu principal](sources/docs/menu.jpg)
@@ -100,26 +100,33 @@ Le détail de chaque version est dans [PATCHNOTES.md](sources/PATCHNOTES.md), et
 
 Il faut [Node.js](https://nodejs.org) 18 ou plus récent et PolyTrack 0.6.3 pour Windows.
 
-```bash
-git clone https://github.com/galmichedany7-jpg/goofytrackv1.git GoofyTrack
-cd GoofyTrack
-node sources/build.js "C:\chemin\vers\PolyTrack-v0.6.3-win32-x64"
-```
+1. Téléchargez le code de la dernière release (ou `git clone https://github.com/galmichedany7-jpg/goofytrackv1.git GoofyTrack`).
+2. Ouvrez **`GoofyTrack Launcher.exe`** et cliquez sur **Installer**. Un dossier PolyTrack posé à côté du dossier GoofyTrack est trouvé tout seul ; sinon, le lanceur vous demande de le choisir.
+3. Cliquez sur **Jouer** (ou lancez `GoofyTrack.exe`).
 
-(ou double-cliquez sur **`Construire GoofyTrack.bat`** : il trouve tout seul un dossier PolyTrack posé à côté.) Ensuite, lancez **`GoofyTrack.exe`**.
+En ligne de commande : `node sources/build.js "C:\chemin\vers\PolyTrack-v0.6.3-win32-x64"`.
+
+### Le lanceur
+
+`GoofyTrack Launcher.exe` affiche la version installée et la dernière release publiée sur GitHub (le dépôt est public : ni compte ni token), et propose selon le cas :
+
+- **Installer** : la première fois, copie PolyTrack dans le dossier GoofyTrack et construit le jeu ;
+- **Mettre à jour** : quand une nouvelle release est publiée, la télécharge et reconstruit le jeu ;
+- **Reconstruire** : reconstruit le jeu à partir du code de `sources/` (après une modification) ;
+- **Jouer** : lance `GoofyTrack.exe`.
+
+Il ne fait que lancer `sources/update.js` et `sources/build.js` avec Node.js, et affiche leur journal. Son code est [`sources/launcher/Launcher.cs`](sources/launcher/Launcher.cs) ; après l'avoir modifié, recompilez-le avec `node sources/launcher/build_launcher.js` (le compilateur C# fourni avec Windows suffit) et commitez l'exe.
 
 ### Le dossier GoofyTrack
 
-Dans l'explorateur, on ne voit que quatre choses :
+Dans l'explorateur, on ne voit que deux choses :
 
 | | |
 |---|---|
 | `GoofyTrack.exe` | Le jeu |
-| `Mettre a jour GoofyTrack.bat` | Récupère la nouvelle version s'il y en a une et reconstruit le jeu |
-| `Construire GoofyTrack.bat` | Reconstruit le jeu à partir du code (après une modification, jeu fermé) |
-| `sources/` | Tout le code du mod, ses pistes, son serveur et ses outils |
+| `GoofyTrack Launcher.exe` | Installe, met à jour et reconstruit le jeu |
 
-Le reste est masqué (attribut « caché » de Windows, comme `.git`) par [`sources/layout.js`](sources/layout.js) à chaque build : les fichiers du jeu, qui doivent rester à côté de `GoofyTrack.exe` (`*.dll`, `*.pak`, `locales/`, `resources/`…), et quelques fichiers qui doivent être en haut du dépôt (`README.md`, `LICENSE`, `.gitignore`, `render.yaml`). Restent aussi, masqués, `build.js` et `config.js` : ils relaient vers `sources/` pour l'updater de la 2.17 et des versions précédentes, qui lit la version dans `./config.js` puis lance `./build.js` (le build les tient à jour, puis retire les fichiers de l'ancienne organisation).
+Le reste est masqué (attribut « caché » de Windows, comme `.git`) par [`sources/layout.js`](sources/layout.js) à chaque build : `sources/`, qui contient tout le code du mod, ses pistes, son serveur et ses outils (pour l'ouvrir, tapez `sources` au bout du chemin dans la barre d'adresse de l'explorateur, ou cochez **Affichage > Afficher > Éléments masqués**), les fichiers du jeu, qui doivent rester à côté de `GoofyTrack.exe` (`*.dll`, `*.pak`, `locales/`, `resources/`…), et quelques fichiers qui doivent être en haut du dépôt (`README.md`, `LICENSE`, `.gitignore`, `render.yaml`). Restent aussi, masqués, `build.js` et `config.js` : ils relaient vers `sources/` pour l'updater de la 2.17 et des versions précédentes, qui lit la version dans `./config.js` puis lance `./build.js` (le build les tient à jour, puis retire les fichiers de l'ancienne organisation).
 
 La première fois, PolyTrack est copié dans le dossier GoofyTrack (fichiers ignorés par git) : `PolyTrack.exe` devient `GoofyTrack.exe`, avec l'icône et le nom de GoofyTrack ([`setup.js`](sources/setup.js)). Le dossier de PolyTrack n'est plus utilisé ensuite, vous pouvez le supprimer. S'il est à côté du dossier GoofyTrack, il est trouvé tout seul et `node sources/build.js` suffit. Vos sauvegardes (temps, pistes, réglages) restent celles de PolyTrack.
 
@@ -129,14 +136,14 @@ Pour désinstaller, supprimez le dossier.
 
 ### Mises à jour automatiques
 
-Double-cliquez sur **`Mettre a jour GoofyTrack.bat`** : il récupère la nouvelle version s'il y en a une et reconstruit le jeu si besoin. En ligne de commande :
+Le lanceur vérifie à chaque ouverture si une nouvelle release est publiée. En ligne de commande :
 
 ```bash
-node sources/update.js [--check] [--play] [--force]
+node sources/update.js [--check] [--status] [--play] [--force]
 ```
 
 - Dossier cloné avec git : `git pull` (les derniers commits) avec vos identifiants git, refusé s'il y a des modifications locales.
-- Dossier téléchargé en ZIP : le code de la dernière release est copié par-dessus le dossier. Le dépôt étant privé, le premier lancement demande un token GitHub en lecture seule (Contents > Read-only sur ce dépôt), gardé dans `sources/update-settings.json`.
+- Dossier téléchargé en ZIP : le code de la dernière release est copié par-dessus le dossier. Le dépôt est public : aucun token n'est demandé.
 - Sans connexion, le jeu se lance quand même (`--play`).
 - Venant d'une version où le mod était installé dans le dossier de PolyTrack : la mise à jour copie le jeu dans le dossier GoofyTrack la première fois (le dossier de PolyTrack est retrouvé ou demandé).
 
@@ -213,13 +220,14 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 
 ## Organisation du code
 
-Tout est dans `sources/`, sauf les deux `.bat` et les fichiers masqués du haut du dossier (voir [Le dossier GoofyTrack](#le-dossier-goofytrack)).
+Tout est dans `sources/`, sauf `GoofyTrack Launcher.exe` et les fichiers masqués du haut du dossier (voir [Le dossier GoofyTrack](#le-dossier-goofytrack)).
 
 | Fichier | Rôle |
 |---|---|
-| `build.js`, `Construire GoofyTrack.bat` | Construction du jeu |
+| `build.js` | Construction du jeu |
 | `setup.js`, `tools/rebrand_exe.ps1` | Première installation : copie de PolyTrack dans le dossier GoofyTrack, `GoofyTrack.exe` avec son icône et son nom |
-| `update.js`, `Mettre a jour GoofyTrack.bat` | Mises à jour automatiques |
+| `update.js` | Mises à jour automatiques |
+| `launcher/` | `GoofyTrack Launcher.exe` : son code (`Launcher.cs`) et sa compilation (`build_launcher.js`) |
 | `layout.js` | Le dossier GoofyTrack : fichiers masqués, relais pour les anciens updaters, rangement après la mise à jour depuis la 2.17 |
 | `config.js`, `asar.js` | Emplacement du jeu, lecture de l'archive |
 | `build_car.js`, `meshlib.js` | Génération procédurale du modèle 3D de la voiture |
