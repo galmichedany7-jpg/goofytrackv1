@@ -15,6 +15,20 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.24 : plus besoin de PolyTrack, un compte pour chaque pilote
+
+**Nouveautés**
+- Plus besoin de télécharger PolyTrack : l'installation télécharge tout seule le jeu (PolyTrack 0.6.3, depuis la version web officielle de Kodub) et son moteur (Electron, depuis GitHub), environ 150 Mo. Chaque fichier est vérifié. Un PolyTrack déjà installé à côté du dossier GoofyTrack sert encore à la place du téléchargement.
+- Le lanceur ne demande plus le dossier de PolyTrack : **Installer** suffit.
+- Un compte GoofyTrack est maintenant obligatoire. Juste après le tutoriel, un écran demande de créer un compte ou de se connecter, et on ne peut pas le fermer. Les joueurs déjà installés qui n'ont pas de compte le voient au prochain lancement.
+- Le pseudo « Anonymous » et les pseudos vides sont refusés, à la création du compte comme dans « Modifier le profil ». Un profil qui s'appelle encore « Anonymous » prend le nom du compte.
+- Si le serveur ne répond pas (pas d'internet, serveur endormi), on peut choisir au moins un pseudo et jouer quand même. Le compte est redemandé au lancement suivant.
+
+**Corrections**
+- Les records nommés « Anonymous » sont supprimés des classements des circuits du mod, et le serveur n'en accepte plus de nouveaux.
+
+**Mise à jour** : ouvrez GoofyTrack Launcher et cliquez sur Mettre à jour. Les joueurs déjà installés ne retéléchargent rien et gardent leurs sauvegardes. Le serveur doit aussi être redéployé.
+
 ## V2.23 : GoofyTrack sur Mac
 
 **Nouveautés**

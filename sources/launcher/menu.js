@@ -33,7 +33,7 @@ async function main() {
     console.log(bold('\n  GoofyTrack\n'));
     console.log(grey(`  ${s.hasGame && s.installed ? 'Version installée : ' + s.installed : 'Jeu pas encore installé'}     Dernière version : ${s.latest || 'inconnue'}`));
     if (s.error) console.log(red(`  Impossible de vérifier les mises à jour : ${s.error}`));
-    else if (!s.hasGame) console.log('  Installez le jeu à partir de votre PolyTrack 0.6.3 (une seule fois).');
+    else if (!s.hasGame) console.log('  Installez le jeu : il se télécharge tout seul (environ 150 Mo, une seule fois).');
     else if (s.updateAvailable) console.log('  Une nouvelle version est disponible.');
     else if (s.installed !== s.source) console.log(`  Le jeu n'a pas encore la version ${s.source} du code : reconstruisez-le.`);
     else console.log('  GoofyTrack est à jour.');
@@ -58,7 +58,7 @@ async function main() {
   }
 }
 
-// update.js finds PolyTrack by itself, or asks for it (the Terminal lets you drag the app in)
+// update.js copies a PolyTrack.app found next to the folder, or downloads the game (polytrack.js)
 function install(s) {
   return s.polyTrack ? node('update.js', [s.polyTrack]) : node('update.js');
 }

@@ -16,8 +16,8 @@
 //   you have local changes).
 // - Folder downloaded as a ZIP: the latest release's source code is downloaded from GitHub (public repository,
 //   no account or token needed) and copied over the GoofyTrack folder (files you added are kept).
-// Then build.js runs if the game does not have this version yet. The very first time, the game is made from
-// a PolyTrack 0.6.3 install (given as argument, found next to the folder, or asked), copied into the folder.
+// Then build.js runs if the game does not have this version yet. The very first time, the game is downloaded
+// (polytrack.js), or copied from a PolyTrack 0.6.3 install given as argument or found next to the folder.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -51,22 +51,11 @@ let rl;
 const ask = async question => { rl ??= readline.createInterface({ input: process.stdin, output: process.stdout }); return (await rl.question(question)).trim(); };
 const fail = message => { console.error('\n' + message); process.exitCode = 1; };
 
-// The PolyTrack install the game is made from, the first time only
+// A PolyTrack install the game can be copied from, the first time only; none: build.js downloads the game
 function knownSource(settings) {
   if (polyTrackArg) return polyTrackApp(polyTrackArg) || path.resolve(polyTrackArg);
   if (isPolyTrack(settings.game)) return settings.game;   // where older versions installed the mod
   return findPolyTrack();
-}
-async function findSource(settings) {
-  const known = knownSource(settings);
-  if (known) return known;
-  const what = MAC ? 'PolyTrack.app' : 'le dossier qui contient PolyTrack.exe';
-  if (!interactive) throw new Error(`PolyTrack 0.6.3 introuvable : indiquez ${what}.`);
-  while (true) {
-    const dir = await ask(MAC ? 'Faites glisser PolyTrack.app ici puis appuyez sur Entrée : ' : 'Dossier de PolyTrack (celui qui contient PolyTrack.exe) : ');
-    if (isPolyTrack(dir)) return polyTrackApp(dir);
-    console.log(MAC ? 'Ce n\'est pas PolyTrack.app pour macOS.' : 'PolyTrack.exe introuvable dans ce dossier.');
-  }
 }
 
 async function github(url, raw = false) {
@@ -180,10 +169,10 @@ async function main() {
   }
   if (flags.has('--check')) return;
 
-  const source = fs.existsSync(EXE) ? null : await findSource(settings);
+  const fresh = !fs.existsSync(EXE), source = fresh ? knownSource(settings) : null;
 
   const version = sourceVersion(), installed = installedVersion();
-  if (source || installed !== version || flags.has('--force')) {
+  if (fresh || installed !== version || flags.has('--force')) {
     console.log(installed ? `Construction de GoofyTrack ${version} (le jeu avait la ${installed})…` : `Construction de GoofyTrack ${version}…`);
     while (gameRunning()) {
       if (!interactive) throw new Error('GoofyTrack est ouvert : fermez le jeu puis recommencez.');
@@ -193,6 +182,7 @@ async function main() {
     execFileSync(process.execPath, [path.join(__dirname, 'build.js'), ...(source ? [source] : [])], { stdio: 'inherit' });
     if (source && 'game' in settings) { delete settings.game; saveSettings(settings); }
     if (source) console.log(`\nLe jeu est maintenant dans le dossier GoofyTrack : ${EXE}\nL'ancien dossier de PolyTrack n'est plus utilisé par GoofyTrack.`);
+    else if (fresh) console.log(`\nLe jeu est installé dans le dossier GoofyTrack : ${EXE}`);
   } else {
     console.log(`Le jeu a déjà GoofyTrack ${version}.`);
   }

@@ -38,6 +38,10 @@ const GIST_FILE = 'goofytrack-records.json';
 const GIST_DESCRIPTION = 'GoofyTrack records';
 const SAVE_DELAY = 5000;
 
+// "Anonymous": the name the game gives a new profile. Since 2.24 the game asks for a real one: such records are
+// dropped as the server starts, and refused.
+const anonymous = nickname => String(nickname ?? '').trim().toLowerCase() === 'anonymous';
+
 const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
 const HEX64 = /^[0-9a-f]{64}$/;
 
@@ -82,6 +86,13 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     } else log(`records: none yet, will be saved to ${file} (set GITHUB_TOKEN to keep them in a gist)`);
     // a host that wipes its disk (Render free plan) forgets every record on each restart
     if (!githubToken && process.env.RENDER) console.error('records: WARNING no GITHUB_TOKEN on Render: the records are lost on every restart (every sleep)');
+    let dropped = 0;
+    for (const [trackId, entries] of Object.entries(data.tracks)) {
+      const kept = entries.filter(e => !anonymous(e.nickname));
+      dropped += entries.length - kept.length;
+      if (kept.length) data.tracks[trackId] = kept; else delete data.tracks[trackId];
+    }
+    if (dropped) { log(`records: ${dropped} "Anonymous" record(s) dropped`); scheduleSave(); }
     const count = Object.values(data.tracks).reduce((n, t) => n + t.length, 0);
     if (data.styles == null) data.styles = {};
     styleCount = Object.values(data.styles).reduce((n, t) => n + Object.keys(t).length, 0);
@@ -156,6 +167,7 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     if (!Number.isSafeInteger(frames) || frames <= 0 || frames > MAX_FRAMES) return [400, 'bad frames'];
     if (typeof recording !== 'string' || recording.length === 0 || recording.length >= MAX_RECORDING) return [400, 'bad recording'];
     if (typeof carStyle !== 'string' || carStyle.length > 200 || nickname === '') return [400, 'bad profile'];
+    if (anonymous(nickname)) return [400, 'anonymous'];
     if (countryCode != null && !/^[a-z]{2}$/i.test(countryCode)) return [400, 'bad country'];
 
     if (!signedBy(userId, secret)) return [403, 'wrong token'];

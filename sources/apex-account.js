@@ -784,7 +784,8 @@
   }
 
   function close() {
-    if (overlay == null) return;
+    if (overlay == null || (required && account == null)) return;     // the required account: no way around it
+    required = false;
     overlay.remove();
     overlay = null;
     viewing = null;
@@ -1255,6 +1256,7 @@
     if (overlay == null) return;
     const panel = overlay.querySelector('.panel');
     panel.textContent = '';
+    if (required) return renderRequired(panel);
     if (viewing) return renderPlayer(panel, viewing);
     if (editing) return renderEditor(panel);
     if (securing) return renderSecurity(panel);
@@ -1334,7 +1336,7 @@
       now.addEventListener('click', () => { sync().catch(() => {}); render(); });
       const security = el(row, 'button', account.recovery ? null : 'warn', tr('Sécurité', 'Security'));
       security.addEventListener('click', () => { securing = {}; render(); });
-      el(row, 'button', null, tr('Se déconnecter', 'Log out')).addEventListener('click', () => logOut().then(render));
+      el(row, 'button', null, tr('Se déconnecter', 'Log out')).addEventListener('click', () => logOut().then(() => { render(); checkRequired(); }));
       if (!account.recovery) el(body, 'p', 'hint warn', tr('Pas encore de code de secours : sans lui, un mot de passe oublié ne se remplace pas. Créez-le dans Sécurité.',
         'No recovery code yet: without it, a forgotten password cannot be replaced. Make one in Security.'));
       el(body, 'p', 'hint', tr('Profils, records et fantômes, pistes perso et réglages suivent ce compte sur chaque PC où vous vous connectez. Se déconnecter garde tout sur ce PC.',
@@ -1348,6 +1350,12 @@
     el(body, 'h3', null, tr('Compte GoofyTrack', 'GoofyTrack account'));
     el(body, 'p', 'hint', tr('Connectez-vous pour retrouver vos profils, records, pistes perso et réglages sur tous vos PC.',
       'Log in to find your profiles, records, custom tracks and settings on all your PCs.'));
+    loginForm(body);
+  }
+
+  // the login, account creation and recovery forms, on the card and on the required screen; unreachable: called when
+  // the server cannot be reached (asleep, no internet)
+  function loginForm(body, unreachable = null) {
     const modes = el(body, 'div', 'tabs');
     for (const [m, label] of [['login', tr('Se connecter', 'Log in')], ['create', tr('Créer un compte', 'Create an account')]]) {
       const button = el(modes, 'button', m === mode ? 'active' : null, label);
@@ -1382,6 +1390,7 @@
       event.preventDefault();
       status.classList.remove('error');
       if (!/^[\p{L}\p{N}_.-]{3,20}$/u.test(name.value.trim())) { status.classList.add('error'); status.textContent = tr('Pseudo : 3 à 20 lettres, chiffres, - _ ou point.', 'Name: 3 to 20 letters, digits, - _ or dot.'); return; }
+      if (mode === 'create' && anonymousName(name.value)) { status.classList.add('error'); status.textContent = tr('Choisissez un vrai pseudo, pas « Anonymous ».', 'Pick a real name, not "Anonymous".'); return; }
       if (mode === 'create' && password.value.length < 8) { status.classList.add('error'); status.textContent = tr('Mot de passe : 8 caractères au moins.', 'Password: 8 characters at least.'); return; }
       if (confirm && confirm.value !== password.value) { status.classList.add('error'); status.textContent = tr('Les mots de passe ne correspondent pas.', 'The passwords do not match.'); return; }
       submit.disabled = true;
@@ -1390,7 +1399,86 @@
         submit.disabled = false;
         status.classList.add('error');
         status.textContent = e.message;
+        if (unreachable && serverDown(e)) unreachable();
       });
+    });
+  }
+
+  // ---------------------------------------------------------------- required account (2.24)
+  // Once the tutorial is done, the home screen asks for an account and cannot be closed without one: no more
+  // "Anonymous" (the game's name for a new profile) on the boards and in the rooms. A player of an older version
+  // with no account gets it at the next start. When the server cannot be reached, the player picks at least a real
+  // name for their profile and plays; the account is asked again at the next start.
+  let required = false;          // the required screen is shown
+  let deferred = false;          // played without an account this time (server unreachable)
+  let fallback = false;          // the server could not be reached: the name-only form is offered
+  const anonymousName = name => /^\s*anonymous\s*$/i.test(String(name ?? '')) || String(name ?? '').trim() === '';
+  const serverDown = e => e.status === 0 || e.status === 502 || e.status === 503 || e.status === 504;
+  const tutorialDone = () => {
+    const info = readJson(GAME + 'startup_info');     // the game's own (PolyTrack 0.6.3): no field means done
+    return info != null && typeof info === 'object' && info.isTutorialCompleted !== false;
+  };
+  // the profile's name and flag, as the game's own window would send them (saveProfile)
+  function renameProfile(nickname) {
+    try {
+      const game = window.GoofyGame;
+      if (game.profiles.getCurrentUserProfile().nickname === nickname) return;
+      game.profiles.setNickname(nickname);
+      const p = game.profiles.getCurrentUserProfile();
+      Promise.resolve(game.api?.submitUserProfile(p.token, p.nickname, p.countryCode, p.carStyle)).catch(e => console.warn('GoofyTrack profile: PolyTrack server', e));
+      scheduleBadge();
+      sendPresence();
+    } catch (e) { console.warn('GoofyTrack profile: name', e); }
+  }
+  // on the home screen: the screen when needed, and a logged-in player's "Anonymous" profile named after the account
+  function checkRequired() {
+    if (!homeReady() || !tutorialDone()) return;
+    if (account != null) {
+      if (anonymousName(currentProfile()?.nickname) && window.GoofyGame) renameProfile(account.name);
+      return;
+    }
+    if (deferred || required) return;
+    required = true;
+    mode = 'create';
+    fallback = false;
+    call('GET', '/health').catch(() => {});    // wakes the server while the player types
+    if (overlay) render(); else open();
+  }
+
+  function renderRequired(panel) {
+    overlay.dataset.view = 'required';
+    const header = el(panel, 'div', 'header');
+    const who = el(header, 'div', 'who');
+    el(who, 'h2', null, tr('Votre compte GoofyTrack', 'Your GoofyTrack account'));
+    el(who, 'div', 'country', tr('Obligatoire pour jouer', 'Required to play'));
+    const body = el(panel, 'div', 'body');
+    el(body, 'p', 'hint', tr('Choisissez votre pseudo : c\'est lui qu\'on voit dans les classements et en multijoueur. Vos records, profils et réglages vous suivent ensuite sur chaque PC.',
+      'Pick your name: it is the one shown in the leaderboards and in multiplayer. Your records, profiles and settings then follow you on every PC.'));
+    loginForm(body, () => { if (!fallback) { fallback = true; renderFallback(fallbackBox); } });
+    const fallbackBox = el(body, 'div');
+    if (fallback) renderFallback(fallbackBox);
+  }
+
+  // the server cannot be reached: a real name for the profile at least, and the game until the next start
+  function renderFallback(box) {
+    box.textContent = '';
+    el(box, 'h3', null, tr('Serveur injoignable', 'Server unreachable'));
+    el(box, 'p', 'hint warn', tr('Le serveur ne répond pas pour l\'instant. Réessayez ci-dessus, ou choisissez au moins un pseudo pour jouer : le compte vous sera redemandé au prochain lancement.',
+      'The server does not answer right now. Try again above, or pick at least a name to play: the account will be asked again at the next start.'));
+    const now = currentProfile()?.nickname;
+    const f = smallForm(box, [[tr('Pseudo du profil', 'Profile name'), 'text', 'nickname']], tr('Jouer sans compte pour l\'instant', 'Play without an account for now'));
+    const [name] = f.inputs;
+    name.maxLength = 32;
+    if (!anonymousName(now)) name.value = now;
+    f.form.addEventListener('submit', event => {
+      event.preventDefault();
+      const nickname = name.value.trim();
+      if (anonymousName(nickname)) return f.fail(tr('Choisissez un vrai pseudo, pas « Anonymous ».', 'Pick a real name, not "Anonymous".'));
+      if (new TextEncoder().encode(nickname).length >= 50) return f.fail(tr('Pseudo trop long.', 'Name too long.'));
+      renameProfile(nickname);
+      deferred = true;
+      required = false;
+      close();
     });
   }
 
@@ -1562,7 +1650,7 @@
     const body = el(panel, 'div', 'body editor');
     const nameLabel = el(body, 'label', null, tr('Pseudo', 'Name'));
     const name = el(nameLabel, 'input');
-    Object.assign(name, { type: 'text', value: draft.nickname, placeholder: 'Anonymous', spellcheck: false, maxLength: 32 });
+    Object.assign(name, { type: 'text', value: anonymousName(draft.nickname) ? '' : draft.nickname, placeholder: tr('Votre pseudo', 'Your name'), spellcheck: false, maxLength: 32 });
     name.addEventListener('input', () => { draft.nickname = name.value; });
     el(body, 'p', 'hint', tr('Affiché dans les classements et en ligne.', 'Shown in the leaderboards and online.'));
 
@@ -1663,7 +1751,8 @@
     el(actions, 'button', null, tr('Annuler', 'Cancel')).addEventListener('click', back);
     const save = el(actions, 'button', 'primary', tr('Enregistrer', 'Save'));
     save.addEventListener('click', () => {
-      const nickname = draft.nickname.trim() || 'Anonymous';
+      const nickname = draft.nickname.trim();
+      if (anonymousName(nickname)) { status.className = 'state error'; status.textContent = tr('Choisissez un vrai pseudo, pas « Anonymous ».', 'Pick a real name, not "Anonymous".'); return; }
       if (new TextEncoder().encode(nickname).length >= 50) { status.className = 'state error'; status.textContent = tr('Pseudo trop long.', 'Name too long.'); return; }
       saveProfile(nickname, draft.countryCode, draft.badges, draft.bestTrack, draft.frame);
       back();
@@ -1940,6 +2029,7 @@
   padding: 84px 16px 16px calc(16px + var(--safe-area-horizontal, 0px)); box-sizing: border-box;
   background-color: rgba(0, 0, 0, 0.35); pointer-events: auto;
 }
+#ui .apex-account[data-view="required"] { align-items: center; justify-content: center; padding: 16px; background-color: rgba(0, 0, 0, 0.6); }
 #ui .apex-account > .panel {
   display: flex; flex-direction: column; width: min(400px, calc(100% - 32px)); max-height: 100%;
   border-radius: var(--apx-r-lg, 18px); background-color: var(--apx-glass-strong, rgba(12, 14, 19, 0.92));
@@ -2182,7 +2272,7 @@
       addBadge();
       linkAuthor();
       const now = homeReady();
-      if (now !== shown) { shown = now; scheduleBadge(); sendPresence(); }   // friends see whether the player is in the menu
+      if (now !== shown) { shown = now; scheduleBadge(); sendPresence(); checkRequired(); }   // friends see whether the player is in the menu
     }).observe(document.getElementById('ui'), { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   });
   setInterval(() => { if (overlay != null && account != null && tab === 'profile' && !syncing) render(); }, 30000);   // "synced x min ago"

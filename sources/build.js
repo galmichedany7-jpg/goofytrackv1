@@ -4,8 +4,8 @@
 //   node sources/build.js ["C:\path\to\PolyTrack-v0.6.3-win32-x64"]     (or the launcher's "Reconstruire")
 //   node sources/build.js ["/path/to/PolyTrack.app"]                     (macOS)
 //
-// First run: PolyTrack is copied into the GoofyTrack folder (setup.js; the PolyTrack install is only needed that
-// once, and found by itself when it sits next to it), then its archive (resources/app.asar, inside the app on
+// First run: the game is downloaded into the GoofyTrack folder (polytrack.js: Electron from GitHub, PolyTrack 0.6.3 from
+// Kodub's web version), or copied from a PolyTrack install given or found next to it (setup.js), then its archive (resources/app.asar, inside the app on
 // macOS) is set aside as app.asar.original and unpacked into resources/app, which the game loads instead. Every run rebuilds
 // the modified files from the pristine archive, so it is safe to run again after editing the code.
 const fs = require('fs');
@@ -20,19 +20,19 @@ const layout = require('./layout');
 // The files the layout of 2.17 and older left at the top of the folder (layout.js)
 layout.tidy();
 
-// 0. The game itself, taken from PolyTrack the first time
+// 0. The game itself, the first time: copied from a PolyTrack install given or found next to the folder, else
+// downloaded (its progress shown as it goes)
 if (!fs.existsSync(EXE)) {
   const source = process.argv[2] || setup.findPolyTrack();
-  if (!source) {
-    console.error(`${path.basename(EXE)} is not in ${GAME} yet: give the PolyTrack 0.6.3 install once, node build.js "${process.platform === 'darwin' ? '/path/to/PolyTrack.app' : 'C:\\path\\to\\PolyTrack'}"`);
-    process.exit(1);
-  }
-  setup.setup(source);
+  if (source) setup.setup(source);
+}
+if (!fs.existsSync(EXE) || (!fs.existsSync(ARCHIVE_BACKUP) && !fs.existsSync(ARCHIVE))) {
+  try { execFileSync(process.execPath, [path.join(__dirname, 'polytrack.js')], { stdio: 'inherit' }); }
+  catch { console.error(`${path.basename(EXE)} could not be installed in ${GAME} (see above)`); process.exit(1); }
 }
 
-// 1. Set the original archive aside (first install only)
+// 1. Set the original archive aside (first install only; polytrack.js writes it there itself)
 if (!fs.existsSync(ARCHIVE_BACKUP)) {
-  if (!fs.existsSync(ARCHIVE)) { console.error(`${ARCHIVE} is missing: is this a PolyTrack desktop install?`); process.exit(1); }
   fs.renameSync(ARCHIVE, ARCHIVE_BACKUP);
   console.log('Original game archive kept as resources/app.asar.original');
 }
@@ -42,8 +42,7 @@ if (version !== SUPPORTED_VERSION) console.warn(`Warning: this mod targets PolyT
 // 2. Unpack the game (first install only), and keep pristine copies of the files the build transforms
 if (!fs.existsSync(APP)) console.log(`Unpacked ${asar.extractAll(ARCHIVE_BACKUP, APP)} game files into resources/app`);
 fs.mkdirSync(ORIGINALS, { recursive: true });
-fs.mkdirSync(path.join(ORIGINALS, 'electron'), { recursive: true });
-for (const [inner, name] of [['models/car.glb', 'car.glb'], ['main.bundle.js', 'main.bundle.js'], ['simulation_worker.bundle.js', 'simulation_worker.bundle.js'], [EDITOR_CHUNK, EDITOR_CHUNK], [GARAGE_CHUNK, GARAGE_CHUNK], ['index.html', 'index.html'], ['electron/main.js', 'electron/main.js']])
+for (const [inner, name] of [['models/car.glb', 'car.glb'], ['main.bundle.js', 'main.bundle.js'], ['simulation_worker.bundle.js', 'simulation_worker.bundle.js'], [EDITOR_CHUNK, EDITOR_CHUNK], [GARAGE_CHUNK, GARAGE_CHUNK], ['index.html', 'index.html']])
   fs.writeFileSync(path.join(ORIGINALS, name), asar.readFile(ARCHIVE_BACKUP, inner));
 
 // 3. Build
@@ -100,7 +99,10 @@ fs.copyFileSync(path.join(__dirname, 'audio', 'engine_r26.wav'), path.join(APP, 
 for (const icon of ['riviera.svg', 'riviera_colored.svg']) fs.copyFileSync(path.join(__dirname, 'images', icon), path.join(APP, 'images', icon));   // Riviera environment
 fs.copyFileSync(path.join(__dirname, 'images', 'wing.svg'), path.join(APP, 'images', 'wing.svg'));   // the garage's Wing tab
 fs.copyFileSync(path.join(__dirname, 'images', 'body.svg'), path.join(APP, 'images', 'body.svg'));   // the garage's Body tab
-// App icon: the window (taskbar, Alt+Tab) uses the .ico (patched into electron/main.js), the web manifest the .svg
+// The desktop app: our own (electron/), in place of the one of PolyTrack's archive
+fs.mkdirSync(path.join(APP, 'electron'), { recursive: true });
+for (const file of ['main.js', 'preload.js']) fs.copyFileSync(path.join(__dirname, 'electron', file), path.join(APP, 'electron', file));
+// App icon: the window (taskbar, Alt+Tab) uses the .ico (electron/main.js), the web manifest the .svg
 fs.copyFileSync(path.join(__dirname, 'images', 'goofytrack_icon.ico'), path.join(APP, 'images', 'goofytrack_icon.ico'));
 fs.copyFileSync(path.join(__dirname, 'images', 'goofytrack_icon.svg'), path.join(APP, 'images', 'icons', 'icon.svg'));
 for (const track of require('./tracks')) {

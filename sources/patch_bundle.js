@@ -1293,17 +1293,7 @@ const garagePatches = [
   },
 ];
 
-// The desktop app's window: the GoofyTrack icon (otherwise Windows shows the one inside PolyTrack.exe)
-const electronPatches = [
-  {
-    name: 'window icon',
-    find: 'autoHideMenuBar:!0,',
-    replace: 'autoHideMenuBar:!0,icon:path.join(__dirname,"..","images","goofytrack_icon.ico"),',
-  },
-];
-
 applyPatches('main.bundle.js', patches);
-applyPatches(path.join('electron', 'main.js'), electronPatches);
 applyPatches('simulation_worker.bundle.js', workerPatches);
 applyPatches(EDITOR_CHUNK, editorPatches);
 applyPatches(GARAGE_CHUNK, garagePatches);

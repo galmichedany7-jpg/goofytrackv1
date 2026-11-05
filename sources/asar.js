@@ -48,4 +48,46 @@ function extractAll(file, dest) {
   return count;
 }
 
-module.exports = { readFile, extractAll };
+// The paths of the files of the archive ('electron/main.js'…)
+function list(file) {
+  const archive = open(file);
+  fs.closeSync(archive.fd);
+  const out = [];
+  const walk = (node, rel) => {
+    for (const [name, entry] of Object.entries(node.files)) {
+      if (entry.files) walk(entry, rel + name + '/');
+      else if (!entry.unpacked && !entry.link) out.push(rel + name);
+    }
+  };
+  walk(archive.header, '');
+  return out;
+}
+
+// Write an archive from a Map of path ('electron/main.js'…) -> Buffer (polytrack.js)
+// Layout: a 4-byte size (4), the size of the header pickle; the pickle: its payload size, the JSON's length, the
+// JSON padded to 4 bytes; then the files, one after the other (offsets in the header, from there, as strings).
+function pack(files, out) {
+  const header = { files: {} };
+  let offset = 0;
+  const bodies = [];
+  for (const [file, buf] of files) {
+    const parts = file.split('/');
+    let node = header;
+    for (const dir of parts.slice(0, -1)) node = (node.files[dir] ??= { files: {} });
+    node.files[parts[parts.length - 1]] = { size: buf.length, offset: String(offset) };
+    offset += buf.length;
+    bodies.push(buf);
+  }
+  const json = Buffer.from(JSON.stringify(header), 'utf8');
+  const padded = Math.ceil(json.length / 4) * 4;
+  const head = Buffer.alloc(16 + padded);
+  head.writeUInt32LE(4, 0);
+  head.writeUInt32LE(8 + padded, 4);
+  head.writeUInt32LE(4 + padded, 8);
+  head.writeUInt32LE(json.length, 12);
+  json.copy(head, 16);
+  const fd = fs.openSync(out, 'w');
+  try { for (const buf of [head, ...bodies]) fs.writeSync(fd, buf); } finally { fs.closeSync(fd); }
+}
+
+module.exports = { readFile, extractAll, list, pack };

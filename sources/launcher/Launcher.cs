@@ -141,7 +141,7 @@ class Launcher : Form {
       + "     Dernière version : " + (latest ?? "inconnue");
     stateLabel.ForeColor = Color.White;
     if (error != null) { stateLabel.ForeColor = Accent; stateLabel.Text = "Impossible de vérifier les mises à jour : " + error; }
-    else if (!hasGame) stateLabel.Text = "Installez le jeu à partir de votre PolyTrack 0.6.3 (une seule fois).";
+    else if (!hasGame) stateLabel.Text = "Installez le jeu : il se télécharge tout seul (environ 150 Mo, une seule fois).";
     else if (update) stateLabel.Text = "Une nouvelle version est disponible.";
     else if (installed != source) stateLabel.Text = "Le jeu n'a pas encore la version " + source + " du code : reconstruisez-le.";
     else stateLabel.Text = "GoofyTrack est à jour.";
@@ -156,18 +156,10 @@ class Launcher : Form {
 
   void MainAction() {
     if (B("hasGame")) { if (GameClosed()) RunUpdate(new string[0]); return; }
+    // a PolyTrack install next to the folder is copied (no download); none: the game is downloaded (polytrack.js)
     string folder = S("polyTrack");
-    if (folder == null) {
-      using (var dialog = new FolderBrowserDialog { Description = "Choisissez le dossier de PolyTrack 0.6.3 (celui qui contient PolyTrack.exe). Il n'est utilisé qu'une fois : le jeu est copié dans le dossier GoofyTrack.", ShowNewFolderButton = false }) {
-        while (true) {
-          if (dialog.ShowDialog(this) != DialogResult.OK) return;
-          if (File.Exists(Path.Combine(dialog.SelectedPath, "PolyTrack.exe")) && Directory.Exists(Path.Combine(dialog.SelectedPath, "resources"))) { folder = dialog.SelectedPath; break; }
-          MessageBox.Show(this, "PolyTrack.exe est introuvable dans ce dossier.", "GoofyTrack", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-      }
-    }
-    Log("PolyTrack : " + folder);
-    RunUpdate(new[] { folder });
+    if (folder != null) Log("PolyTrack : " + folder);
+    RunUpdate(folder != null ? new[] { folder } : new string[0]);
   }
 
   void RunUpdate(string[] extra) {

@@ -259,6 +259,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   async function register(body, address) {
     const name = String(body.name || '').trim();
     if (!NAME.test(name) || !HEX64.test(body.auth || '')) return [400, { error: 'bad request' }];
+    if (name.toLowerCase() === 'anonymous') return [400, { error: 'anonymous' }];   // the game's name for a new profile (2.24)
     if (registrations.over(address)) return [429, { error: 'too many accounts' }];
     const key = keyOf(name);
     if (accounts.has(key)) return [409, { error: 'name taken' }];
