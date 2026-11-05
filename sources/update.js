@@ -1,13 +1,16 @@
-// Checks GitHub for a newer GoofyTrack, downloads it into the GoofyTrack folder and rebuilds the game (GoofyTrack.exe).
+// Checks GitHub for a newer GoofyTrack, downloads it into the GoofyTrack folder and rebuilds the game (GoofyTrack.exe,
+// or GoofyTrack.app on macOS).
 //
 //   node sources/update.js [--play] [--check] [--status] [--force] ["C:\path\to\PolyTrack-v0.6.3-win32-x64"]
+//   (macOS: "/path/to/PolyTrack.app")
 //
 //   --play    start the game afterwards (whether or not there was an update)
 //   --check   only say whether an update is available
 //   --status  print, as one line of JSON, what "GoofyTrack Launcher.exe" shows (installed and latest version…)
 //   --force   rebuild the game even when everything is up to date
 //
-// Or open "GoofyTrack Launcher.exe" (sources/launcher/), which runs this script.
+// Or open "GoofyTrack Launcher.exe" (Windows) or "GoofyTrack Launcher.command" (macOS), which run this script
+// (sources/launcher/).
 //
 // - Folder cloned with git: `git pull`, i.e. the latest commits, with your own git credentials (refused if
 //   you have local changes).
@@ -20,12 +23,12 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline/promises');
 const { execFileSync, spawn } = require('child_process');
-const { ROOT, EXE, installedVersion } = require('./config');
-const { findPolyTrack, isPolyTrack } = require('./setup');
+const { MAC, ROOT, EXE, installedVersion } = require('./config');
+const { findPolyTrack, isPolyTrack, polyTrackApp } = require('./setup');
 const layout = require('./layout');
 
 const REPO = 'galmichedany7-jpg/goofytrackv1';
-const LAUNCHER = path.join(ROOT, 'GoofyTrack Launcher.exe');
+const LAUNCHER = path.join(ROOT, 'GoofyTrack Launcher.exe');   // Windows (macOS: "GoofyTrack Launcher.command", a script)
 const SETTINGS = path.join(__dirname, 'update-settings.json');
 const OLD_SETTINGS = path.join(ROOT, 'update-settings.json');    // where 2.17 and older kept them
 const flags = new Set(process.argv.slice(2).filter(a => a.startsWith('--')));
@@ -50,18 +53,19 @@ const fail = message => { console.error('\n' + message); process.exitCode = 1; }
 
 // The PolyTrack install the game is made from, the first time only
 function knownSource(settings) {
-  if (polyTrackArg) return path.resolve(polyTrackArg);
+  if (polyTrackArg) return polyTrackApp(polyTrackArg) || path.resolve(polyTrackArg);
   if (isPolyTrack(settings.game)) return settings.game;   // where older versions installed the mod
   return findPolyTrack();
 }
 async function findSource(settings) {
   const known = knownSource(settings);
   if (known) return known;
-  if (!interactive) throw new Error('Dossier de PolyTrack 0.6.3 introuvable : indiquez celui qui contient PolyTrack.exe.');
+  const what = MAC ? 'PolyTrack.app' : 'le dossier qui contient PolyTrack.exe';
+  if (!interactive) throw new Error(`PolyTrack 0.6.3 introuvable : indiquez ${what}.`);
   while (true) {
-    const dir = (await ask('Dossier de PolyTrack (celui qui contient PolyTrack.exe) : ')).replace(/^"|"$/g, '');
-    if (isPolyTrack(dir)) return path.resolve(dir);
-    console.log('PolyTrack.exe introuvable dans ce dossier.');
+    const dir = await ask(MAC ? 'Faites glisser PolyTrack.app ici puis appuyez sur Entrée : ' : 'Dossier de PolyTrack (celui qui contient PolyTrack.exe) : ');
+    if (isPolyTrack(dir)) return polyTrackApp(dir);
+    console.log(MAC ? 'Ce n\'est pas PolyTrack.app pour macOS.' : 'PolyTrack.exe introuvable dans ce dossier.');
   }
 }
 
@@ -75,8 +79,15 @@ async function github(url, raw = false) {
 const latestRelease = () => github(`https://api.github.com/repos/${REPO}/releases/latest`);
 
 function gameRunning() {
+  if (MAC) {   // the app's processes all run from inside it
+    try { return execFileSync('pgrep', ['-f', path.join(EXE, 'Contents', 'MacOS') + '/'], { encoding: 'utf8' }).trim() !== ''; } catch { return false; }
+  }
   const name = path.basename(EXE);
   try { return execFileSync('tasklist', ['/FI', `IMAGENAME eq ${name}`, '/NH'], { encoding: 'utf8' }).includes(name); } catch { return false; }
+}
+function startGame() {
+  if (MAC) spawn('open', [EXE], { detached: true, stdio: 'ignore' }).unref();
+  else spawn(EXE, [], { cwd: path.dirname(EXE), detached: true, stdio: 'ignore' }).unref();
 }
 
 const isGit = () => fs.existsSync(path.join(ROOT, '.git'));
@@ -99,14 +110,14 @@ async function updateFromRelease() {
     fs.mkdirSync(out);
     // Windows' own tar (10 and later), which reads ZIPs: another tar first in the PATH (Git's) does not
     const windowsTar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
-    execFileSync(fs.existsSync(windowsTar) ? windowsTar : 'tar', ['-xf', path.join(temp, 'release.zip'), '-C', out]);
+    execFileSync(!MAC && fs.existsSync(windowsTar) ? windowsTar : 'tar', ['-xf', path.join(temp, 'release.zip'), '-C', out]);
     // GitHub puts everything in one folder named after the repository and the commit
     const [root] = fs.readdirSync(out);
     if (!root || !fs.existsSync(path.join(out, root, 'sources', 'build.js'))) throw new Error("L'archive téléchargée ne ressemble pas à GoofyTrack.");
     layout.reveal();   // a hidden file cannot be overwritten: the build hides them again
     // The launcher may be the one running this: a running exe cannot be overwritten, but it can be renamed
     // (the launcher deletes the .old file when it starts)
-    if (fs.existsSync(path.join(out, root, path.basename(LAUNCHER))) && fs.existsSync(LAUNCHER)) {
+    if (!MAC && fs.existsSync(path.join(out, root, path.basename(LAUNCHER))) && fs.existsSync(LAUNCHER)) {
       fs.rmSync(LAUNCHER + '.old', { force: true });
       fs.renameSync(LAUNCHER, LAUNCHER + '.old');
     }
@@ -188,7 +199,7 @@ async function main() {
   layout.hide();   // a file git or the release just wrote is no longer hidden (the build hides them too)
 
   if (flags.has('--play')) {
-    spawn(EXE, [], { cwd: path.dirname(EXE), detached: true, stdio: 'ignore' }).unref();
+    startGame();
     console.log('Bon jeu !');
   }
 }

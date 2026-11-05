@@ -1,5 +1,7 @@
-// The GoofyTrack folder as a player sees it: GoofyTrack.exe and "GoofyTrack Launcher.exe" (install, update,
-// rebuild). Everything else at the top is hidden (Windows' hidden attribute, like .git): sources/ (this code),
+// The GoofyTrack folder as a player sees it: the game and its launcher (install, update, rebuild), i.e.
+// GoofyTrack.exe and "GoofyTrack Launcher.exe" on Windows, GoofyTrack.app and "GoofyTrack Launcher.command" on
+// macOS. Everything else at the top is hidden (Windows' hidden attribute, macOS' hidden flag, like .git): the
+// launcher of the other system, sources/ (this code),
 // the game's own files, which have to stay next to the exe (setup.js copies them there), and a few
 // files that have to be at the top for git, GitHub and Render, or for older updaters.
 //
@@ -7,7 +9,7 @@
 // this layout, reads the new version from ./config.js and then runs ./build.js: both stay at the top as relays
 // to sources/ (ROOT_RELAYS), and the build then clears the files of the old layout away (tidy).
 //
-// A hidden file cannot be overwritten on Windows: reveal() shows the top files again before an update copies a
+// A hidden file cannot be overwritten on Windows (macOS does not mind): reveal() shows the top files again before an update copies a
 // release over them, and the build hides them once more (hide).
 const fs = require('fs');
 const path = require('path');
@@ -16,7 +18,8 @@ const { ROOT, GAME, MOD_VERSION } = require('./config');
 
 const ROOT_RELAYS = ['build.js', 'config.js'];
 // committed at the top, hidden
-const ROOT_FILES = [...ROOT_RELAYS, '.gitignore', 'render.yaml', 'README.md', 'LICENSE', 'sources'];
+const ROOT_FILES = [...ROOT_RELAYS, '.gitignore', '.gitattributes', 'render.yaml', 'README.md', 'LICENSE', 'sources',
+  process.platform === 'darwin' ? 'GoofyTrack Launcher.exe' : 'GoofyTrack Launcher.command'];
 // the game's files next to the exe (setup.js), hidden
 const isGameFile = name => /\.(dll|pak|bin)$/i.test(name)
   || ['icudtl.dat', 'locales', 'resources', 'version', 'vk_swiftshader_icd.json', 'LICENSE.electron', 'LICENSES.chromium.html'].includes(name);
@@ -32,13 +35,20 @@ const OLD_FOLDERS = ['audio', 'docs', 'images', 'tools', 'tracks', 'server'];
 // what the old layout kept that is not in the repository: moved into sources/ rather than lost
 const OLD_KEPT = ['original', 'update-settings.json', path.join('server', 'records.json'), path.join('server', 'accounts.json')];
 
-const windows = process.platform === 'win32';
-const attrib = (flag, file) => { if (windows && fs.existsSync(file)) try { execFileSync('attrib', [flag, file], { stdio: 'ignore' }); } catch { /* left as it is */ } };
+const windows = process.platform === 'win32', mac = process.platform === 'darwin';
+// '+h' hides a file, '-h' shows it again
+const attrib = (flag, file) => {
+  if (!fs.existsSync(file)) return;
+  try {
+    if (windows) execFileSync('attrib', [flag, file], { stdio: 'ignore' });
+    else if (mac) execFileSync('chflags', [flag === '+h' ? 'hidden' : 'nohidden', file], { stdio: 'ignore' });
+  } catch { /* left as it is */ }
+};
 
 function hide() {
   if (!fs.existsSync(path.join(ROOT, 'sources'))) return;     // a copy of the code without its folder around it
   for (const name of ROOT_FILES) attrib('+h', path.join(ROOT, name));
-  if (path.resolve(GAME) === path.resolve(ROOT)) for (const name of fs.readdirSync(ROOT)) if (isGameFile(name)) attrib('+h', path.join(ROOT, name));
+  if (windows && path.resolve(GAME) === path.resolve(ROOT)) for (const name of fs.readdirSync(ROOT)) if (isGameFile(name)) attrib('+h', path.join(ROOT, name));
 }
 function reveal() {
   for (const name of ROOT_FILES) attrib('-h', path.join(ROOT, name));

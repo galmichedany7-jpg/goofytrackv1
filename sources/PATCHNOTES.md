@@ -15,6 +15,15 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.23 : GoofyTrack sur Mac
+
+**Nouveautés**
+- GoofyTrack s'installe aussi sur macOS, à partir de PolyTrack 0.6.3 pour Mac : le jeu devient `GoofyTrack.app`, avec le nom et l'icône de GoofyTrack.
+- Sur Mac, **GoofyTrack Launcher.command** remplace le lanceur Windows : un double-clic ouvre le Terminal avec le même menu (Installer, Mettre à jour, Reconstruire, Jouer). Pour l'installation, `PolyTrack.app` est cherchée à côté du dossier, dans Applications et dans Téléchargements, ou se glisse dans la fenêtre.
+- Le dossier n'affiche que le jeu et le lanceur de votre système : le lanceur de l'autre système est masqué.
+
+**Mise à jour** : sur Windows, ouvrez GoofyTrack Launcher.exe et cliquez sur Mettre à jour. Sur Mac, téléchargez la release, puis faites un clic droit sur GoofyTrack Launcher.command > Ouvrir la première fois.
+
 ## V2.22 : le lanceur GoofyTrack
 
 **Nouveautés**

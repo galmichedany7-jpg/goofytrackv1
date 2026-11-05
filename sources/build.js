@@ -1,10 +1,12 @@
-// Builds GoofyTrack: the game in the GoofyTrack folder, above this one (GoofyTrack.exe), made from PolyTrack 0.6.3.
+// Builds GoofyTrack: the game in the GoofyTrack folder, above this one (GoofyTrack.exe, or GoofyTrack.app on macOS),
+// made from PolyTrack 0.6.3.
 //
-//   node sources/build.js ["C:\path\to\PolyTrack-v0.6.3-win32-x64"]     (or "Construire GoofyTrack.bat")
+//   node sources/build.js ["C:\path\to\PolyTrack-v0.6.3-win32-x64"]     (or the launcher's "Reconstruire")
+//   node sources/build.js ["/path/to/PolyTrack.app"]                     (macOS)
 //
-// First run: PolyTrack is copied into the GoofyTrack folder (setup.js; the PolyTrack folder is only needed that
-// once, and found by itself when it sits next to it), then its archive (resources/app.asar) is set aside as
-// app.asar.original and unpacked into resources/app, which the game loads instead. Every run rebuilds
+// First run: PolyTrack is copied into the GoofyTrack folder (setup.js; the PolyTrack install is only needed that
+// once, and found by itself when it sits next to it), then its archive (resources/app.asar, inside the app on
+// macOS) is set aside as app.asar.original and unpacked into resources/app, which the game loads instead. Every run rebuilds
 // the modified files from the pristine archive, so it is safe to run again after editing the code.
 const fs = require('fs');
 const path = require('path');
@@ -22,7 +24,7 @@ layout.tidy();
 if (!fs.existsSync(EXE)) {
   const source = process.argv[2] || setup.findPolyTrack();
   if (!source) {
-    console.error(`GoofyTrack.exe is not in ${GAME} yet: give the PolyTrack 0.6.3 folder once, node build.js "C:\\path\\to\\PolyTrack"`);
+    console.error(`${path.basename(EXE)} is not in ${GAME} yet: give the PolyTrack 0.6.3 install once, node build.js "${process.platform === 'darwin' ? '/path/to/PolyTrack.app' : 'C:\\path\\to\\PolyTrack'}"`);
     process.exit(1);
   }
   setup.setup(source);
@@ -30,7 +32,7 @@ if (!fs.existsSync(EXE)) {
 
 // 1. Set the original archive aside (first install only)
 if (!fs.existsSync(ARCHIVE_BACKUP)) {
-  if (!fs.existsSync(ARCHIVE)) { console.error('resources/app.asar is missing: is this a PolyTrack desktop install?'); process.exit(1); }
+  if (!fs.existsSync(ARCHIVE)) { console.error(`${ARCHIVE} is missing: is this a PolyTrack desktop install?`); process.exit(1); }
   fs.renameSync(ARCHIVE, ARCHIVE_BACKUP);
   console.log('Original game archive kept as resources/app.asar.original');
 }
@@ -128,7 +130,9 @@ console.log(`${MOD_NAME} ${MOD_VERSION} installed: apex-theme.css, ${MOD_SCRIPTS
 if (setup.exeVersion() !== setup.fullVersion(MOD_VERSION)) {
   try { setup.rebrand(MOD_VERSION); } catch { console.warn(`Could not update the version shown in ${path.basename(EXE)}'s properties (is the game running?)`); }
 }
-// Only the exe, the two .bat files and sources/ stay in sight (layout.js)
+// macOS: the app was just changed, so it is signed again (setup.js)
+setup.seal();
+// Only the game and the launcher stay in sight (layout.js)
 layout.writeRelays();
 layout.hide();
 console.log(`Done. Start ${EXE}`);

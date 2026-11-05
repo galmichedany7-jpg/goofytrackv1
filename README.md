@@ -1,10 +1,10 @@
 # GoofyTrack
 
-Jeu de course pour Windows, construit sur [PolyTrack](https://www.kodub.com) 0.6.3. Tout tient dans ce dossier : le jeu (`GoofyTrack.exe`) et sa mise à jour.
+Jeu de course pour Windows et macOS, construit sur [PolyTrack](https://www.kodub.com) 0.6.3. Tout tient dans ce dossier : le jeu (`GoofyTrack.exe`, ou `GoofyTrack.app` sur Mac) et son lanceur, qui l'installe et le met à jour.
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation copie votre propre PolyTrack dans ce dossier et le transforme en GoofyTrack.
 
-**Version actuelle : 2.22** 
+**Version actuelle : 2.23** 
 Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 
 ![Menu principal](sources/docs/menu.jpg)
@@ -98,7 +98,7 @@ Le détail de chaque version est dans [PATCHNOTES.md](sources/PATCHNOTES.md), et
 
 ## Installation
 
-Il faut [Node.js](https://nodejs.org) 18 ou plus récent et PolyTrack 0.6.3 pour Windows.
+Il faut [Node.js](https://nodejs.org) 18 ou plus récent et PolyTrack 0.6.3 pour Windows (ou pour macOS, voir [Sur Mac](#sur-mac)).
 
 1. Téléchargez le code de la dernière release (ou `git clone https://github.com/galmichedany7-jpg/goofytrackv1.git GoofyTrack`).
 2. Ouvrez **`GoofyTrack Launcher.exe`** et cliquez sur **Installer**. Un dossier PolyTrack posé à côté du dossier GoofyTrack est trouvé tout seul ; sinon, le lanceur vous demande de le choisir.
@@ -117,16 +117,29 @@ En ligne de commande : `node sources/build.js "C:\chemin\vers\PolyTrack-v0.6.3-w
 
 Il ne fait que lancer `sources/update.js` et `sources/build.js` avec Node.js, et affiche leur journal. Son code est [`sources/launcher/Launcher.cs`](sources/launcher/Launcher.cs) ; après l'avoir modifié, recompilez-le avec `node sources/launcher/build_launcher.js` (le compilateur C# fourni avec Windows suffit) et commitez l'exe.
 
+### Sur Mac
+
+Il faut PolyTrack 0.6.3 pour macOS (`PolyTrack.app`) et Node.js.
+
+1. Téléchargez le code de la dernière release et décompressez-le.
+2. Double-cliquez sur **`GoofyTrack Launcher.command`** : il s'ouvre dans le Terminal et affiche le même menu que le lanceur Windows (Installer, Mettre à jour, Reconstruire, Jouer), à choisir en tapant son numéro. La première fois, macOS peut refuser de l'ouvrir car il vient d'Internet : faites un clic droit dessus > **Ouvrir**, puis confirmez.
+3. **Installer** cherche `PolyTrack.app` à côté du dossier GoofyTrack, dans Applications et dans Téléchargements. S'il ne la trouve pas, faites glisser `PolyTrack.app` dans la fenêtre du Terminal puis appuyez sur Entrée.
+4. **Jouer** ouvre `GoofyTrack.app`, qui est dans le dossier GoofyTrack. Vous pouvez aussi l'ouvrir vous-même ou la mettre dans le Dock.
+
+`PolyTrack.app` est copiée en `GoofyTrack.app`, avec le nom et l'icône de GoofyTrack. Modifier une app casse sa signature, que macOS vérifie à l'ouverture : à la fin de chaque build, `GoofyTrack.app` est donc signée à nouveau, pour votre Mac seulement (`codesign --sign -`), et la marque « téléchargé depuis Internet » est retirée. Il ne faut ni compte développeur Apple, ni rien installer d'autre.
+
+Le menu est [`sources/launcher/menu.js`](sources/launcher/menu.js), que `GoofyTrack Launcher.command` lance avec Node.js. En ligne de commande : `node sources/build.js "/chemin/vers/PolyTrack.app"`.
+
 ### Le dossier GoofyTrack
 
-Dans l'explorateur, on ne voit que deux choses :
+Dans l'explorateur (ou le Finder), on ne voit que deux choses :
 
 | | |
 |---|---|
-| `GoofyTrack.exe` | Le jeu |
-| `GoofyTrack Launcher.exe` | Installe, met à jour et reconstruit le jeu |
+| `GoofyTrack.exe` (Mac : `GoofyTrack.app`) | Le jeu |
+| `GoofyTrack Launcher.exe` (Mac : `GoofyTrack Launcher.command`) | Installe, met à jour et reconstruit le jeu |
 
-Le reste est masqué (attribut « caché » de Windows, comme `.git`) par [`sources/layout.js`](sources/layout.js) à chaque build : `sources/`, qui contient tout le code du mod, ses pistes, son serveur et ses outils (pour l'ouvrir, tapez `sources` au bout du chemin dans la barre d'adresse de l'explorateur, ou cochez **Affichage > Afficher > Éléments masqués**), les fichiers du jeu, qui doivent rester à côté de `GoofyTrack.exe` (`*.dll`, `*.pak`, `locales/`, `resources/`…), et quelques fichiers qui doivent être en haut du dépôt (`README.md`, `LICENSE`, `.gitignore`, `render.yaml`). Restent aussi, masqués, `build.js` et `config.js` : ils relaient vers `sources/` pour l'updater de la 2.17 et des versions précédentes, qui lit la version dans `./config.js` puis lance `./build.js` (le build les tient à jour, puis retire les fichiers de l'ancienne organisation).
+Le reste est masqué (attribut « caché » de Windows, ou de macOS avec `chflags hidden`, comme `.git`), y compris le lanceur de l'autre système, par [`sources/layout.js`](sources/layout.js) à chaque build : `sources/`, qui contient tout le code du mod, ses pistes, son serveur et ses outils (pour l'ouvrir, tapez `sources` au bout du chemin dans la barre d'adresse de l'explorateur, ou cochez **Affichage > Afficher > Éléments masqués**), les fichiers du jeu, qui doivent rester à côté de `GoofyTrack.exe` (`*.dll`, `*.pak`, `locales/`, `resources/`…), et quelques fichiers qui doivent être en haut du dépôt (`README.md`, `LICENSE`, `.gitignore`, `render.yaml`). Restent aussi, masqués, `build.js` et `config.js` : ils relaient vers `sources/` pour l'updater de la 2.17 et des versions précédentes, qui lit la version dans `./config.js` puis lance `./build.js` (le build les tient à jour, puis retire les fichiers de l'ancienne organisation).
 
 La première fois, PolyTrack est copié dans le dossier GoofyTrack (fichiers ignorés par git) : `PolyTrack.exe` devient `GoofyTrack.exe`, avec l'icône et le nom de GoofyTrack ([`setup.js`](sources/setup.js)). Le dossier de PolyTrack n'est plus utilisé ensuite, vous pouvez le supprimer. S'il est à côté du dossier GoofyTrack, il est trouvé tout seul et `node sources/build.js` suffit. Vos sauvegardes (temps, pistes, réglages) restent celles de PolyTrack.
 
@@ -216,6 +229,7 @@ Dans un autre terminal, construisez une copie du jeu pointée sur ce serveur (`G
 - Les temps de course sont mesurés sur l'horloge de chaque joueur depuis l'extinction des feux, à quelques centièmes près selon la latence.
 - Le fantôme est reconstruit à partir des positions reçues pendant que vous êtes dans la room (20 par seconde). Un record établi avant votre arrivée n'a pas de fantôme.
 - L'aileron avant dépasse la boîte de collision d'origine et peut traverser un mur lors d'un choc frontal.
+- La version macOS n'a été vérifiée que par simulation sous Windows (copie de l'app, `Info.plist`, signature) : le premier lancement sur un vrai Mac reste à confirmer.
 - Le mod cible exactement la version 0.6.3 : les modifications du code s'appuient sur le code minifié de cette version et le script s'arrête si elles ne s'appliquent pas.
 
 ## Organisation du code
@@ -225,9 +239,9 @@ Tout est dans `sources/`, sauf `GoofyTrack Launcher.exe` et les fichiers masqué
 | Fichier | Rôle |
 |---|---|
 | `build.js` | Construction du jeu |
-| `setup.js`, `tools/rebrand_exe.ps1` | Première installation : copie de PolyTrack dans le dossier GoofyTrack, `GoofyTrack.exe` avec son icône et son nom |
+| `setup.js`, `tools/rebrand_exe.ps1` | Première installation : copie de PolyTrack dans le dossier GoofyTrack, `GoofyTrack.exe` (ou `GoofyTrack.app`) avec son icône et son nom ; sur Mac, nouvelle signature de l'app après chaque build |
 | `update.js` | Mises à jour automatiques |
-| `launcher/` | `GoofyTrack Launcher.exe` : son code (`Launcher.cs`) et sa compilation (`build_launcher.js`) |
+| `launcher/` | Les lanceurs : `GoofyTrack Launcher.exe` (son code `Launcher.cs` et sa compilation `build_launcher.js`) et, pour Mac, le menu `menu.js` que lance `GoofyTrack Launcher.command` |
 | `layout.js` | Le dossier GoofyTrack : fichiers masqués, relais pour les anciens updaters, rangement après la mise à jour depuis la 2.17 |
 | `config.js`, `asar.js` | Emplacement du jeu, lecture de l'archive |
 | `build_car.js`, `meshlib.js` | Génération procédurale du modèle 3D de la voiture |
@@ -253,7 +267,7 @@ Tout est dans `sources/`, sauf `GoofyTrack Launcher.exe` et les fichiers masqué
 | `tools/make_stunt.js`, `tracks/coaster/` | Goofy Coaster : la piste décrite mouvement par mouvement, et les fichiers produits |
 | `tools/*_osm.json`, `tools/spa_gps.json`, `tools/spa_heights.json`, `tracks/<circuit>/` | Leurs données (plans réduits, relevé et altitudes de Spa) et les fichiers produits |
 | `apex-theme.css` | Thème de l'interface |
-| `images/` | Icône du jeu (`goofytrack_icon.svg` et sa version `.ico` pour Windows), icônes de l'environnement Riviera |
+| `images/` | Icône du jeu (`goofytrack_icon.svg`, sa version `.ico` pour Windows et `.icns` pour Mac, faite à partir du `.ico` par `tools/make_icns.js`), icônes de l'environnement Riviera |
 | `goofytrack-logo.svg` | Logo du menu principal |
 | `audio/` | Musiques du jeu (« Vroum Vroum » et, dans le menu des courses, « WAITING », Teknah) |
 | `tracks/` | Pistes du mod (catégorie Circuits) : liste, codes, miniatures, générateur du circuit de test |

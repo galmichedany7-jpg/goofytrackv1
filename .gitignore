@@ -13,6 +13,7 @@ sources/tools/*_points.json
 
 # The game itself, copied from PolyTrack by setup.js (never commit these)
 /GoofyTrack.exe
+/GoofyTrack.app/
 /*.dll
 /*.pak
 /*.bin
