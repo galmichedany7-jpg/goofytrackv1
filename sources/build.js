@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const { GAME, EXE, ARCHIVE, ARCHIVE_BACKUP, APP, ORIGINALS, SUPPORTED_VERSION, MOD_NAME, MOD_VERSION, SERVER_URL, EDITOR_CHUNK, GARAGE_CHUNK } = require('./config');
+const { GAME, EXE, ARCHIVE, ARCHIVE_BACKUP, APP, ORIGINALS, SUPPORTED_VERSION, MOD_NAME, MOD_VERSION, SERVER_URL, EDITOR_CHUNK, GARAGE_CHUNK, GITHUB_REPO } = require('./config');
 const asar = require('./asar');
 const setup = require('./setup');
 const layout = require('./layout');
@@ -53,7 +53,7 @@ run('patch_bundle.js');
 
 // The mod's scripts, loaded before the game in this order (the game calls into them from the hooks of patch_bundle.js)
 // (the account first: it watches the storage from the start)
-const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-spectate.js', 'apex-endurance.js', 'apex-room.js', 'apex-tournament.js', 'apex-lobby.js', 'apex-notes.js', 'apex-rarity.js', 'apex-livery.js'];
+const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-spectate.js', 'apex-endurance.js', 'apex-room.js', 'apex-tournament.js', 'apex-lobby.js', 'apex-notes.js', 'apex-update.js', 'apex-rarity.js', 'apex-livery.js'];
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
 // The account keeps its save on our server, whose address it is handed in front of its script, with the mod's
 // tracks (the profile card counts the circuits finished and asks the server for their boards; the P1 badges
@@ -89,6 +89,8 @@ const buildQuery = /multiplayer\/join(\?mod=[^"]+)"/.exec(fs.readFileSync(path.j
 fs.writeFileSync(path.join(APP, 'apex-lobby.js'), 'window.GOOFY_ROOMS = ' + JSON.stringify(SERVER_URL + 'rooms' + buildQuery) + ';\n' + fs.readFileSync(path.join(__dirname, 'apex-lobby.js'), 'utf8'));
 // The patch notes button shows PATCHNOTES.md, handed to it in front of its script
 fs.writeFileSync(path.join(APP, 'apex-notes.js'), 'window.GOOFY_PATCHNOTES = ' + JSON.stringify(fs.readFileSync(path.join(__dirname, 'PATCHNOTES.md'), 'utf8')) + ';\n' + fs.readFileSync(path.join(__dirname, 'apex-notes.js'), 'utf8'));
+// The update popup compares this build's version with the latest release of the repository, handed to it in front of its script
+fs.writeFileSync(path.join(APP, 'apex-update.js'), 'window.GOOFY_VERSION = ' + JSON.stringify(MOD_VERSION) + ';\nwindow.GOOFY_REPO = ' + JSON.stringify(GITHUB_REPO) + ';\n' + fs.readFileSync(path.join(__dirname, 'apex-update.js'), 'utf8'));
 // The theme reads the version from a CSS variable (home screen badge)
 fs.writeFileSync(path.join(APP, 'apex-theme.css'), `html:root { --apx-version: "VERSION ${MOD_VERSION}"; }\n` + fs.readFileSync(path.join(__dirname, 'apex-theme.css'), 'utf8').replace(/^\uFEFF/, ''));
 fs.copyFileSync(path.join(__dirname, 'goofytrack-logo.svg'), path.join(APP, 'images', 'logo.svg'));

@@ -23,11 +23,11 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline/promises');
 const { execFileSync, spawn } = require('child_process');
-const { MAC, ROOT, EXE, installedVersion } = require('./config');
+const { MAC, ROOT, EXE, installedVersion, GITHUB_REPO } = require('./config');
 const { findPolyTrack, isPolyTrack, polyTrackApp } = require('./setup');
 const layout = require('./layout');
 
-const REPO = 'galmichedany7-jpg/goofytrackv1';
+const REPO = GITHUB_REPO;
 const LAUNCHER = path.join(ROOT, 'GoofyTrack Launcher.exe');   // Windows (macOS: "GoofyTrack Launcher.command", a script)
 const SETTINGS = path.join(__dirname, 'update-settings.json');
 const OLD_SETTINGS = path.join(ROOT, 'update-settings.json');    // where 2.17 and older kept them

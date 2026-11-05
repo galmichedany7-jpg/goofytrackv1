@@ -37,9 +37,13 @@
 // A room joined comes with the presence, and only counts while the multiplayer server still has it open.
 // All but register and login take the session as "Authorization: Bearer <session>".
 //
-// RESERVED_IDS ("julio:7777,shyn:1", the default) keeps numbers for some names: an account of such a name that has
+// RESERVED_IDS ("julio:7777,shyn:1,chlo:2", the default) keeps numbers for some names: an account of such a name that has
 // another number takes this one as the server starts, if it is free, its friends' lists and requests following
-// (Julio was #0001 until 2.17, Shyn #0002). CREATOR_IDS ("7777,1") are shown with the "creator" check mark.
+// (Julio was #0001 until 2.17, Shyn #0002; Chlo, #0003 at first, took #0002 in 2.24.1). CREATOR_IDS ("7777,1") are
+// shown with the "creator" check mark.
+// REMOVED_ACCOUNTS ("chloooo", the default) deletes accounts by name as the server starts, before the numbers move:
+// their file in the gist (its history keeps it), their sessions, and their number in the others' friends lists and
+// requests (Chloooo #0002, a second account of Chlo's, in 2.24.1).
 //
 // Badges, shown next to a player's name: 'creator' (CREATOR_IDS), 'vip' (VIP_IDS), 'p1:<trackId>', 'p2:…', 'p3:…' while the
 // player holds that place on a circuit of the mod (records.js), and the counted badges, 'km:<km>', 'h:<hours>' and 'kmh:<km/h>',
@@ -80,11 +84,12 @@ const STATS = { tracks: 1e6, circuits: 1e6, custom: 1e6, official: 1e6, metres: 
   finishes: 1e8, races: 1e7, wins: 1e7, podiums: 1e7, places: 1e9, tournaments: 1e6 };
 const STATS_SAVE = 10 * 60 * 1000;      // the counts change all the time while driving: saved at most every 10 minutes, unless more changed
 const ONLINE = 75 * 1000;               // since the last presence: the game sends one every 30 s
-const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:7777,shyn:1').split(',').filter(Boolean)
+const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:7777,shyn:1,chlo:2').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([name, id]) => [name.normalize('NFC').toLowerCase(), Number(id)]));
+const REMOVED_ACCOUNTS = new Set((process.env.REMOVED_ACCOUNTS ?? 'chloooo').split(',').filter(Boolean).map(name => name.normalize('NFC').toLowerCase()));
 const CREATOR_IDS = new Set((process.env.CREATOR_IDS ?? '7777,1').split(',').filter(Boolean).map(Number));
-// the VIP diamond: friends and the first players, by number (#0003 is 3)
-const VIP_IDS = new Set((process.env.VIP_IDS ?? '').split(',').filter(Boolean).map(Number));
+// the VIP diamond: friends and the first players, by number (#0003 is 3); "2" by default: Chlo
+const VIP_IDS = new Set((process.env.VIP_IDS ?? '2').split(',').filter(Boolean).map(Number));
 // The garage's unlockable items (apex-rarity.js, `unlock`): the icons, won in tournaments and events. UNLOCKS gives
 // them to accounts by number, "mp4_7a:7777+42,other:…" (by default the McLaren and the Renault to Julio and Dany); a creator gives or takes
 // one with POST /account/unlock { id, item, give }, kept with the account (unlocks). The presence says which a player owns.
@@ -172,6 +177,22 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       changed(key);
     }
     for (const a of accounts.values()) { a.friends ??= []; a.requests ??= []; a.profile ??= null; }
+    // accounts removed (REMOVED_ACCOUNTS): first, so that their number is free for a reserved one
+    for (const key of REMOVED_ACCOUNTS) {
+      const a = accounts.get(key);
+      if (a == null) continue;
+      accounts.delete(key);
+      if (byId.get(a.id) === key) byId.delete(a.id);
+      for (const s of a.sessions) bySession.delete(s);
+      changed(key);        // saveNow deletes its file
+      for (const [other, b] of accounts) {
+        if (!b.friends.includes(a.id) && !b.requests.includes(a.id)) continue;
+        b.friends = b.friends.filter(f => f !== a.id);
+        b.requests = b.requests.filter(r => r !== a.id);
+        changed(other);
+      }
+      log(`accounts: ${a.name} #${a.id} removed`);
+    }
     // reserved numbers changed since the accounts were made: they move, and every list that holds the old one
     for (const [key, id] of RESERVED_IDS) {
       const a = accounts.get(key);
@@ -226,7 +247,8 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
     saving = saving.then(async () => {
       if (githubToken) {
         const files = {};
-        for (const key of keys) files[fileOf(key)] = { content: JSON.stringify(accounts.get(key)) };
+        // an account no longer there (REMOVED_ACCOUNTS): its file goes (null deletes a file of a gist)
+        for (const key of keys) files[fileOf(key)] = accounts.has(key) ? { content: JSON.stringify(accounts.get(key)) } : null;
         await github('PATCH', '/gists/' + gistId, { files });
       } else fs.writeFileSync(file, JSON.stringify([...accounts.values()]));
     }).catch(e => { console.error('accounts: save failed', e.message); for (const key of keys) dirty.add(key); scheduleSave(); });
@@ -262,7 +284,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
     if (name.toLowerCase() === 'anonymous') return [400, { error: 'anonymous' }];   // the game's name for a new profile (2.24)
     if (registrations.over(address)) return [429, { error: 'too many accounts' }];
     const key = keyOf(name);
-    if (accounts.has(key)) return [409, { error: 'name taken' }];
+    if (accounts.has(key) || REMOVED_ACCOUNTS.has(key)) return [409, { error: 'name taken' }];   // a removed one would go at the next start
     if (accounts.size >= MAX_ACCOUNTS) return [507, { error: 'too many accounts' }];
     registrations.hit(address);
     const salt = crypto.randomBytes(16).toString('hex'), hash = await scrypt(body.auth, salt);

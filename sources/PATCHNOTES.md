@@ -15,6 +15,18 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.24.1 : nom affiché, identifiant et alerte de mise à jour
+
+**Nouveautés**
+- Le jeu prévient quand une nouvelle version de GoofyTrack est publiée : au lancement, une fenêtre propose de quitter le jeu et d'ouvrir GoofyTrack Launcher pour faire la mise à jour (ou de jouer quand même). Une version en retard ne retrouve plus les autres joueurs en multijoueur, et sa progression peut ne pas être gardée.
+- À la création du compte, on choisit maintenant deux choses : le **nom affiché**, celui des classements et du multijoueur, qu'on peut changer à tout moment dans « Modifier le profil » ; et l'**identifiant**, qui sert à se connecter et s'affiche sous le nom avec le numéro (#0001), et ne change pas.
+- Un badge offert par l'équipe (VIP) s'annonce comme un badge gagné, une seule fois, au lancement qui suit.
+
+**Corrections**
+- Le nom choisi restait « Anonymous » après la création du compte, et « Modifier le profil » ne l'enregistrait pas. La fenêtre du jeu bloquait le rechargement qui suit la connexion, et le jeu ignorait ensuite tout ce qu'il fallait enregistrer, records compris, jusqu'au prochain lancement. Le jeu se recharge maintenant normalement. Un profil encore nommé « Anonymous » prend le nom de l'identifiant au lancement, et se renomme ensuite dans « Modifier le profil ».
+
+**Mise à jour** : ouvrez GoofyTrack Launcher et cliquez sur Mettre à jour.
+
 ## V2.24 : plus besoin de PolyTrack, un compte pour chaque pilote
 
 **Nouveautés**

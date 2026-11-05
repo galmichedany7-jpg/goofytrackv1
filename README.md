@@ -4,7 +4,7 @@ Jeu de course pour Windows et macOS, construit sur [PolyTrack](https://www.kodub
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation télécharge PolyTrack 0.6.3 depuis sa version web officielle (et Electron depuis GitHub), puis le transforme en GoofyTrack. Pas besoin d'installer PolyTrack.
 
-**Version actuelle : 2.24** 
+**Version actuelle : 2.24.1** 
 Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 
 ![Menu principal](sources/docs/menu.jpg)
@@ -57,7 +57,7 @@ Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 - Ces pistes ont leur propre classement en ligne, partagé entre tous les joueurs du mod et tenu par le serveur GoofyTrack : records, position, fantômes et replays comme sur les pistes officielles.
 
 **Profil et compte GoofyTrack**
-- Badge de profil en haut à gauche du menu principal : votre voiture (redessinée à chaque changement de livrée), votre drapeau, votre pseudo et l'état du compte. Un clic ouvre la carte du profil : pistes bouclées, circuits du mod, meilleure place en ligne sur ces circuits, pistes perso, garage. C'est là qu'on change de pseudo, de drapeau et de badges (« Modifier le profil », sans quitter l'accueil : le jeu expose ses profils à `apex-account.js` par `window.GoofyGame`) et de profil (« Changer de profil », import compris). Badges : jusqu'à deux à côté du pseudo, « creator » (`CREATOR_IDS`), « vip » (`VIP_IDS`, des numéros de joueurs, vide par défaut) et « p1:<piste> », « p2:… », « p3:… » tant que le joueur est sur le podium d'un circuit du mod (un bouton or, argent ou bronze avec le tracé du circuit, `track_outlines.js`) ; le serveur sait qui possède quoi (`server/accounts.js`).
+- Badge de profil en haut à gauche du menu principal : votre voiture (redessinée à chaque changement de livrée), votre drapeau, votre pseudo et l'état du compte. Un clic ouvre la carte du profil : pistes bouclées, circuits du mod, meilleure place en ligne sur ces circuits, pistes perso, garage. C'est là qu'on change de pseudo, de drapeau et de badges (« Modifier le profil », sans quitter l'accueil : le jeu expose ses profils à `apex-account.js` par `window.GoofyGame`) et de profil (« Changer de profil », import compris). Badges : jusqu'à deux à côté du pseudo, « creator » (`CREATOR_IDS`), « vip » (`VIP_IDS`, des numéros de joueurs, `2` par défaut) et « p1:<piste> », « p2:… », « p3:… » tant que le joueur est sur le podium d'un circuit du mod (un bouton or, argent ou bronze avec le tracé du circuit, `track_outlines.js`) ; le serveur sait qui possède quoi (`server/accounts.js`).
 - Garage : il ne s'occupe que de la voiture. Le bouton « Livrées » garde trois designs par profil : choisir une livrée la met sur la voiture, « Enregistrer » y garde les modifications, les deux autres sont garées à côté (`apex-livery.js`). Chaque motif, jante, échappement, aileron et carrosserie a un nom et une rareté (Commun gris, Rare vert, Très rare bleu, Épique violet, Légendaire jaune, Mythique rouge, Icône bleu-vert) qui fait le cadre de sa tuile, les plus rares en bas de la liste (`apex-rarity.js`). Les Icônes (de vrais designs de F1, comme la McLaren MP4/7A 1992) gardent leurs couleurs et ne se choisissent qu'une fois débloquées : le serveur dit qui les possède (`UNLOCKS`, `server/accounts.js`) ; les motifs 16 et suivants (Monaco GP Edition, les éditions des circuits, Goofy Signature…) sont ceux du mod (`build_patterns.js`, ajoutés à la liste du jeu par `patch_bundle.js`, dans un ordre à ne jamais changer).
 - Depuis cette carte, avec un pseudo et un mot de passe, vos profils, records et fantômes, pistes perso et réglages vous suivent sur chaque PC où vous vous connectez.
 - Chaque compte a un numéro de joueur (#0001, #0002…). Onglet **Amis** : ajoutez vos amis par leur numéro, voyez qui est en ligne, et rejoignez en un clic la room où se trouve un ami, qu'il l'héberge ou qu'il l'ait rejointe.
@@ -155,6 +155,8 @@ L'archive d'origine du jeu est gardée sous le nom `resources/app.asar.original`
 Pour désinstaller, supprimez le dossier.
 
 ### Mises à jour automatiques
+
+Le jeu aussi : au lancement, `GoofyTrack.exe` demande à GitHub la dernière release et, si elle est plus récente que la version installée, une fenêtre propose de quitter le jeu et d'ouvrir GoofyTrack Launcher pour continuer à enregistrer sa progression et jouer en multijoueur (ou de jouer quand même). Sans internet, rien ne s'affiche ([`apex-update.js`](sources/apex-update.js)).
 
 Le lanceur vérifie à chaque ouverture si une nouvelle release est publiée. En ligne de commande :
 
@@ -259,6 +261,7 @@ Tout est dans `sources/`, sauf `GoofyTrack Launcher.exe` et les fichiers masqué
 | `apex-tournament.js` | Onglet Tournois : tournois chrono (liste, création, classement, bandeau en piste, envoi des temps, victoires comptées) |
 | `apex-endurance.js` | Tournoi endurance : choix de la stratégie, essence, pneus, arrêts aux stands (page du jeu et moteur physique) |
 | `apex-show.js` | Présentation du circuit avant les feux et podium à la fin d'une course |
+| `apex-update.js` | Au lancement du jeu, la fenêtre « Mise à jour disponible » quand une release plus récente est publiée (le bouton qui ouvre le lanceur passe par `electron/main.js`) |
 | `PATCHNOTES.md`, `apex-notes.js` | Notes de version, et le bouton « Patch notes » du menu principal qui les affiche (sans les paragraphes « Mise à jour » ni les sections « Outils ») |
 | `apex-gfx.js` | Rendu : ombres, ciel, ambiances, ombrage lissé des pièces de piste |
 | `apex-hud.js` | Mini-carte et écart en direct ; noms des touches selon le clavier (AZERTY) |

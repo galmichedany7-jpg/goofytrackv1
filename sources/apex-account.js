@@ -111,7 +111,13 @@
     rawRemove.call(this, key);
     if (old != null) { touched(String(key), old, null); watched(key); }
   };
-  const reload = () => { reloading = true; location.reload(); };
+  // a window that refuses to reload (the desktop app of 2.24 and older, electron/main.js) must not leave the storage
+  // frozen: the changes made since would be lost (the name, the records…)
+  const reload = () => {
+    reloading = true;
+    location.reload();
+    setTimeout(() => { reloading = false; scheduleBadge(); }, 5000);
+  };
 
   // ---------------------------------------------------------------- the save
   // entries: id -> { v: value or null (deleted), t: time }
@@ -277,8 +283,8 @@
     return out;
   }
   function messageOf(status, error) {
-    if (status === 403) return tr('Pseudo ou mot de passe incorrect.', 'Wrong name or password.');
-    if (status === 409) return tr('Ce pseudo est déjà pris.', 'This name is taken.');
+    if (status === 403) return tr('Identifiant ou mot de passe incorrect.', 'Wrong account ID or password.');
+    if (status === 409) return tr('Cet identifiant est déjà pris.', 'This account ID is taken.');
     if (status === 429) return tr('Trop d\'essais, réessayez dans quelques minutes.', 'Too many attempts, try again in a few minutes.');
     if (status === 401) return tr('Session expirée : reconnectez-vous.', 'Session expired: log in again.');
     if (status === 503) return tr('Le serveur démarre, réessayez dans un instant.', 'The server is starting, try again in a moment.');
@@ -351,10 +357,12 @@
     }
   }
 
-  async function logIn(name, password, create) {
+  // shown: a new account's display name, given to the profile played before the save goes to the account
+  async function logIn(name, password, create, shown = null) {
     name = name.trim();
     const keys = await deriveKeys(name, password);
     const out = await call('POST', create ? '/account/register' : '/account/login', { name, auth: keys.auth });
+    if (create && shown) renameProfile(shown);
     // the save's key: the password's own, or the one it wraps since the password changed
     await enter(out, out.wrap ? await unwrapKey(keys.key, out.wrap) : keys.key, create);
   }
@@ -422,6 +430,7 @@
         acc.id = out.id; acc.verified = out.verified; acc.badges = badges; acc.recovery = recovery; acc.unlocks = unlocks; saveAccount();
       }
       social = { requests: out.requests, online: out.online };
+      checkGivenBadges(badges);
     } catch (e) {
       if (e.status === 401 && account === acc) { account = null; cloud = null; saveAccount(); }
     }
@@ -972,6 +981,18 @@
     scheduleBadge();
     if (account != null) sendPresence();           // the server and the friends hear of it now
   }
+  // a badge the team gives (VIP_IDS of the server): announced the same way, once, when the server first says it
+  // (the next presence after the game starts, the server having been changed meanwhile)
+  const GIVEN_BADGES = ['vip'];
+  function checkGivenBadges(owned) {
+    const seen = readJson(SEEN_KEY), known = Array.isArray(seen) ? seen : [];
+    const fresh = (owned || []).filter(id => GIVEN_BADGES.includes(id) && !known.includes(id));
+    if (!fresh.length) return;
+    try { storage.setItem(SEEN_KEY, JSON.stringify([...known, ...fresh])); } catch (e) { /* storage full */ }   // watched: synced
+    announcing.push(...fresh);
+    if (badgeToast == null) announceBadge(announcing.shift());
+    scheduleBadge();
+  }
   function announceBadge(id) {
     const info = badgeInfo(id);
     if (info == null) return;
@@ -982,9 +1003,10 @@
     badgeMarks(el(toast, 'div', 'mark'), [id]);
     const text = el(toast, 'div', 'text');
     el(text, 'div', 'title', tr('Nouveau badge !', 'New badge!'));
-    el(text, 'div', 'name', info.name);
-    const done = doneText(info.family, info.tier.n);
-    el(text, 'div', 'sub', account != null
+    el(text, 'div', 'name', info.name ?? info.label);
+    if (!info.tier) el(text, 'div', 'sub', tr('Offert par l\'équipe GoofyTrack : mettez-le sur votre profil', 'Given by the GoofyTrack team: put it on your profile'));
+    const done = info.tier ? doneText(info.family, info.tier.n) : null;
+    if (info.tier) el(text, 'div', 'sub', account != null
       ? tr(`${done} : mettez-le sur votre profil`, `${done}: put it on your profile`)
       : tr(`${done} : connectez-vous à un compte pour l'afficher`, `${done}: log in to an account to show it`));
     // the next one waiting, once this one is gone
@@ -1120,8 +1142,8 @@
     const owned = ownedBadges(), picked = pickedBadges();
     const all = [...COUNTED_BADGES.flatMap(f => f.tiers.map(t => f.kind + ':' + t.n)), ...MOD_TRACKS.flatMap(t => [1, 2, 3].map(n => 'p' + n + ':' + t.id)), 'creator', 'vip'];
     el(body, 'p', 'hint', account == null
-      ? tr('Connectez-vous à un compte GoofyTrack pour gagner des badges et les afficher à côté de votre pseudo.', 'Log in to a GoofyTrack account to earn badges and show them next to your name.')
-      : tr(`${all.filter(id => owned.includes(id)).length} badge(s) gagné(s) sur ${all.length}. Cliquez sur un badge gagné pour l'afficher à côté de votre pseudo (deux au plus).`,
+      ? tr('Connectez-vous à un compte GoofyTrack pour gagner des badges et les afficher à côté de votre nom.', 'Log in to a GoofyTrack account to earn badges and show them next to your name.')
+      : tr(`${all.filter(id => owned.includes(id)).length} badge(s) gagné(s) sur ${all.length}. Cliquez sur un badge gagné pour l'afficher à côté de votre nom (deux au plus).`,
         `${all.filter(id => owned.includes(id)).length} of ${all.length} badges won. Click a badge you won to show it next to your name (two at most).`));
     const pick = id => {
       const now = pickedBadges();
@@ -1369,13 +1391,24 @@
       Object.assign(input, { type, autocomplete, spellcheck: false, required: true });
       return input;
     };
-    const name = field(tr('Pseudo', 'Name'), 'text', 'username');
+    // a new account: the name shown (the profile's, in the leaderboards and the rooms, which can change), then the
+    // account's ID (to log in, and shown under the name with the account's number; it does not change)
+    let display = null;
+    if (mode === 'create') {
+      display = field(tr('Nom affiché', 'Display name'), 'text', 'nickname');
+      display.maxLength = 32;
+      const now = currentProfile()?.nickname;
+      if (!anonymousName(now)) display.value = now;
+      el(form, 'p', 'hint', tr('Celui qu\'on voit dans les classements et en multijoueur. Vous pourrez le changer.',
+        'The one shown in the leaderboards and in multiplayer. You can change it later.'));
+    }
+    const name = field(tr('Identifiant', 'Account ID'), 'text', 'username');
     name.maxLength = 20;
     const password = field(tr('Mot de passe', 'Password'), 'password', mode === 'create' ? 'new-password' : 'current-password');
     const confirm = mode === 'create' ? field(tr('Confirmer le mot de passe', 'Confirm password'), 'password', 'new-password') : null;
     el(form, 'p', 'hint', mode === 'create'
-      ? tr('3 à 20 lettres, chiffres, - _ ou point. La sauvegarde est chiffrée avec votre mot de passe : créez ensuite un code de secours (Sécurité) pour pouvoir le remplacer si vous l\'oubliez.',
-        '3 to 20 letters, digits, - _ or dot. The save is encrypted with your password: then make a recovery code (Security) to replace it if you forget it.')
+      ? tr('Identifiant : 3 à 20 lettres, chiffres, - _ ou point. Il sert à vous connecter, s\'affiche sous votre nom avec votre numéro (#0001) et ne change pas. La sauvegarde est chiffrée avec votre mot de passe : créez ensuite un code de secours (Sécurité) pour pouvoir le remplacer si vous l\'oubliez.',
+        'Account ID: 3 to 20 letters, digits, - _ or dot. It logs you in, shows under your name with your number (#0001) and does not change. The save is encrypted with your password: then make a recovery code (Security) to replace it if you forget it.')
       : tr('Vos records, profils, pistes perso et réglages de ce PC sont fusionnés avec ceux du compte : rien n\'est perdu.',
         'This PC\'s records, profiles, custom tracks and settings are merged with the account\'s: nothing is lost.'));
     const status = el(form, 'p', 'state');
@@ -1389,13 +1422,16 @@
     form.addEventListener('submit', event => {
       event.preventDefault();
       status.classList.remove('error');
-      if (!/^[\p{L}\p{N}_.-]{3,20}$/u.test(name.value.trim())) { status.classList.add('error'); status.textContent = tr('Pseudo : 3 à 20 lettres, chiffres, - _ ou point.', 'Name: 3 to 20 letters, digits, - _ or dot.'); return; }
-      if (mode === 'create' && anonymousName(name.value)) { status.classList.add('error'); status.textContent = tr('Choisissez un vrai pseudo, pas « Anonymous ».', 'Pick a real name, not "Anonymous".'); return; }
+      const shown = display ? display.value.trim() : null;
+      if (display && anonymousName(shown)) { status.classList.add('error'); status.textContent = tr('Choisissez un vrai nom affiché, pas « Anonymous ».', 'Pick a real display name, not "Anonymous".'); return; }
+      if (display && new TextEncoder().encode(shown).length >= 50) { status.classList.add('error'); status.textContent = tr('Nom affiché trop long.', 'Display name too long.'); return; }
+      if (!/^[\p{L}\p{N}_.-]{3,20}$/u.test(name.value.trim())) { status.classList.add('error'); status.textContent = tr('Identifiant : 3 à 20 lettres, chiffres, - _ ou point.', 'Account ID: 3 to 20 letters, digits, - _ or dot.'); return; }
+      if (mode === 'create' && anonymousName(name.value)) { status.classList.add('error'); status.textContent = tr('Choisissez un vrai identifiant, pas « Anonymous ».', 'Pick a real account ID, not "Anonymous".'); return; }
       if (mode === 'create' && password.value.length < 8) { status.classList.add('error'); status.textContent = tr('Mot de passe : 8 caractères au moins.', 'Password: 8 characters at least.'); return; }
       if (confirm && confirm.value !== password.value) { status.classList.add('error'); status.textContent = tr('Les mots de passe ne correspondent pas.', 'The passwords do not match.'); return; }
       submit.disabled = true;
       status.textContent = tr('Connexion… (le serveur peut mettre 30 s à se réveiller)', 'Connecting… (the server can take 30 s to wake up)');
-      logIn(name.value, password.value, mode === 'create').catch(e => {
+      logIn(name.value, password.value, mode === 'create', shown).catch(e => {
         submit.disabled = false;
         status.classList.add('error');
         status.textContent = e.message;
@@ -1452,8 +1488,8 @@
     el(who, 'h2', null, tr('Votre compte GoofyTrack', 'Your GoofyTrack account'));
     el(who, 'div', 'country', tr('Obligatoire pour jouer', 'Required to play'));
     const body = el(panel, 'div', 'body');
-    el(body, 'p', 'hint', tr('Choisissez votre pseudo : c\'est lui qu\'on voit dans les classements et en multijoueur. Vos records, profils et réglages vous suivent ensuite sur chaque PC.',
-      'Pick your name: it is the one shown in the leaderboards and in multiplayer. Your records, profiles and settings then follow you on every PC.'));
+    el(body, 'p', 'hint', tr('Créez votre compte, ou connectez-vous si vous en avez déjà un. Vos records, profils et réglages vous suivent ensuite sur chaque PC.',
+      'Create your account, or log in if you already have one. Your records, profiles and settings then follow you on every PC.'));
     loginForm(body, () => { if (!fallback) { fallback = true; renderFallback(fallbackBox); } });
     const fallbackBox = el(body, 'div');
     if (fallback) renderFallback(fallbackBox);
@@ -1463,18 +1499,18 @@
   function renderFallback(box) {
     box.textContent = '';
     el(box, 'h3', null, tr('Serveur injoignable', 'Server unreachable'));
-    el(box, 'p', 'hint warn', tr('Le serveur ne répond pas pour l\'instant. Réessayez ci-dessus, ou choisissez au moins un pseudo pour jouer : le compte vous sera redemandé au prochain lancement.',
+    el(box, 'p', 'hint warn', tr('Le serveur ne répond pas pour l\'instant. Réessayez ci-dessus, ou choisissez au moins un nom affiché pour jouer : le compte vous sera redemandé au prochain lancement.',
       'The server does not answer right now. Try again above, or pick at least a name to play: the account will be asked again at the next start.'));
     const now = currentProfile()?.nickname;
-    const f = smallForm(box, [[tr('Pseudo du profil', 'Profile name'), 'text', 'nickname']], tr('Jouer sans compte pour l\'instant', 'Play without an account for now'));
+    const f = smallForm(box, [[tr('Nom affiché', 'Display name'), 'text', 'nickname']], tr('Jouer sans compte pour l\'instant', 'Play without an account for now'));
     const [name] = f.inputs;
     name.maxLength = 32;
     if (!anonymousName(now)) name.value = now;
     f.form.addEventListener('submit', event => {
       event.preventDefault();
       const nickname = name.value.trim();
-      if (anonymousName(nickname)) return f.fail(tr('Choisissez un vrai pseudo, pas « Anonymous ».', 'Pick a real name, not "Anonymous".'));
-      if (new TextEncoder().encode(nickname).length >= 50) return f.fail(tr('Pseudo trop long.', 'Name too long.'));
+      if (anonymousName(nickname)) return f.fail(tr('Choisissez un vrai nom affiché, pas « Anonymous ».', 'Pick a real display name, not "Anonymous".'));
+      if (new TextEncoder().encode(nickname).length >= 50) return f.fail(tr('Nom affiché trop long.', 'Display name too long.'));
       renameProfile(nickname);
       deferred = true;
       required = false;
@@ -1505,7 +1541,7 @@
   function renderRecover(body) {
     el(body, 'p', 'hint', tr('Entrez le code de secours créé dans Sécurité, puis un nouveau mot de passe. Les autres PC du compte seront déconnectés.',
       'Enter the recovery code made in Security, then a new password. The account\'s other PCs will be logged out.'));
-    const f = smallForm(body, [[tr('Pseudo', 'Name'), 'text', 'username'], [tr('Code de secours', 'Recovery code'), 'text', 'off'],
+    const f = smallForm(body, [[tr('Identifiant', 'Account ID'), 'text', 'username'], [tr('Code de secours', 'Recovery code'), 'text', 'off'],
       [tr('Nouveau mot de passe', 'New password'), 'password', 'new-password'], [tr('Confirmer le mot de passe', 'Confirm password'), 'password', 'new-password']],
     tr('Remplacer le mot de passe', 'Replace the password'));
     const [name, code, password, confirm] = f.inputs;
@@ -1520,7 +1556,7 @@
       const problem = newPasswordProblem(password.value, confirm.value);
       if (problem) return f.fail(problem);
       f.busy(tr('Vérification… (le serveur peut mettre 30 s à se réveiller)', 'Checking… (the server can take 30 s to wake up)'));
-      recoverAccount(name.value, code.value, password.value).catch(e => f.fail(e.status === 403 ? tr('Pseudo ou code de secours incorrect.', 'Wrong name or recovery code.') : e.message));
+      recoverAccount(name.value, code.value, password.value).catch(e => f.fail(e.status === 403 ? tr('Identifiant ou code de secours incorrect.', 'Wrong account ID or recovery code.') : e.message));
     });
   }
 
@@ -1539,7 +1575,7 @@
 
     el(body, 'h3', null, tr('Code de secours', 'Recovery code'));
     if (securing.code) {
-      el(body, 'p', 'hint', tr('Notez ce code maintenant et gardez-le à l\'abri : il ne sera plus affiché. Avec votre pseudo, il permet de remplacer un mot de passe oublié.',
+      el(body, 'p', 'hint', tr('Notez ce code maintenant et gardez-le à l\'abri : il ne sera plus affiché. Avec votre identifiant, il permet de remplacer un mot de passe oublié.',
         'Write this code down now and keep it safe: it will not be shown again. With your name, it replaces a forgotten password.'));
       const box = el(body, 'div', 'recovery-code', securing.code);
       box.title = tr('Cliquez pour copier', 'Click to copy');
@@ -1642,15 +1678,15 @@
     paintFrame(car, pickedFrame(draft.frame));     // the frame being picked, below
     const who = el(header, 'div', 'who');
     el(who, 'h2', null, tr('Modifier le profil', 'Edit profile'));
-    el(who, 'div', 'country', tr('Pseudo, drapeau et badges', 'Name, flag and badges'));
+    el(who, 'div', 'country', tr('Nom affiché, drapeau et badges', 'Display name, flag and badges'));
     const x = el(header, 'button', 'close', '✕');
     x.title = tr('Retour', 'Back');
     x.addEventListener('click', back);
 
     const body = el(panel, 'div', 'body editor');
-    const nameLabel = el(body, 'label', null, tr('Pseudo', 'Name'));
+    const nameLabel = el(body, 'label', null, tr('Nom affiché', 'Display name'));
     const name = el(nameLabel, 'input');
-    Object.assign(name, { type: 'text', value: anonymousName(draft.nickname) ? '' : draft.nickname, placeholder: tr('Votre pseudo', 'Your name'), spellcheck: false, maxLength: 32 });
+    Object.assign(name, { type: 'text', value: anonymousName(draft.nickname) ? '' : draft.nickname, placeholder: tr('Votre nom affiché', 'Your display name'), spellcheck: false, maxLength: 32 });
     name.addEventListener('input', () => { draft.nickname = name.value; });
     el(body, 'p', 'hint', tr('Affiché dans les classements et en ligne.', 'Shown in the leaderboards and online.'));
 
@@ -1704,7 +1740,7 @@
       }
     };
     fillBadges();
-    if (list) el(body, 'p', 'hint', tr('Deux au plus, à côté de votre pseudo. Un badge P1, P2 ou P3 dure tant que vous gardez votre place sur le podium.',
+    if (list) el(body, 'p', 'hint', tr('Deux au plus, à côté de votre nom. Un badge P1, P2 ou P3 dure tant que vous gardez votre place sur le podium.',
       'Two at most, next to your name. A P1, P2 or P3 badge lasts as long as you keep your place on the podium.'));
 
     // the frame: the colours for everyone, the frames won while their badge is owned (locked otherwise, with how to win them)
@@ -1752,8 +1788,8 @@
     const save = el(actions, 'button', 'primary', tr('Enregistrer', 'Save'));
     save.addEventListener('click', () => {
       const nickname = draft.nickname.trim();
-      if (anonymousName(nickname)) { status.className = 'state error'; status.textContent = tr('Choisissez un vrai pseudo, pas « Anonymous ».', 'Pick a real name, not "Anonymous".'); return; }
-      if (new TextEncoder().encode(nickname).length >= 50) { status.className = 'state error'; status.textContent = tr('Pseudo trop long.', 'Name too long.'); return; }
+      if (anonymousName(nickname)) { status.className = 'state error'; status.textContent = tr('Choisissez un vrai nom affiché, pas « Anonymous ».', 'Pick a real display name, not "Anonymous".'); return; }
+      if (new TextEncoder().encode(nickname).length >= 50) { status.className = 'state error'; status.textContent = tr('Nom affiché trop long.', 'Display name too long.'); return; }
       saveProfile(nickname, draft.countryCode, draft.badges, draft.bestTrack, draft.frame);
       back();
     });

@@ -1,12 +1,13 @@
 // GoofyTrack's desktop app (Electron main process): the game's window. Our own, in place of the one of the PolyTrack
 // desktop app, which it behaves like (build.js puts it in resources/app/electron/, polytrack.js in the archive it makes):
 // one instance, full screen (F11 or Alt+Enter), links to kodub.com opened in the browser, the PolyTrack servers
-// spoken to as the desktop app does.
+// spoken to as the desktop app does. Unlike it, the page may reload itself (PolyTrack's desktop app blocks that too).
 //
 // The app's name stays "PolyTrack" (package.json, productName): the saves, in the profile Electron keeps under that
 // name (%APPDATA%\PolyTrack, ~/Library/Application Support/PolyTrack), are those of the players' PolyTrack.
 const { app, BrowserWindow, session, shell, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 let win = null;
 
@@ -24,7 +25,8 @@ app.on('web-contents-created', (event, contents) => {
     if (EXTERNAL(url)) setImmediate(() => shell.openExternal(url));
     return { action: 'deny' };
   });
-  contents.on('will-navigate', e => e.preventDefault());
+  // the page itself, reloaded (the account reloads the game once the save is written: apex-account.js), stays
+  contents.on('will-navigate', (e, url) => { if ((e.url ?? url) !== contents.getURL()) e.preventDefault(); });
 });
 
 // what the game asks the desktop app (preload.js)
@@ -33,6 +35,19 @@ ipcMain.on('log-message', (e, text) => console.log(text));
 ipcMain.on('quit', () => app.quit());
 ipcMain.on('is-fullscreen', e => { e.returnValue = win != null && win.isFullScreen(); });
 ipcMain.on('set-fullscreen', (e, on) => { if (win) win.setFullScreen(!!on); });
+// a new release is out (apex-update.js): open GoofyTrack Launcher, next to the game, then quit so that it can update it
+// (Windows: GoofyTrack.exe and the launcher in the GoofyTrack folder; macOS: GoofyTrack.app/Contents/MacOS/GoofyTrack,
+// the launcher being the "GoofyTrack Launcher.command" script next to the app)
+ipcMain.handle('open-launcher', async () => {
+  const mac = process.platform === 'darwin';
+  const folder = mac ? path.resolve(path.dirname(process.execPath), '..', '..', '..') : path.dirname(process.execPath);
+  const launcher = path.join(folder, mac ? 'GoofyTrack Launcher.command' : 'GoofyTrack Launcher.exe');
+  if (!fs.existsSync(launcher)) return `${path.basename(launcher)} introuvable dans ${folder}`;
+  const error = await shell.openPath(launcher);
+  if (error) return error;
+  setTimeout(() => app.quit(), 300);
+  return null;
+});
 app.on('window-all-closed', () => app.quit());
 
 app.whenReady().then(() => {
