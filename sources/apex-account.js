@@ -2337,5 +2337,9 @@
     },
     // added to the multiplayer server's address when hosting a room (patch_bundle.js): friends see the room
     hostQuery: () => (account ? '&account=' + account.session : ''),
+    // a creator of GoofyTrack (the server's CREATOR_IDS): the special tournaments are theirs (apex-tournament.js); the
+    // server checks the session sent with them
+    creator: () => account?.verified === 'creator',
+    creatorSession: () => (account?.verified === 'creator' ? account.session : null),
   };
 })();

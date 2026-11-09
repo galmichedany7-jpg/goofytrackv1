@@ -3,8 +3,8 @@
 //   1. Mini-map     the track layout (same picture as the track thumbnails) with your car as an
 //                   arrow and, in a room, the other players as dots
 //   2. Live delta   while you drive, how far ahead or behind you are compared with your best
-//                   finished run of the session, measured continuously along the track instead
-//                   of only at checkpoints
+//                   time on the track (your own ghost, or a faster run of the session), measured
+//                   continuously along the track instead of only at checkpoints
 //
 // Both read what the game already knows (track layout, car positions); nothing is sent anywhere
 // and the physics is not involved.
@@ -29,6 +29,8 @@
   let remotes = new Map();        // player id -> { x, z, at }
   let run = [];                   // states of the run being driven
   let best = null;                // { frames, states } best finished run of the session
+  let ghostRef = null;            // { replay, frames, states } own ghost (saved record of the track), sampled like a run
+  let reference = null;           // the one of the two the delta is measured against
   let lastFrames = -1;
   let refIndex = 0;
   let frame = 0;
@@ -193,9 +195,29 @@
     return state;
   }
 
+  // Own ghost of the time trial (the record saved for the track), once the game has simulated its
+  // whole run: the delta has a reference from the first lap, not only after a finish in the session
+  function ghostBest() {
+    const ghosts = ctx.ghosts ? ctx.ghosts() : null;
+    if (ghosts == null) return null;
+    for (const g of ghosts) {
+      if (!g.settings.isSelf || g.replay == null) continue;
+      if (ghostRef != null && ghostRef.replay === g.replay) return ghostRef;
+      const replay = g.replay.replay, finish = g.settings.time.numberOfFrames;
+      const end = replay.getFrame(finish);
+      if (end == null) return null;                                   // still being simulated
+      const states = [];
+      for (let f = 0; f < finish; f += SAMPLE_FRAMES) states.push(replay.getFrame(f));
+      states.push(end);
+      ghostRef = { replay: g.replay, frames: finish, states };
+      return ghostRef;
+    }
+    return null;
+  }
+
   // Time at which the reference run was at the point of its line closest to (x, y, z)
   function referenceFrames(p) {
-    const states = best.states;
+    const states = reference.states;
     const dist2 = i => { const s = states[i].position; return (s.x - p.x) ** 2 + (s.y - p.y) ** 2 + (s.z - p.z) ** 2; };
     // Progress normally moves forward a little each frame; look around the last match first
     let lo = Math.max(0, refIndex - 6), hi = Math.min(states.length - 1, refIndex + 40);
@@ -222,7 +244,11 @@
 
   function showDelta(state, self) {
     let value = null;
-    if (best != null && !raceActive() && self.hasStarted() && state.finishFrames == null) {
+    let ghost = null;
+    try { ghost = ghostBest(); } catch (e) { console.error('Apex: ghost delta unavailable', e); ctx.ghosts = null; }
+    const ref = ghost != null && (best == null || ghost.frames <= best.frames) ? ghost : best;
+    if (ref !== reference) { reference = ref; refIndex = 0; }
+    if (reference != null && !raceActive() && self.hasStarted() && state.finishFrames == null) {
       const ref = referenceFrames(state.position);
       if (ref != null) value = (state.frames - ref) / 1000;
     }
@@ -248,7 +274,7 @@
       return {
         x: s.position.x, y: s.position.y, z: s.position.z, speed: s.speedKmh, frames: s.frames, finished: s.finishFrames,
         heading: Math.atan2(2 * (q.x * q.z + q.w * q.y), 1 - 2 * (q.x * q.x + q.y * q.y)),
-        delta: lastDelta, best: best && best.frames, map: !!map, remotes: remotes.size,
+        delta: lastDelta, best: best && best.frames, ghost: ghostRef && ghostRef.frames, map: !!map, remotes: remotes.size,
       };
     },
 
@@ -339,7 +365,7 @@
       if (owner !== undefined && ctx != null && ctx.owner !== owner) return;
       if (map) map.canvas.remove();
       if (delta != null) { delta.remove(); delta = null; }
-      ctx = null; map = null; remotes = new Map(); run = []; best = null; lastFrames = -1; refIndex = 0; lastDelta = null; statFrames = -1; statFinished = false;
+      ctx = null; map = null; remotes = new Map(); run = []; best = null; ghostRef = null; reference = null; lastFrames = -1; refIndex = 0; lastDelta = null; statFrames = -1; statFinished = false;
       window.ApexStats?.flush();
       window.ApexTournament?.track(null);
     },

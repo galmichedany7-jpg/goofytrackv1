@@ -564,6 +564,13 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
     return [200, out];
   }
 
+  // the account number of a session when it is a creator's (CREATOR_IDS), else null: the special tournaments and
+  // rooms (tournaments.js, server.js) are theirs only
+  function creatorOf(session) {
+    const key = typeof session === 'string' && HEX64.test(session) ? bySession.get(sha256(session)) : null, a = key == null ? null : accounts.get(key);
+    return a != null && CREATOR_IDS.has(a.id) ? a.id : null;
+  }
+
   // the multiplayer server tells whose room a code is (server.js): the session handed by the game hosting it
   function hostRoom(session, code) {
     const key = typeof session === 'string' && HEX64.test(session) ? bySession.get(sha256(session)) : null;
@@ -625,7 +632,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   }
 
   const storage = () => (githubToken ? 'gist' : 'file');
-  return { load, handle, hostRoom, flush: () => (saveTimer != null ? saveNow() : saving), stats: () => ({ ready, accounts: accounts.size, storage: storage() }) };
+  return { load, handle, hostRoom, creatorOf, flush: () => (saveTimer != null ? saveNow() : saving), stats: () => ({ ready, accounts: accounts.size, storage: storage() }) };
 }
 
 module.exports = { createAccounts };

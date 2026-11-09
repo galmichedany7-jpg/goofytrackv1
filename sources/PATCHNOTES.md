@@ -15,6 +15,20 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.24.2 : stands à Monaco, réglages d'endurance et tournois spéciaux
+
+**Nouveautés**
+- **Stands à Monaco GP** : en endurance, la voie des stands s'ouvre sur le circuit de Monaco, comme à Forest Speedway. On y entre au milieu de la ligne droite et on en ressort juste avant la ligne de départ. Elle est longée de garages aux couleurs des écuries, avec les emplacements peints, un auvent et les postes des écuries sur le muret. Dans les autres modes, la piste ne change pas : les records de Monaco restent valables.
+- **Un box par pilote** : au départ d'une course d'endurance, chaque pilote reçoit un garage tiré au sort, avec sa couleur. Seul son emplacement fait le plein et change les pneus. La jauge indique son box, la distance qui reste pour l'atteindre dans la voie, et le nom de chaque pilote s'affiche au-dessus de son garage.
+- **Vitesse dans les stands** : plus de limiteur automatique, c'est au pilote de rester sous **100 km/h**. Plus de 2 s au-dessus sur un même passage vaut un **stop-and-go** : la voiture reste bloquée 5 s dans son box au prochain arrêt. Une pénalité pas purgée à la fin ajoute 10 s au résultat.
+- **Réglages de la voiture en endurance** : les 3 stratégies toutes faites laissent la place à 3 jauges liées (réservoir, moteur, pneus et freins), avec 15 points à répartir. Monter une jauge baisse les autres. L'équilibrage a été fait pour qu'aucune répartition ne domine.
+- **La jauge d'endurance** est maintenant au-dessus du compteur de vitesse.
+- **Boîte de vitesses** : le son du moteur passe 7 rapports, avec une coupure et une chute du régime à chaque passage, et des rétrogradages par paliers au freinage. Le rapport engagé s'affiche à côté du compteur. Ça ne touche que le son et l'affichage, pas la physique.
+- **Fenêtre multijoueur** : le bouton s'appelle « Héberger », et chaque mode a une description plus claire. Les formats du mode Course deviennent **Sprint**, **Grand Prix** et **Endurance**. En Grand Prix et en Endurance, seuls les circuits avec une grille et des stands sont proposés : Forest Speedway et Monaco GP.
+- **Tournois spéciaux** : l'onglet Tournois de Jouer devient « Tournois spéciaux », les tournois officiels de GoofyTrack où des récompenses seront à gagner. Seuls les créateurs peuvent en créer (tournoi chrono, Grand Prix ou Endurance). Les autres joueurs sont prévenus quand un nouveau tournoi ouvre et peuvent rejoindre sa room depuis l'onglet. Les tournois entre amis se font dans Multijoueur › Héberger › Course.
+
+**Mise à jour** : ouvrez GoofyTrack Launcher et cliquez sur Mettre à jour. Le serveur doit être redéployé (Render) pour les tournois spéciaux.
+
 ## V2.24.1 : nom affiché, identifiant et alerte de mise à jour
 
 **Nouveautés**

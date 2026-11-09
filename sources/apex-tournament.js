@@ -1,4 +1,11 @@
-// Apex tournaments: the "Tournaments" tab of the track selection, where the community tab was.
+// Apex tournaments: the "Special tournaments" tab of the track selection, where the community tab was.
+//
+// The special tournaments are GoofyTrack's official ones, where rewards can be won: only its creators (the server's
+// CREATOR_IDS, apex-account.js) make them, here. A time trial is made on the server with the creator's session, which
+// makes it special (server/tournaments.js); a Grand Prix or an Endurance race is a room the creator hosts, flagged
+// special (the server keeps the flag for a creator's room only, server.js). The tab lists both, open rooms first; the
+// other players are told when a new one opens. Everybody else makes their tournaments with friends in the
+// Multiplayer screen: Host, Race mode, Grand Prix or Endurance (apex-room.js).
 //
 // Time trial tournaments ("tournoi chrono", server/tournaments.js): a player opens one on a track for 10 minutes to
 // 3 days and becomes its host; everybody drives that track whenever they like during that time, and the best time set
@@ -18,34 +25,39 @@
   const DURATIONS = [10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320];   // minutes, the slider's steps
   const REFRESH_OPEN = 15000;          // the list, while the tab is open
   const REFRESH_DRIVING = 60000;       // the tournament of the track driven
-  const REFRESH_IDLE = 5 * 60000;      // to learn the results (the wins to count)
+  const REFRESH_IDLE = 2 * 60000;      // to learn the results (the wins to count) and the new special tournaments
+  const ROOMS_EVERY = 45000;           // the special tournaments' rooms
+  const SEEN_KEY = 'goofytrack.specialSeen';                // special tournaments and rooms already announced
   const CREDITED_KEY = 'goofytrack.tournaments.credited';   // ids of the chrono tournaments already counted (synced)
 
   const french = () => String(window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr');
   const tr = (fr, en) => (french() ? fr : en);
 
   let list = [];                       // the server's tournaments, as last fetched
+  let rooms = [], roomsAt = 0;         // the special tournaments' rooms open (the room list's, apex-lobby.js)
   let skew = 0;                        // server clock - this PC's clock (ms)
   let fetched = 0, fetching = null, failed = false;   // failed: 'outdated' (a server without the tournaments, 404), 'offline' or false
   let play = null;                     // the track selection's own "start this track" (patch_bundle.js)
   let overlay = null, view = 'list', expanded = new Set(), message = null;
   // the tournament being made: its kind, its track (a time trial: picked in the game's track list) and settings
-  let creating = { kind: 'chrono', track: null, minutes: 60, laps: 3, quali: true, formation: true, raceMinutes: 15 };
+  let creating = { kind: 'chrono', track: null, circuit: 'Forest Speedway', minutes: 60, laps: 3, quali: true, formation: true, raceMinutes: 15 };
   let picking = false, pickBar = null;
   const KINDS = ['chrono', 'tournament', 'endurance'];
   const KIND_TEXT = () => ({
-    chrono: { name: tr('Tournoi chrono', 'Time trial tournament'), info: tr('une piste, de 10 minutes à 3 jours, le meilleur temps réalisé pendant ce temps gagne. Chaque tour bouclé compte, en solo comme en room.',
+    chrono: { name: tr('Tournoi chrono', 'Time trial'), info: tr('une piste, de 10 minutes à 3 jours, le meilleur temps réalisé pendant ce temps gagne. Chaque tour bouclé compte, en solo comme en room.',
       'one track, 10 minutes to 3 days, the best time set in that time wins. Every finished lap counts, solo or in a room.') },
-    tournament: { name: tr('Tournoi course', 'Race tournament'), info: tr('une course en plusieurs tours, qualifications en 2 tentatives (sinon grille tirée au sort), tour de formation. Le premier arrivé gagne.',
+    tournament: { name: 'Grand Prix', info: tr('une course en plusieurs tours, qualifications en 2 tentatives (sinon grille tirée au sort), tour de formation. Le premier arrivé gagne.',
       'a race over several laps, qualifying in 2 attempts (otherwise a grid drawn at random), formation lap. The first car home wins.') },
-    endurance: { name: tr('Tournoi endurance', 'Endurance tournament'), info: tr('15 à 20 minutes, chacun sa stratégie (essence, vitesse, pneus), ravitaillements aux stands. Le plus de tours gagne.',
-      '15 to 20 minutes, a strategy each (fuel, speed, tyres), pit stops. The most laps win.') },
+    endurance: { name: 'Endurance', info: tr('15 à 20 minutes, chacun règle sa voiture (réservoir, moteur, pneus), ravitaillements dans son box, stands à 100 km/h. Le plus de tours gagne.',
+      '15 to 20 minutes, everyone sets up their car (tank, engine, tyres), pit stops in your own box, 100 km/h in the pit lane. The most laps win.') },
   });
-  // the circuit of the race and endurance tournaments (apex-room.js, TOURNAMENT_CIRCUITS)
-  const ROOM_TRACK = () => {
-    const t = officialTracks().find(x => x.trackMetadata.name === 'Forest Speedway');
-    return { name: 'Forest Speedway', thumbnail: t?.thumbnail || 'tracks/official/thumbnails/forest.png' };
+  // the circuits of the race and endurance tournaments, with a painted grid and pits (apex-room.js, TOURNAMENT_CIRCUITS)
+  const ROOM_TRACKS = [['Forest Speedway', 'forest'], ['Monaco GP', 'monaco']];
+  const roomTrack = name => {
+    const [, file] = ROOM_TRACKS.find(([n]) => n === name) || ROOM_TRACKS[0], t = officialTracks().find(x => x.trackMetadata.name === name);
+    return { name, thumbnail: t?.thumbnail || 'tracks/official/thumbnails/' + file + '.png' };
   };
+  const ROOM_TRACK = () => roomTrack(creating.circuit);
   let driving = null;                  // { track, id: track id } the track driven, for the badge and the runs sent
   let hud = null, hudKey = '';
 
@@ -88,11 +100,41 @@
         fetched = Date.now();
         failed = false;
         credit(who);
+        announce();
       })
       .catch(e => { failed = e.status === 404 ? 'outdated' : 'offline'; })
       .finally(() => { fetching = null; render(); updateHud(); });
     return fetching;
   }
+  // the special rooms open, from the room list (null: unknown)
+  async function refreshRooms() {
+    const url = window.ApexLobby?.roomsUrl?.();
+    if (!url) return;
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) return;
+      const all = await res.json();
+      rooms = Array.isArray(all) ? all.filter(r => r && r.special) : [];
+      roomsAt = Date.now();
+      announce();
+      render();
+    } catch (e) { /* the server may be asleep: next time */ }
+  }
+  // a special tournament or room not announced yet: the player is told where to find it (not their own, not mid-race)
+  function announce() {
+    let seen;
+    try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'); } catch (e) { seen = []; }
+    if (!Array.isArray(seen)) seen = [];
+    const fresh = [
+      ...list.filter(t => t.special && isOpen(t) && !t.host.self).map(t => ({ key: 't' + t.id, name: t.trackName })),
+      ...rooms.filter(r => r.host !== me()?.nickname).map(r => ({ key: 'r' + r.code + ':' + r.since, name: r.track })),
+    ].filter(x => !seen.includes(x.key));
+    if (fresh.length === 0) return;
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify([...seen, ...fresh.map(x => x.key)].slice(-200))); } catch (e) { /* storage full */ }
+    if (window.ApexRoom?.raceActive?.()) return;
+    toast(tr(`Nouveau tournoi spécial : ${fresh[0].name || '?'} ! Jouer › Tournois spéciaux`, `New special tournament: ${fresh[0].name || '?'}! Play › Special tournaments`), 'special');
+  }
+
   function post(route, fields) {
     const who = me();
     if (who == null) return Promise.reject(new Error(tr('Aucun profil de joueur', 'No player profile')));
@@ -174,7 +216,10 @@
     document.addEventListener('keydown', onKey, true);
     render();
     refresh(true);
+    refreshRooms();
   }
+  const creator = () => !!window.ApexAccount?.creator?.();
+  const special = t => t.special === true;
   function close() {
     if (picking) { picking = false; pickBar?.remove(); pickBar = null; }
     if (overlay == null) return;
@@ -196,7 +241,7 @@
     overlay.textContent = '';
     const panel = el(overlay, 'div', 'panel');
     const header = el(panel, 'div', 'header');
-    el(header, 'h2', null, view === 'create' ? tr('Nouveau tournoi', 'New tournament') : tr('Tournois', 'Tournaments'));
+    el(header, 'h2', null, view === 'create' ? tr('Nouveau tournoi spécial', 'New special tournament') : tr('Tournois spéciaux', 'Special tournaments'));
     const close_ = el(header, 'button', 'close', '✕');
     close_.addEventListener('click', close);
     const body = el(panel, 'div', 'list');
@@ -206,27 +251,24 @@
 
   function renderList(body) {
     const intro = el(body, 'div', 'intro');
-    for (const kind of KINDS) {
-      const p = el(intro, 'p');
-      el(p, 'strong', null, KIND_TEXT()[kind].name + ' : ');
-      p.append(KIND_TEXT()[kind].info);
+    el(intro, 'p', null, tr('Les tournois officiels de GoofyTrack, organisés par l\'équipe : des récompenses sont à gagner.', 'GoofyTrack\'s official tournaments, run by the team: there are rewards to win.'));
+    el(intro, 'p', 'rooms', tr('Un tournoi entre amis ? Multijoueur › Héberger › Course, format Grand Prix ou Endurance.', 'A tournament with friends? Multiplayer › Host › Race, Grand Prix or Endurance format.'));
+    if (creator()) {
+      const bar = el(body, 'div', 'actions');
+      button(bar, tr('Créer un tournoi spécial', 'Create a special tournament'), 'primary', () => { view = 'create'; message = null; render(); });
     }
-    el(intro, 'p', 'rooms', tr('Les tournois course et endurance se jouent dans une room : « Créer un tournoi » prépare l\'écran Héberger.',
-      'Race and endurance tournaments are played in a room: "Create a tournament" sets up the Host screen.'));
-    const bar = el(body, 'div', 'actions');
-    button(bar, tr('Créer un tournoi', 'Create a tournament'), 'primary', () => { view = 'create'; message = null; render(); });
     if (message) el(body, 'div', 'message', message);
-
-    el(body, 'h3', null, tr('Tournois chrono', 'Time trial tournaments'));
     if (failed === 'outdated') {
-      el(body, 'div', 'message', tr('Le serveur GoofyTrack n\'a pas encore la mise à jour des tournois chrono : il doit être redéployé (Render). Les tournois course et endurance marchent déjà.',
-        'The GoofyTrack server does not have the time trial tournaments yet: it must be redeployed (Render). Race and endurance tournaments already work.'));
+      el(body, 'div', 'message', tr('Le serveur GoofyTrack n\'a pas encore la mise à jour des tournois : il doit être redéployé (Render).', 'The GoofyTrack server does not have the tournaments update yet: it must be redeployed (Render).'));
       return;
     }
-    if (failed && list.length === 0) { el(body, 'div', 'empty', tr('Serveur GoofyTrack injoignable. Il se réveille peut-être (jusqu\'à une minute).', 'GoofyTrack server unreachable. It may be waking up (up to a minute).')); return; }
-    const running = list.filter(isOpen), done = list.filter(t => !isOpen(t));
+    if (failed && list.length === 0 && rooms.length === 0) { el(body, 'div', 'empty', tr('Serveur GoofyTrack injoignable. Il se réveille peut-être (jusqu\'à une minute).', 'GoofyTrack server unreachable. It may be waking up (up to a minute).')); return; }
+    const mine = list.filter(special), running = mine.filter(isOpen), done = mine.filter(t => !isOpen(t));
     el(body, 'h3', null, tr('En cours', 'Open'));
-    if (running.length === 0) el(body, 'div', 'empty', fetched ? tr('Aucun tournoi en cours. Créez le premier !', 'No tournament open. Create the first one!') : tr('Chargement…', 'Loading…'));
+    if (running.length === 0 && rooms.length === 0) {
+      el(body, 'div', 'empty special-empty', fetched ? tr('Aucun tournoi spécial disponible actuellement ! Revenez plus tard !', 'No special tournament right now! Come back later!') : tr('Chargement…', 'Loading…'));
+    }
+    for (const r of rooms) renderRoom(body, r);
     for (const t of running) renderTournament(body, t);
     if (done.length) {
       el(body, 'h3', null, tr('Terminés', 'Finished'));
@@ -234,14 +276,35 @@
     }
   }
 
+  // a special tournament's room: its format, who hosts it, how many drive; join it to drive, or to watch
+  const ROOM_KIND = { tournament: () => 'Grand Prix', endurance: () => 'Endurance', race: () => 'Sprint' };
+  const ROOM_PHASE = { quali: () => tr('Qualifications', 'Qualifying'), formation: () => tr('Tour de formation', 'Formation lap'), strategy: () => tr('Réglages', 'Setups'),
+    race: () => tr('En course', 'Racing'), results: () => tr('Résultats', 'Results') };
+  function renderRoom(body, r) {
+    const card = el(body, 'div', 'card live room'), known = officialTracks().find(x => x.trackMetadata.name === r.track);
+    el(card, 'img', 'thumb').src = known?.thumbnail || 'images/empty.svg';
+    const main = el(card, 'div', 'main');
+    el(main, 'div', 'name', r.track || '—');
+    el(main, 'div', 'kind', (ROOM_KIND[r.mode] || ROOM_KIND.race)() + '  ·  ' + tr('room en direct', 'live room'));
+    el(main, 'div', 'meta', `${tr('Organisé par', 'Run by')} ${r.host}  ·  ${r.players}${r.maxPlayers != null ? '/' + r.maxPlayers : ''} ${tr(r.players > 1 ? 'pilotes' : 'pilote', r.players === 1 ? 'driver' : 'drivers')}`);
+    el(main, 'div', 'time', (ROOM_PHASE[r.phase] || (() => tr('Essais libres, avant le départ', 'Practice, before the start')))());
+    const side = el(card, 'div', 'side'), full = r.maxPlayers != null && r.players >= r.maxPlayers;
+    const go = button(side, full ? tr('Pleine', 'Full') : tr('Rejoindre', 'Join'), 'primary', () => joinRoom(r.code, false));
+    go.disabled = full;
+    const watch = button(side, tr('Regarder', 'Watch'), '', () => joinRoom(r.code, true));
+    watch.disabled = full;
+  }
+
   function renderTournament(body, t) {
     const live = isOpen(t), card = el(body, 'div', 'card' + (live ? ' live' : ' done'));
+    // (a special time trial)
     const known = trackOf(t.trackId);
     const thumb = el(card, 'img', 'thumb');
     thumb.src = known?.thumbnail || 'images/empty.svg';
     const main = el(card, 'div', 'main');
     el(main, 'div', 'name', t.trackName);
-    el(main, 'div', 'meta', `${tr('Hôte', 'Host')} : ${t.host.nickname}  ·  ${t.total} ${tr(t.total > 1 ? 'pilotes' : 'pilote', t.total === 1 ? 'driver' : 'drivers')}`);
+    el(main, 'div', 'kind', tr('Tournoi chrono', 'Time trial'));
+    el(main, 'div', 'meta', `${tr('Organisé par', 'Run by')} ${t.host.nickname}  ·  ${t.total} ${tr(t.total > 1 ? 'pilotes' : 'pilote', t.total === 1 ? 'driver' : 'drivers')}`);
     const time = el(main, 'div', 'time' + (live ? '' : ' over'), live ? tr('Fin dans ', 'Ends in ') + remaining(Date.parse(t.end) - now()) : tr('Terminé le ', 'Ended ') + new Date(t.end).toLocaleString());
     time.dataset.end = t.end;
     if (!live) {
@@ -286,7 +349,7 @@
 
   // ---------------------------------------------------------------- making a tournament
   // A time trial is made here, on the server; a race or endurance tournament is a room: its settings go to the Race
-  // mode (apex-room.js) and the game is taken to its host screen, Forest Speedway picked, for the player to host it.
+  // mode (apex-room.js) and the game is taken to its host screen, the circuit picked, for the player to host it.
   function renderCreate(body) {
     const form = el(body, 'div', 'create');
     el(form, 'label', null, tr('Type de tournoi', 'Tournament type'));
@@ -300,15 +363,25 @@
 
     el(form, 'label', null, tr('Piste', 'Track'));
     const chrono = creating.kind === 'chrono';
-    const track = chrono ? creating.track : ROOM_TRACK();
-    const pick = el(form, 'button', 'button track-pick' + (chrono ? '' : ' fixed'));
-    const thumb = el(pick, 'img', 'thumb');
-    thumb.src = track?.thumbnail || 'images/empty.svg';
-    el(pick, 'div', 'name' + (track ? '' : ' placeholder'), track ? track.name : tr('Choisir la piste', 'Pick the track'));
     if (chrono) {
+      const track = creating.track;
+      const pick = el(form, 'button', 'button track-pick');
+      const thumb = el(pick, 'img', 'thumb');
+      thumb.src = track?.thumbnail || 'images/empty.svg';
+      el(pick, 'div', 'name' + (track ? '' : ' placeholder'), track ? track.name : tr('Choisir la piste', 'Pick the track'));
       el(pick, 'div', 'change', track ? tr('Changer', 'Change') : '');
       pick.addEventListener('click', event => { event.stopPropagation(); startPicking(); });
-    } else el(form, 'p', 'hint', tr('Seul circuit avec une vraie grille de départ et des stands pour l\'instant.', 'The only circuit with a proper grid and pits for now.'));
+    } else {
+      // one of the circuits made for them
+      const circuits = el(form, 'div', 'circuits');
+      for (const [name] of ROOM_TRACKS) {
+        const track = roomTrack(name), pick = el(circuits, 'button', 'button track-pick' + (creating.circuit === name ? ' selected' : ''));
+        el(pick, 'img', 'thumb').src = track.thumbnail;
+        el(pick, 'div', 'name', name);
+        pick.addEventListener('click', event => { event.stopPropagation(); creating.circuit = name; render(); });
+      }
+      el(form, 'p', 'hint', tr('Les circuits avec une vraie grille de départ et des stands.', 'The circuits with a proper grid and pits.'));
+    }
 
     if (chrono) {
       el(form, 'label', null, tr('Durée', 'Duration'));
@@ -327,7 +400,7 @@
     } else {
       el(form, 'label', null, tr('Durée de la course', 'Race duration'));
       slider(form, 15, 20, creating.raceMinutes, v => { creating.raceMinutes = v; return v + ' min'; });
-      el(form, 'p', 'hint', tr('Chaque pilote choisit sa stratégie avant le départ. Le plus de tours à la fin du temps gagne.', 'Every driver picks a strategy before the start. The most laps when the time is up wins.'));
+      el(form, 'p', 'hint', tr('Chaque pilote règle sa voiture avant le départ. Le plus de tours à la fin du temps gagne.', 'Every driver sets up their car before the start. The most laps when the time is up wins.'));
     }
 
     if (message) el(form, 'div', 'message', message);
@@ -337,7 +410,7 @@
       const go = button(bar, tr('Lancer le tournoi', 'Start the tournament'), 'primary', b => {
         b.disabled = true;
         const t = creating.track;
-        post('tournaments/create', { trackId: t.id, trackName: t.name, minutes: String(creating.minutes) })
+        post('tournaments/create', { trackId: t.id, trackName: t.name, minutes: String(creating.minutes), session: window.ApexAccount?.creatorSession?.() || '' })
           .then(out => { merge(out); expanded.add(out.id); view = 'list'; message = null; creating.track = null; render(); })
           .catch(e => { message = tr('Impossible de créer le tournoi : ', 'Could not create the tournament: ') + e.message; render(); });
       });
@@ -388,25 +461,15 @@
   // ---- a race or endurance tournament: the Race mode's settings, then the host screen with everything picked
   async function hostRoom() {
     window.ApexRoom.prepare(creating.kind === 'endurance'
-      ? { kind: 'endurance', minutes: creating.raceMinutes }
-      : { kind: 'tournament', laps: creating.laps, quali: creating.quali, formation: creating.formation });
+      ? { kind: 'endurance', minutes: creating.raceMinutes, special: true }
+      : { kind: 'tournament', laps: creating.laps, quali: creating.quali, formation: creating.formation, special: true });
     close();
-    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-    const shown = e => e != null && e.offsetParent !== null;
-    const until = async find => { for (let i = 0; i < 60; i++) { const e = find(); if (shown(e)) return e; await wait(100); } return null; };
-    const buttons = scope => [...document.querySelectorAll('#ui ' + scope + ' button')].filter(shown);
-    const fail = () => toast(tr('Ouvrez Multijoueur > Héberger, mode Course, format tournoi : les réglages sont prêts.', 'Open Multiplayer > Host, Race mode, tournament format: the settings are ready.'));
-    // out of the track selection, to the home screen, Multiplayer, Host
-    const back = await until(() => buttons('.track-selection-ui').find(b => b.querySelector('img[src*="back"]') || /^(back|retour)$/i.test(b.innerText.trim())));
-    if (back == null) return fail();
-    back.click();
-    const multiplayer = await until(() => document.querySelectorAll('#ui .menu-ui > .main-buttons-container > .button-image')[3]);   // Garage, Editor, Settings, Multiplayer, Play
-    if (multiplayer == null) return fail();
-    multiplayer.click();
-    const host = await until(() => buttons('.multiplayer-ui').find(b => /^(host|héberger)$/i.test(b.innerText.trim())) || buttons('.multiplayer-ui')[1]);
+    const fail = () => toast(tr('Ouvrez Multijoueur > Héberger, mode Course : les réglages du tournoi spécial sont prêts.', 'Open Multiplayer > Host, Race mode: the special tournament\'s settings are ready.'));
+    if (!(await toMultiplayer())) return fail();
+    const host = await until(() => buttons('.multiplayer-ui').find(b => /^(host|héberger|hôte)$/i.test(b.innerText.trim())) || buttons('.multiplayer-ui')[1]);
     if (host == null) return fail();
     host.click();
-    // the Race mode (its format is the one just prepared), then the track: Forest Speedway in the game's list
+    // the Race mode (its format is the one just prepared), then the track: the circuit picked, in the game's list
     const race = await until(() => buttons('.multiplayer-ui').find(b => b.innerText.trim() === window.ApexRoom.modeLabel()));
     if (race == null) return fail();
     race.click();
@@ -417,7 +480,31 @@
     if (row == null) return fail();
     (row.querySelector('button') || row).click();
     await wait(300);
-    toast(tr('Room prête : vérifiez les réglages et cliquez sur Héberger.', 'Room ready: check the settings and click Host.'));
+    toast(tr('Tournoi spécial prêt : vérifiez les réglages et cliquez sur Héberger.', 'Special tournament ready: check the settings and click Host.'));
+  }
+
+  // ---- out of the track selection, to the home screen, then the Multiplayer screen (its room list)
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const shown = e => e != null && e.offsetParent !== null;
+  const until = async find => { for (let i = 0; i < 60; i++) { const e = find(); if (shown(e)) return e; await wait(100); } return null; };
+  const buttons = scope => [...document.querySelectorAll('#ui ' + scope + ' button')].filter(shown);
+  async function toMultiplayer() {
+    const back = await until(() => buttons('.track-selection-ui').find(b => b.querySelector('img[src*="back"]') || /^(back|retour)$/i.test(b.innerText.trim())));
+    if (back == null) return false;
+    back.click();
+    const multiplayer = await until(() => document.querySelectorAll('#ui .menu-ui > .main-buttons-container > .button-image')[3]);   // Garage, Editor, Settings, Multiplayer, Play
+    if (multiplayer == null) return false;
+    multiplayer.click();
+    return true;
+  }
+  // ---- a special tournament's room: joined from the room list, as a driver or to watch
+  async function joinRoom(code, watch) {
+    close();
+    const fail = () => toast(tr('Ouvrez Multijoueur : le tournoi spécial est dans la liste des rooms.', 'Open Multiplayer: the special tournament is in the room list.'));
+    if (!(await toMultiplayer())) return fail();
+    if ((await until(() => document.querySelector('#ui .multiplayer-ui .join input.invite-code'))) == null) return fail();
+    if (window.ApexRoom) window.ApexRoom.watchNext(watch);
+    window.ApexLobby?.join(code);
   }
 
   // the countdowns, every second
@@ -433,12 +520,13 @@
   setInterval(() => {
     const age = Date.now() - fetched;
     if ((overlay != null && age > REFRESH_OPEN) || (current() != null && age > REFRESH_DRIVING) || age > REFRESH_IDLE) refresh(true);
+    if (Date.now() - roomsAt > (overlay != null ? 8000 : ROOMS_EVERY)) refreshRooms();
   }, 5000);
 
-  function toast(text) {
+  function toast(text, kind) {
     const ui = document.getElementById('ui');
     if (ui == null) return;
-    const t = el(ui, 'div', 'apex-tournament-toast', text);
+    const t = el(ui, 'div', 'apex-tournament-toast' + (kind ? ' ' + kind : ''), text);
     setTimeout(() => t.remove(), 7000);
   }
 
@@ -508,7 +596,8 @@
 #ui .apex-tournament .create .track-pick .name { flex: 1; font-size: 18px; font-weight: 700; }
 #ui .apex-tournament .create .track-pick .name.placeholder { color: var(--apx-fg-muted, rgba(243,245,248,.62)); }
 #ui .apex-tournament .create .track-pick .change { font-size: 13px; color: var(--apx-accent, #f20d16); }
-#ui .apex-tournament .create .track-pick.fixed { cursor: default; }
+#ui .apex-tournament .create .circuits { display: flex; flex-direction: column; gap: 8px; }
+#ui .apex-tournament .create .track-pick.selected { background-color: var(--apx-accent-soft, rgba(242,13,22,.13)); box-shadow: inset 0 0 0 2px var(--apx-accent, #f20d16); }
 #ui .apex-tournament .create .options { display: flex; gap: 10px; }
 #ui .apex-tournament .create .options .toggle { flex: 1; }
 #ui .apex-tournament .create .options .toggle.selected { background-color: var(--apx-accent-soft, rgba(242,13,22,.13)); box-shadow: inset 0 0 0 1px var(--apx-accent-ring, rgba(242,13,22,.55)); }
@@ -526,6 +615,9 @@
 #ui .apex-tournament-hud .tag { font-size: 13px; font-weight: 700; letter-spacing: 0.16em; color: var(--apx-accent, #f20d16); }
 #ui .apex-tournament-hud .info { font-size: 14px; color: var(--apx-fg, #f3f5f8); font-variant-numeric: tabular-nums; }
 #ui .apex-race-hud ~ .apex-tournament-hud { top: 100px; }
+#ui .apex-tournament .card .kind { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #f5c518; }
+#ui .apex-tournament .empty.special-empty { padding: 28px 12px; font-size: 17px; font-weight: 600; text-align: center; }
+#ui .apex-tournament-toast.special { box-shadow: inset 0 0 0 1px #f5c518, var(--apx-shadow, none); color: #f5c518; }
 #ui .apex-tournament-toast {
   position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 120; padding: 12px 22px; border-radius: var(--apx-r-md, 12px);
   background-color: var(--apx-glass-strong, rgba(12,14,19,.9)); box-shadow: inset 0 0 0 1px var(--apx-warn, #ffd24a), var(--apx-shadow, none);
@@ -536,7 +628,7 @@
   setTimeout(() => refresh(true), 10000);   // the wins to count, once the game and the profile are up
 
   window.ApexTournament = {
-    label: () => tr('Tournois', 'Tournaments'),
+    label: () => tr('Tournois spéciaux', 'Special tournaments'),
     open,
     refresh: () => refresh(true),
     // the track selection's way of starting one of its tracks (patch_bundle.js)

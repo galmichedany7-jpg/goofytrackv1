@@ -45,14 +45,20 @@
   const GRID_SIDE = 1.15;             // metres left/right of the racing line
   // Grids painted on a circuit's start straight (tools/forest_design.js, drawn by apex-town.js), by the id of its
   // start part: behind the start line, the pole's box `first` metres back, `gap` metres between two boxes, staggered
-  // `side` metres left and right of the middle of the road
-  const PAINTED_GRIDS = { 229: { first: 8, gap: 8, side: 4.5, slots: 16 } };
+  // `side` metres left and right of the middle of the road. A circuit whose file has the boxes (Monaco GP: its
+  // straight bends, tools/make_monaco.js, drawn by apex-monaco.js) puts the cars in them instead (buildGrid)
+  const PAINTED_GRIDS = { 229: { first: 8, gap: 8, side: 4.5, slots: 16 }, 241: { slots: 16 } };
   // Circuits fit for tournaments, by the id of their start part: a grid painted behind the start line (above) and a
-  // pit lane the cars can drive into (Forest Speedway, tools/forest_design.js). pits, in the start line's frame
-  // (metres; z along the road, > 0 past the line; x across it, on either side): where the cars stop (box), the whole
-  // lane (lane, the speed limiter) and how far it is from the middle of the road. road: the circuit's road part, and
-  // the same road without the wall that closes the pit lane in the other modes (patch_bundle.js, OPEN_PITS)
-  const TOURNAMENT_CIRCUITS = { 229: { pits: { box: [-120, 110], lane: [-175, 165], across: [19, 37] }, road: [228, 227] } };
+  // pit lane the cars can drive into (tools/pit_lane.js). json: the circuit's file (its centreline, its pit lane,
+  // maybe its grid), loaded with the game. road: the circuit's road part, and the same road with the pit lane open,
+  // which the physics and the drawing get during an endurance race (patch_bundle.js, OPEN_PITS)
+  const TOURNAMENT_CIRCUITS = {
+    229: { name: 'Forest Speedway', json: 'tracks/forest.json', road: [228, 227] },
+    241: { name: 'Monaco GP', json: 'tracks/monaco.json', road: [240, 226] },
+  };
+  const PIT_BOX_TRIM = 4;             // cross-sections (3 m) at either end of the pits where the cars do not stop (no boxes drawn)
+  const BOX_DEPTH = 7.5;              // metres in from the lane's outer edge: the working lane, where the boxes are
+  const PIT_HEIGHT = 6;               // metres above or below the pit lane that still count as in it
   const KINDS = ['race', 'tournament', 'endurance'];
   const QUALI_ATTEMPTS = 2;           // timed laps each in a tournament's qualifying
   const MIN_MINUTES = 15, MAX_MINUTES = 20;   // an endurance race
@@ -72,7 +78,7 @@
   // Texts follow the game's language setting (published by a hook), the system language until then
   const TEXTS_FR = {
     top: 'MEILLEURS TEMPS', race: 'COURSE', quali: 'QUALIFS', formation: 'FORMATION', results: 'RÉSULTATS', go: 'PARTEZ',
-    mode: 'Course', modeInfo: 'Qualifications, tour de formation puis course en plusieurs tours, départ arrêté aux feux.',
+    mode: 'Course', modeInfo: 'Affrontez d\'autres joueurs sur des maps boucles ! Vous pouvez réaliser des tours de chauffe ou bien démarrer directement !',
     laps: 'Tours', qualiOpt: 'Qualifications', formationOpt: 'Tour de formation',
     lapsOf: (a, b) => `${a}/${b}`, lap: 'TOUR', best: 'Meilleur', last: 'Dernier',
     waitGrid: 'En attente de la grille', finished: p => `ARRIVÉE  P${p}`, notLoop: 'Piste sans boucle : 1 tour', contact: 'Collisions activées',
@@ -80,8 +86,8 @@
     qualiHud: 'QUALIFICATIONS', formationHud: 'TOUR DE FORMATION', resultsHud: 'COURSE TERMINÉE',
     buildMismatch: "Erreur : votre version de GoofyTrack n'est pas celle de l'hôte. Installez le même build que lui.",
     gameMode: 'Mode de jeu', casual: 'Décontracté', competitive: 'Compétitif', changeTrack: 'Changer de piste',
-    casualInfo: 'Les joueurs jouent pour améliorer leurs meilleurs temps personnels.',
-    competitiveInfo: 'Les joueurs s\'affrontent pour établir le meilleur temps de la session.',
+    casualInfo: 'Roulez à votre rythme : chacun cherche à battre son propre record, sans classement de la session.',
+    competitiveInfo: 'Chrono contre tous : le meilleur temps réalisé pendant la session mène le classement et remporte la session.',
     selectTrack: 'Sélectionner la piste', back: 'Retour', confirm: 'Valider', nextSession: 'Prochaine session', personalBest: 'RECORD PERSONNEL', sessionBest: 'MEILLEUR TEMPS DE LA SESSION',
     youPropose: 'Vous proposez une nouvelle session', hostProposes: "L'hôte propose une nouvelle session", voteTrack: 'Circuit',
     yes: 'Oui', no: 'Non', accept: 'Accepter', decline: 'Refuser', cancelVote: 'Annuler la proposition',
@@ -89,17 +95,19 @@
     accepted: 'Proposition acceptée', declined: 'Proposition refusée', cancelled: "Proposition annulée par l'hôte",
     startsIn: s => `Nouvelle session dans ${s} s`,
     watch: 'Regarder', drive: 'Reprendre le volant', watchers: n => n + (n > 1 ? ' spectateurs' : ' spectateur'),
-    format: 'Format', kind_race: 'Course libre', kind_tournament: 'Tournoi course', kind_endurance: 'Endurance',
-    info_tournament: 'Tournoi : 2 tentatives chronométrées en qualifications (sinon grille tirée au sort), tour de formation, puis la course. Le vainqueur gagne le tournoi.',
-    info_endurance: 'Tournoi endurance : chacun choisit sa stratégie (essence, vitesse, pneus), puis course contre la montre avec ravitaillements aux stands. Le plus de tours gagne.',
-    minutes: 'Durée', minutesValue: m => `${m} min`, notEligible: 'Tournois : piste sans grille ni stands valides. Seul Forest Speedway convient pour l\'instant.',
-    attempt: (a, b) => `Tentative ${a}/${b}`, qualiDone: 'Qualifications terminées', strategy: 'STRATÉGIES', strategyHud: 'CHOIX DE LA STRATÉGIE',
-    waitStrategies: (a, b) => `${a}/${b} pilotes ont choisi`, timeLeft: t => `${t} restantes`, lastLap: 'DERNIER TOUR', lapsDone: n => `${n} T`,
+    format: 'Format', kind_race: 'Sprint', kind_tournament: 'Grand Prix', kind_endurance: 'Endurance',
+    info_race: 'Sprint : une course rapide sur n\'importe quelle piste en boucle, tours et options au choix.',
+    info_tournament: 'Grand Prix : 2 tentatives chronométrées en qualifications (sinon grille tirée au sort), tour de formation, puis la course. Le vainqueur remporte le Grand Prix. Circuits avec grille et stands uniquement.',
+    info_endurance: 'Endurance : chacun règle sa voiture (réservoir, moteur, pneus), puis course contre la montre avec ravitaillements dans son propre box, stands à 100 km/h (stop-and-go si on dépasse plus de 2 s). Le plus de tours gagne. Circuits avec grille et stands uniquement.',
+    minutes: 'Durée', minutesValue: m => `${m} min`, notEligible: 'Grand Prix et Endurance : piste sans grille ni stands valides. Circuits prévus : Forest Speedway et Monaco GP.',
+    attempt: (a, b) => `Tentative ${a}/${b}`, qualiDone: 'Qualifications terminées', strategy: 'RÉGLAGES', strategyHud: 'RÉGLAGE DES VOITURES',
+    waitStrategies: (a, b) => `${a}/${b} pilotes ont validé`, timeLeft: t => `${t} restantes`, lastLap: 'DERNIER TOUR', lapsDone: n => `${n} T`,
     tournamentWon: 'TOURNOI GAGNÉ', randomGrid: 'Grille tirée au sort',
+    onlyCircuits: 'Grand Prix et Endurance : seuls les circuits avec une grille et des stands sont proposés.',
   };
   const TEXTS_EN = {
     top: 'BEST TIMES', race: 'RACE', quali: 'QUALIFYING', formation: 'FORMATION', results: 'RESULTS', go: 'GO',
-    mode: 'Race', modeInfo: 'Qualifying, formation lap, then a race over several laps from a standing start.',
+    mode: 'Race', modeInfo: 'Take on other players on looping tracks! Warm up with practice laps, or go straight to the start!',
     laps: 'Laps', qualiOpt: 'Qualifying', formationOpt: 'Formation lap',
     lapsOf: (a, b) => `${a}/${b}`, lap: 'LAP', best: 'Best', last: 'Last',
     waitGrid: 'Waiting for the grid', finished: p => `FINISHED  P${p}`, notLoop: 'Track does not loop: 1 lap', contact: 'Collisions on',
@@ -107,8 +115,8 @@
     qualiHud: 'QUALIFYING', formationHud: 'FORMATION LAP', resultsHud: 'RACE OVER',
     buildMismatch: "Error: your GoofyTrack build is not the same as the host's. Install the same build.",
     gameMode: 'Game Mode', casual: 'Casual', competitive: 'Competitive', changeTrack: 'Change Track',
-    casualInfo: 'Players play to improve their personal best times.',
-    competitiveInfo: 'Players compete to set the best time in the session.',
+    casualInfo: 'Drive at your own pace: everybody chases their own record, no session standings.',
+    competitiveInfo: 'Time trial against everybody: the best time set in the session leads the standings and wins the session.',
     selectTrack: 'Select Track', back: 'Back', confirm: 'Confirm', nextSession: 'Next session', personalBest: 'PERSONAL BEST', sessionBest: 'FASTEST OF THE SESSION',
     youPropose: 'You propose a new session', hostProposes: 'The host proposes a new session', voteTrack: 'Track',
     yes: 'Yes', no: 'No', accept: 'Accept', decline: 'Decline', cancelVote: 'Cancel the proposal',
@@ -116,13 +124,15 @@
     accepted: 'Proposal accepted', declined: 'Proposal declined', cancelled: 'Proposal cancelled by the host',
     startsIn: s => `New session in ${s} s`,
     watch: 'Watch', drive: 'Back to driving', watchers: n => n + (n > 1 ? ' spectators' : ' spectator'),
-    format: 'Format', kind_race: 'Free race', kind_tournament: 'Race tournament', kind_endurance: 'Endurance',
-    info_tournament: 'Tournament: 2 timed attempts in qualifying (otherwise a grid drawn at random), formation lap, then the race. The winner wins the tournament.',
-    info_endurance: 'Endurance tournament: everybody picks a strategy (fuel, speed, tyres), then a race against the clock with pit stops. The most laps win.',
-    minutes: 'Duration', minutesValue: m => `${m} min`, notEligible: 'Tournaments: this track has no proper grid and pits. Only Forest Speedway fits for now.',
-    attempt: (a, b) => `Attempt ${a}/${b}`, qualiDone: 'Qualifying done', strategy: 'STRATEGIES', strategyHud: 'PICK YOUR STRATEGY',
-    waitStrategies: (a, b) => `${a}/${b} drivers have picked`, timeLeft: t => `${t} left`, lastLap: 'LAST LAP', lapsDone: n => `${n} L`,
+    format: 'Format', kind_race: 'Sprint', kind_tournament: 'Grand Prix', kind_endurance: 'Endurance',
+    info_race: 'Sprint: a quick race on any looping track, laps and options as you like.',
+    info_tournament: 'Grand Prix: 2 timed attempts in qualifying (otherwise a grid drawn at random), formation lap, then the race. The winner takes the Grand Prix. Circuits with a grid and pits only.',
+    info_endurance: 'Endurance: everybody sets up their car (tank, engine, tyres), then a race against the clock with pit stops in a box of your own, 100 km/h in the pit lane (a stop-and-go after 2 s over). The most laps win. Circuits with a grid and pits only.',
+    minutes: 'Duration', minutesValue: m => `${m} min`, notEligible: 'Grand Prix and Endurance: this track has no proper grid and pits. The circuits made for them: Forest Speedway and Monaco GP.',
+    attempt: (a, b) => `Attempt ${a}/${b}`, qualiDone: 'Qualifying done', strategy: 'SETUPS', strategyHud: 'SETTING UP THE CARS',
+    waitStrategies: (a, b) => `${a}/${b} drivers have confirmed`, timeLeft: t => `${t} left`, lastLap: 'LAST LAP', lapsDone: n => `${n} L`,
     tournamentWon: 'TOURNAMENT WON', randomGrid: 'Grid drawn at random',
+    onlyCircuits: 'Grand Prix and Endurance: only the circuits with a grid and pits are shown.',
   };
   const T = new Proxy({}, {
     get: (_, key) => ((window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr') ? TEXTS_FR : TEXTS_EN)[key],
@@ -431,6 +441,28 @@
   const unrotate = (q, v) => rotate({ x: -q.x, y: -q.y, z: -q.z, w: q.w }, v);
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
+  // The tournament circuits' files: their centreline, pit lane and grid (tools/make_circuit.js, tools/make_monaco.js)
+  const circuitFiles = new Map();     // json -> { fine, pit, grid }, once loaded
+  setTimeout(() => {
+    for (const c of Object.values(TOURNAMENT_CIRCUITS)) fetch(c.json).then(r => r.json()).then(({ fine, pit, grid }) => circuitFiles.set(c.json, { fine, pit, grid, along: pit ? alongPits(fine, pit) : null }))
+      .catch(e => console.error('Apex: could not load ' + c.json, e));
+  }, 3000);
+
+  // metres along the pits from their first cross-section at full width (as tools/pit_lane.js measures its garages),
+  // for each cross-section of the lane: index -> metres (< 0 in the taper before them)
+  function alongPits(fine, pit) {
+    const n = fine.length, out = new Map(), count = ((pit.lane[1] - pit.lane[0]) % n + n) % n + 1;
+    let d = 0, start = 0;
+    for (let k = 0; k < count; k++) {
+      const i = (pit.lane[0] + k) % n, j = (i - 1 + n) % n;
+      if (k > 0) d += Math.hypot(fine[i][0] - fine[j][0], fine[i][1] - fine[j][1]);
+      if (i === pit.full[0]) start = d;
+      out.set(i, d);
+    }
+    for (const [i, v] of out) out.set(i, v - start);
+    return out;
+  }
+
   // Checkpoint and finish detectors in world space, from the track the game is running.
   function buildCourse(sceneTrack) {
     const { Hw: partConfig } = gameModule(MOD_PARTS);
@@ -438,9 +470,11 @@
     const vec = v => (Array.isArray(v) ? v : [v.x, v.y, v.z]);
     const byOrder = new Map(), finishes = [];
     const track = sceneTrack.getTrackData();
-    let circuit = null;
+    let circuit = null, origin = null;
     track.forEachPart((x, y, z, id, rotation, axis, color, checkpointOrder) => {
       if (TOURNAMENT_CIRCUITS[id] != null && PAINTED_GRIDS[id] != null) circuit = TOURNAMENT_CIRCUITS[id];
+      // the circuit's own frame: where its road part is (its town is drawn from there too, apex-scenery.js)
+      for (const c of Object.values(TOURNAMENT_CIRCUITS)) if (id === c.road[0] || id === c.road[1]) origin = [x * PART_SIZE, y * PART_SIZE, z * PART_SIZE];
       const detector = partConfig(id).detector;
       if (detector == null) return;
       const q = partRotation(rotation, axis);
@@ -463,18 +497,123 @@
       checkpoints: [...byOrder.keys()].sort((a, b) => a - b).map(k => byOrder.get(k)),
       finishes,
       loop: s != null && finishes.some(f => dist(f.c, s) < LOOP_DISTANCE),
-      circuit,
+      circuit: circuit && origin && { ...circuit, origin },
       start: start ? { p: s, q: { x: start.quaternion.x, y: start.quaternion.y, z: start.quaternion.z, w: start.quaternion.w } } : null,
     };
   }
   // a point in the start line's frame: [across, up, along the road (> 0 past the line)]
   const startFrame = p => unrotate(course.start.q, [p.x - course.start.p[0], p.y - course.start.p[1], p.z - course.start.p[2]]);
-  // where a point stands in the pit lane of the circuit: 'box', 'lane' or null (apex-endurance.js)
+  // the circuit's file, once loaded (null until then)
+  const circuitFile = () => (course != null && course.circuit != null ? circuitFiles.get(course.circuit.json) || null : null);
+  // where a point stands in the pit lane of the circuit (apex-endurance.js): null, or { zone: 'box' in the driver's own
+  // box, 'lane' anywhere else in it; toBox: metres along the lane to that box, null without one }. The lane runs
+  // along cross-sections pit.lane[0] to pit.lane[1] of the centreline, at full width along pit.full, on the pit.side
+  // of the road, from the back of the road's barrier (or pit.inner) to pit.outer metres off the centreline. The boxes
+  // are painted in front of the garages (pit.garages), on its working lane
   function pitAt(p) {
-    if (course == null || course.circuit == null || course.start == null) return null;
-    const { box, lane, across } = course.circuit.pits, [x, y, z] = startFrame(p), off = Math.abs(x);
-    if (Math.abs(y) > 6 || off < across[0] || off > across[1]) return null;
-    return z >= box[0] && z <= box[1] ? 'box' : z >= lane[0] && z <= lane[1] ? 'lane' : null;
+    const file = circuitFile();
+    if (file == null || file.pit == null) return null;
+    const { fine, pit } = file, n = fine.length, o = course.circuit.origin, x = p.x - o[0], y = p.y - o[1], z = p.z - o[2];
+    const count = ((pit.lane[1] - pit.lane[0]) % n + n) % n + 1;
+    let best = -1, bestD = Infinity;
+    for (let k = 0; k < count; k++) {
+      const i = (pit.lane[0] + k) % n, d = (fine[i][0] - x) ** 2 + (fine[i][1] - z) ** 2;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    const a = fine[(best - 1 + n) % n], b = fine[(best + 1) % n], f = fine[best], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const u = ((x - f[0]) * -(b[1] - a[1]) + (z - f[1]) * (b[0] - a[0])) / l * pit.side;   // metres off the centreline, on the pits' side
+    const ahead = ((x - f[0]) * (b[0] - a[0]) + (z - f[1]) * (b[1] - a[1])) / l;             // metres along the road: beyond the lane's ends
+    const inner = pit.inner != null ? pit.inner : (f[pit.side < 0 ? 3 : 4] || 7.5) + 1.4;
+    if (Math.abs(ahead) > 3 || Math.abs(y - f[2]) > PIT_HEIGHT || u < inner - 0.5 || u > pit.outer + 0.6) return null;
+    const garage = ownGarage();
+    if (garage == null) {                              // no box of their own: anywhere along the pits
+      const k = pit.full.indexOf(best);
+      return { zone: k >= PIT_BOX_TRIM && k < pit.full.length - PIT_BOX_TRIM ? 'box' : 'lane', toBox: null };
+    }
+    const along = file.along.get(best) + ahead, toBox = (garage[0] + garage[1]) / 2 - along;
+    const inBox = along >= garage[0] + 0.5 && along <= garage[1] - 0.5 && u >= pit.outer - BOX_DEPTH;
+    return { zone: inBox ? 'box' : 'lane', toBox };
+  }
+  // the driver's own garage on the circuit, [from, to, team] (tools/pit_lane.js), or null
+  function ownGarage() {
+    const file = circuitFile(), k = race != null && race.boxes != null ? race.boxes.get(selfId) : null;
+    return file != null && file.pit != null && file.pit.garages && Number.isInteger(k) ? file.pit.garages[k] || null : null;
+  }
+  // what the endurance gauge shows of it: its number from the pit entry, its team's colour
+  function ownBox() {
+    const garage = ownGarage(), file = circuitFile();
+    if (garage == null) return null;
+    const team = file.pit.teams[garage[2]], c = team.rgb.map(v => Math.round(v * 255));
+    return { n: file.pit.garages.indexOf(garage) + 1, name: (window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr') ? team.fr : team.en, css: 'rgb(' + c.join(',') + ')' };
+  }
+  // The host gives each driver a garage at random: all different while there are enough
+  function drawBoxes(ids) {
+    const file = circuitFile(), count = file != null && file.pit != null && file.pit.garages ? file.pit.garages.length : 0;
+    const boxes = new Map();
+    if (count === 0) return boxes;
+    let pool = [];
+    for (const id of ids) {
+      if (pool.length === 0) { pool = Array.from({ length: count }, (_, k) => k); for (let i = count - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; } }
+      boxes.set(id, pool.pop());
+    }
+    return boxes;
+  }
+  // The drivers' names over their boxes, during an endurance race (from the setup to the results): labels on the page,
+  // put each picture where the box is seen. A garage's place: its middle along the pits, in front of it, over the awning
+  const BOX_NAME_HEIGHT = 7.5, BOX_NAME_RANGE = 260;   // metres over the lane; how far away they still show
+  let boxNames = null;
+  function garagePoint(file, garage) {
+    const { fine, pit } = file, n = fine.length, want = (garage[0] + garage[1]) / 2;
+    let best = null;
+    for (const [i, d] of file.along) if (best == null || Math.abs(d - want) < Math.abs(best[1] - want)) best = [i, d];
+    const i = best[0], a = fine[(i - 1 + n) % n], b = fine[(i + 1) % n], f = fine[i], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const tx = (b[0] - a[0]) / l, tz = (b[1] - a[1]) / l, u = (pit.outer - 2.5) * pit.side, ahead = want - best[1], o = course.circuit.origin;
+    return [o[0] + f[0] + tx * ahead - tz * u, o[1] + f[2] + BOX_NAME_HEIGHT, o[2] + f[1] + tz * ahead + tx * u];
+  }
+  function drawBoxNames(camera, renderer) {
+    const file = circuitFile(), ui = document.getElementById('ui');
+    const on = file != null && file.pit != null && file.pit.garages && race != null && endurance() && race.boxes.size > 0 && ui != null;
+    if (!on) { if (boxNames != null) { boxNames.remove(); boxNames = null; } return; }
+    if (boxNames == null || !boxNames.isConnected) { boxNames = el('div', 'apex-box-names'); ui.appendChild(boxNames); boxNames.apexKey = ''; }
+    // who is in which box: a label per garage, its drivers' names
+    const byGarage = new Map();
+    for (const [id, k] of race.boxes) if (race.grid.some(g => g.id === id)) { if (!byGarage.has(k)) byGarage.set(k, []); byGarage.get(k).push(id); }
+    const key = [...byGarage].map(([k, ids]) => k + ':' + ids.map(nameOf).join('/')).join('|');
+    if (key !== boxNames.apexKey) {
+      boxNames.apexKey = key;
+      boxNames.textContent = '';
+      for (const [k, ids] of byGarage) {
+        const garage = file.pit.garages[k], team = file.pit.teams[garage[2]], c = team.rgb.map(v => Math.round(v * 255)).join(',');
+        const label = el('div', 'box-name' + (ids.includes(selfId) ? ' self' : ''));
+        label.style.setProperty('--team', 'rgb(' + c + ')');
+        label.appendChild(el('span', 'number', String(k + 1)));
+        label.appendChild(el('span', 'names', ids.map(nameOf).join(' · ')));
+        label.apexPoint = garagePoint(file, garage);
+        boxNames.appendChild(label);
+      }
+    }
+    const rect = renderer.domElement.getBoundingClientRect(), V = camera.position.constructor;
+    for (const label of boxNames.children) {
+      const [x, y, z] = label.apexPoint, d = Math.hypot(x - camera.position.x, y - camera.position.y, z - camera.position.z);
+      const v = new V(x, y, z).project(camera);
+      const shown = v.z > -1 && v.z < 1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2 && d < BOX_NAME_RANGE;
+      label.style.display = shown ? '' : 'none';
+      if (!shown) continue;
+      label.style.transform = `translate(${rect.left + (v.x + 1) / 2 * rect.width}px, ${rect.top + (1 - v.y) / 2 * rect.height}px) translate(-50%, -100%) scale(${Math.max(0.55, Math.min(1.1, 60 / d))})`;
+    }
+  }
+
+  // During an endurance race the circuit's road is drawn with its pit lane open, as the physics has it (simTrack):
+  // the meshes that draw the road get the open road's geometry (patch_bundle.js keeps both), and back after it
+  function drawPits() {
+    const meshes = self.apexPartMeshes, parts = self.apexTrackParts;
+    if (meshes == null || parts == null || course == null || course.circuit == null) return;
+    const open = race != null && endurance() && race.phase === 'race', [closed, opened] = course.circuit.road;
+    for (const m of meshes) {
+      if (m.parent == null || m.userData.apexPart !== closed) continue;
+      const part = parts.get(open ? opened : closed), drawn = part && part.colors.get(m.userData.apexColor);
+      if (drawn != null && m.geometry !== drawn.geometry) m.geometry = drawn.geometry;
+    }
   }
   // does the segment a -> b cross the start line forwards, on the road or in the pit lane? (endurance laps)
   function crossesStart(a, b) {
@@ -542,7 +681,19 @@
     // a circuit with a grid painted behind its start line: one car per box, the pole in the front one
     let painted = null;
     ctx.track().getTrackData().forEachPart((x, y, z, id) => { if (PAINTED_GRIDS[id] != null) painted = PAINTED_GRIDS[id]; });
-    if (painted != null) {
+    const file = painted != null ? circuitFile() : null, boxes = file != null && file.grid != null ? file.grid.slots : null;
+    if (boxes != null) {
+      // the boxes along the road (Monaco GP): each car turned from the start line's heading to the road's there
+      const q = startState.quaternion, fwd = rotate(q, [0, 0, 1]), o = course.circuit.origin, h0 = file.fine[0][2];
+      return order.map((id, k) => {
+        const [x, z, h, tx, tz] = boxes[Math.min(k, boxes.length - 1)];
+        const a = (Math.atan2(tx, tz) - Math.atan2(fwd[0], fwd[2])) / 2;   // half the turn about the vertical, from the line's heading to the road's
+        const t = { y: Math.sin(a), w: Math.cos(a) };
+        const r = { x: t.w * q.x + t.y * q.z, y: t.w * q.y + t.y * q.w, z: t.w * q.z - t.y * q.x, w: t.w * q.w - t.y * q.y };
+        return { id, p: [o[0] + x, startState.position.y + h - h0, o[2] + z], q: [r.x, r.y, r.z, r.w] };
+      });
+    }
+    if (painted != null && painted.first != null) {
       const fwd = rotate(startState.quaternion, [0, 0, 1]), q = startState.quaternion;
       return order.map((id, k) => {
         const d = -(painted.first + k * painted.gap), side = rotate(q, [k % 2 === 0 ? -painted.side : painted.side, 0, 0]);
@@ -641,7 +792,8 @@
     attempts: new Map(), // id -> timed laps driven in a tournament's qualifying
     done: new Set(),     // ids that completed the formation lap
     strat: new Map(),    // id -> strategy picked for an endurance race (apex-endurance.js)
-    progress: new Map(), // id -> { lap, ms } laps completed, race clock at the last one
+    progress: new Map(), // id -> { lap, ms, pen } laps completed, race clock at the last one, stop-and-gos still owed
+    boxes: new Map(),    // id -> garage of the circuit's pits, an endurance race's own box (tools/pit_lane.js)
     results: [],         // [{ id, ms, lap }] finishing order
   });
   const newRun = () => ({ lap: 0, nextCp: 0, lastPos: null, lastLapMs: null, lastLapTime: null, best: null, sentDone: false, finished: false, attempts: 0, sentRun: false, strategy: null, picking: false, fuelled: false });
@@ -652,7 +804,7 @@
     t: 'state', n: race.n, phase: race.phase, laps: race.laps, grid: race.grid, kind: race.kind, minutes: race.minutes,
     lights: race.phase === 'race' ? Math.max(0, Math.round(race.goAt - performance.now())) : 0,
     quali: [...race.quali], attempts: [...race.attempts], done: [...race.done], strat: [...race.strat].map(([id]) => id),
-    progress: [...race.progress].map(([id, p]) => [id, p.lap, p.ms]), results: race.results,
+    progress: [...race.progress].map(([id, p]) => [id, p.lap, p.ms, p.pen || 0]), results: race.results, boxes: [...race.boxes],
   });
   const publish = () => { if (isHost() && race != null) broadcast(stateMessage()); renderBoard(); };
 
@@ -691,6 +843,7 @@
   }
   function hostGoTo(phase) {
     if (phase === 'formation' || phase === 'strategy' || (phase === 'race' && race.grid == null)) race.grid = buildGrid(gridOrder());
+    if (race.kind === 'endurance' && race.boxes.size === 0) race.boxes = drawBoxes(race.grid.map(s => s.id));
     enterPhase(phase);
     publish();
   }
@@ -700,7 +853,7 @@
     if (endurance() && race.phase === 'race' && performance.now() - race.goAt >= raceMs()) {
       for (const id of raceOrder()) if (!race.results.some(r => r.id === id)) {
         const p = race.progress.get(id);
-        race.results.push({ id, ms: p ? p.ms : Math.round(performance.now() - race.goAt), lap: p ? p.lap : 0 });
+        race.results.push({ id, ms: p ? p.ms + (p.pen || 0) * penaltyMs() : Math.round(performance.now() - race.goAt), lap: p ? p.lap : 0, pen: p ? p.pen || 0 : 0 });
       }
       race.phase = 'results';
       publish();
@@ -720,8 +873,9 @@
     if (race.phase === 'race' && gridPresent().every(id => race.results.some(r => r.id === id))) { race.phase = 'results'; publish(); return; }
     publish();
   }
-  // endurance results: the most laps first, then who completed them first
+  // endurance results: the most laps first, then who completed them first (a stop-and-go still owed: PENALTY_MS later)
   const byLaps = (a, b) => b.lap - a.lap || a.ms - b.ms;
+  const penaltyMs = () => (window.ApexEndurance ? window.ApexEndurance.PENALTY_MS : 10000);
   function hostReport(id, msg) {        // a player (or the host itself) reported something
     if (race == null || msg.n !== race.n) return;
     const onGrid = race.grid != null && race.grid.some(s => s.id === id); // players who joined later only watch
@@ -740,8 +894,9 @@
     } else if (msg.t === 'lap' && race.phase === 'race' && Number.isInteger(msg.lap) && msg.lap >= 0 && Number.isFinite(msg.ms)) {
       if (race.results.some(r => r.id === id)) return;
       if (race.kind === 'endurance') {
-        race.progress.set(id, { lap: msg.lap, ms: msg.ms });
-        if (msg.done === true) { race.results.push({ id, ms: msg.ms, lap: msg.lap }); race.results.sort(byLaps); }
+        const pen = Number.isInteger(msg.pen) && msg.pen > 0 ? Math.min(msg.pen, 20) : 0;
+        race.progress.set(id, { lap: msg.lap, ms: msg.ms, pen });
+        if (msg.done === true) { race.results.push({ id, ms: msg.ms + pen * penaltyMs(), lap: msg.lap, pen }); race.results.sort(byLaps); }
       } else {
         race.progress.set(id, { lap: Math.min(msg.lap, race.laps), ms: msg.ms });
         if (msg.lap >= race.laps) race.results.push({ id, ms: msg.ms });
@@ -769,7 +924,8 @@
     race.attempts = new Map(Array.isArray(msg.attempts) ? msg.attempts : []);
     race.strat = new Map((Array.isArray(msg.strat) ? msg.strat : []).map(id => [id, true]));   // who has picked, not what
     race.done = new Set(msg.done);
-    race.progress = new Map(msg.progress.map(([id, lap, ms]) => [id, { lap, ms }]));
+    race.progress = new Map(msg.progress.map(([id, lap, ms, pen]) => [id, { lap, ms, pen: pen || 0 }]));
+    race.boxes = new Map(Array.isArray(msg.boxes) ? msg.boxes : []);
     race.results = msg.results;
     if (phaseChanged) {
       enterPhase(msg.phase);
@@ -866,7 +1022,7 @@
     if (slotFor(selfId) == null) return;              // joined during the race: only watching
     if (!run.fuelled && window.ApexEndurance) { run.fuelled = true; window.ApexEndurance.start(run.strategy); }
     if (run.finished) { if (window.ApexEndurance) window.ApexEndurance.stop(); return; }
-    if (window.ApexEndurance) window.ApexEndurance.frame(state, pitAt);
+    if (window.ApexEndurance) window.ApexEndurance.frame(state, pitAt, ownBox());
     const p = state.position, last = run.lastPos;
     run.lastPos = { x: p.x, y: p.y, z: p.z };
     if (last == null || Math.hypot(p.x - last.x, p.y - last.y, p.z - last.z) >= TELEPORT_DISTANCE) return;
@@ -881,7 +1037,7 @@
     run.lastLapTime = ms - (run.lastLapMs || 0);
     run.lastLapMs = ms;
     if (ms >= raceMs()) run.finished = true;
-    report({ t: 'lap', lap: run.lap, ms, done: run.finished });
+    report({ t: 'lap', lap: run.lap, ms, done: run.finished, pen: window.ApexEndurance ? window.ApexEndurance.penalties() : 0 });
   }
 
   // Race time is measured on the shared clock (since lights out), not on the car's own timer,
@@ -1068,7 +1224,8 @@
       const pa = race.progress.get(a), pb = race.progress.get(b);
       const la = pa ? pa.lap : 0, lb = pb ? pb.lap : 0;
       if (la !== lb) return lb - la;
-      if (la > 0 && pa.ms !== pb.ms) return pa.ms - pb.ms;
+      const ma = la > 0 ? pa.ms + (pa.pen || 0) * penaltyMs() : 0, mb = lb > 0 ? pb.ms + (pb.pen || 0) * penaltyMs() : 0;
+      if (la > 0 && ma !== mb) return ma - mb;
       return gridIndex(a) - gridIndex(b);
     };
     if (endurance() && race.phase !== 'results') return race.grid.map(s => s.id).sort(byProgress);
@@ -1087,8 +1244,10 @@
       const order = raceOrder(), lead = race.progress.get(order[0]);
       order.forEach((id, i) => {
         const p = race.progress.get(id), done = race.results.some(r => r.id === id), laps = p ? p.lap : 0;
-        const gap = i === 0 || lead == null ? '' : laps < lead.lap ? '-' + (lead.lap - laps) + ' ' + T.lap : p ? formatGap(p.ms - lead.ms) : '';
-        board.appendChild(row(selfCls(id) + (done ? '' : ' pending'), [['rank', String(i + 1)], ['name', nameOf(id)], ['time', T.lapsDone(laps)], ['gap', gap]], id));
+        // (a stop-and-go still owed counts PENALTY_MS: shown by the name)
+        const late = q => q.ms + (q.pen || 0) * penaltyMs(), pen = p && p.pen > 0 ? '  +' + Math.round(p.pen * penaltyMs() / 1000) + ' s' : '';
+        const gap = i === 0 || lead == null ? '' : laps < lead.lap ? '-' + (lead.lap - laps) + ' ' + T.lap : p ? formatGap(late(p) - late(lead)) : '';
+        board.appendChild(row(selfCls(id) + (done ? '' : ' pending'), [['rank', String(i + 1)], ['name', nameOf(id) + pen], ['time', T.lapsDone(laps)], ['gap', gap]], id));
       });
       return;
     }
@@ -1306,6 +1465,25 @@
     if (race != null) board.appendChild(button(race.phase === 'results' || timeUp ? T.done : T.stop, 'stop', hostStop));
   }
 
+  // ---- host screen: the track selection of a Grand Prix or an Endurance race only lists the circuits made for them
+  // (TOURNAMENT_CIRCUITS); hostMode: the mode picked on the host screen, while it is up
+  let hostMode = null, pendingSpecial = false;
+  function filterTracks() {
+    const selection = [...document.querySelectorAll('#ui .track-selection-ui')].find(e => !e.classList.contains('hidden')) || null;
+    document.querySelectorAll('#ui .track-selection-ui.hidden .apex-only-circuits').forEach(e => e.remove());
+    const picking = (hostMode === 'race' && document.querySelector('#ui .multiplayer-ui') != null) || (changing != null && changing.mode === 'race');
+    const only = selection != null && picking && settings.kind !== 'race';
+    document.querySelectorAll('#ui .track-selection-ui .track').forEach(e => {
+      const fit = !only || Object.values(TOURNAMENT_CIRCUITS).some(c => e.innerText.trim().startsWith(c.name));
+      e.classList.toggle('apex-unfit', !fit);
+    });
+    let note = selection && selection.querySelector('.apex-only-circuits');
+    if (only && note == null) { note = el('div', 'apex-only-circuits', T.onlyCircuits); selection.appendChild(note); }
+    if (!only && note != null) note.remove();
+  }
+  new MutationObserver(() => { if (document.querySelector('#ui .track-selection-ui')) filterTracks(); })
+    .observe(document.getElementById('ui') || document.documentElement, { childList: true, subtree: true });
+
   // ---- host screen: options of the "Race" game mode
   function renderHostOptions(container, mode) {
     let box = container.querySelector('.apex-race-options');
@@ -1320,7 +1498,7 @@
       formats.appendChild(b);
     }
     box.appendChild(formats);
-    if (settings.kind !== 'race') box.appendChild(el('div', 'format-info', T['info_' + settings.kind]));
+    box.appendChild(el('div', 'format-info', T['info_' + settings.kind]));
     const range = (label, min, max, key, text) => {
       const line = el('div', 'laps');
       line.appendChild(el('span', 'label', label));
@@ -1745,6 +1923,7 @@
       if (ctx == null) return;
       if (race == null) sampleSelf();
       updateRace();
+      drawPits();
       updateStage(dt);
       updateGhost(dt);
       if (window.ApexCollide) window.ApexCollide.frame(collisionSession());
@@ -1759,7 +1938,7 @@
         const self = players.find(p => p.isSelf);
         window.ApexLobby.hostFrame({
           host: self ? self.nickname : null, countryCode: self ? self.countryCode : null, players: players.length,
-          race: !!room().race, kind: kindOf(room()), phase: race ? race.phase : null, laps: room().race && kindOf(room()) !== 'endurance' ? raceLaps() : null,
+          race: !!room().race, kind: kindOf(room()), special: !!room().special, phase: race ? race.phase : null, laps: room().race && kindOf(room()) !== 'endurance' ? raceLaps() : null,
           info: ctx.connection.apexInfo ? ctx.connection.apexInfo() : null,
         });
       }
@@ -1819,10 +1998,15 @@
     // --- host screen ("Race" game mode next to Casual / Competitive)
     modeLabel: () => T.mode,
     modeInfo: () => T.modeInfo,
-    hostModeChanged(container, mode) { renderHostOptions(container, mode); },
-    hosting(mode) { pendingRoom = mode === 'race' ? { race: true, ...settings } : null; },
+    hostModeChanged(container, mode) { hostMode = mode; renderHostOptions(container, mode); },
+    hosting(mode) { pendingRoom = mode === 'race' ? { race: true, ...settings, special: pendingSpecial } : null; pendingSpecial = false; hostMode = null; },
     // the Tournaments tab (apex-tournament.js): the Race mode's settings for the tournament about to be hosted
-    prepare(change) { settings = sanitizeSettings({ ...settings, ...change }); saveSettings(settings); },
+    // special: a special tournament (a creator's room: the server checks, server.js), for the room about to be hosted only
+    prepare(change) { settings = sanitizeSettings({ ...settings, ...change }); saveSettings(settings); pendingSpecial = change.special === true; },
+    casualInfo: () => T.casualInfo,
+    competitiveInfo: () => T.competitiveInfo,
+    // after each picture (patch_bundle.js): the drivers' names over their boxes
+    drawn(camera, renderer) { try { drawBoxNames(camera, renderer); } catch (e) { console.error('Apex: box names', e); boxNames?.remove(); boxNames = null; } },
     buildMismatch: () => T.buildMismatch,
     playerRow,
     changeTrack,

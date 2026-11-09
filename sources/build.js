@@ -53,7 +53,7 @@ run('patch_bundle.js');
 
 // The mod's scripts, loaded before the game in this order (the game calls into them from the hooks of patch_bundle.js)
 // (the account first: it watches the storage from the start)
-const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-spectate.js', 'apex-endurance.js', 'apex-room.js', 'apex-tournament.js', 'apex-lobby.js', 'apex-notes.js', 'apex-update.js', 'apex-rarity.js', 'apex-livery.js'];
+const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-spectate.js', 'apex-endurance.js', 'apex-room.js', 'apex-tournament.js', 'apex-lobby.js', 'apex-notes.js', 'apex-update.js', 'apex-rarity.js', 'apex-livery.js', 'apex-gearbox.js'];
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
 // The account keeps its save on our server, whose address it is handed in front of its script, with the mod's
 // tracks (the profile card counts the circuits finished and asks the server for their boards; the P1 badges

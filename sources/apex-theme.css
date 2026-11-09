@@ -2410,3 +2410,38 @@ html dialog.message-box-ui > div > p {
 	line-height: 1.4;
 	color: var(--apx-fg-muted);
 }
+
+/* Grand Prix / Endurance: the track selection only lists the circuits made for them (apex-room.js) */
+#ui .track-selection-ui .track.apex-unfit { display: none !important; }
+#ui .track-selection-ui .apex-only-circuits {
+	position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 5; padding: 10px 18px;
+	border-radius: var(--apx-r-pill); background-color: var(--apx-glass-strong); box-shadow: inset 0 0 0 1px var(--apx-accent-ring), var(--apx-shadow);
+	font-size: 14px; font-weight: 600; color: var(--apx-fg); white-space: nowrap; pointer-events: none;
+}
+
+/* the drivers' names over their boxes, during an endurance race (apex-room.js) */
+#ui .apex-box-names { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1; }
+#ui .apex-box-names .box-name {
+	position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px; transform-origin: 50% 100%;
+	border-radius: var(--apx-r-pill); background-color: var(--apx-glass-strong); box-shadow: inset 0 0 0 2px var(--team);
+	font-family: var(--apx-font); font-size: 15px; font-weight: 700; color: var(--apx-fg); white-space: nowrap;
+}
+#ui .apex-box-names .box-name .number {
+	display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 50%;
+	background-color: var(--team); color: #fff; font-size: 12px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+#ui .apex-box-names .box-name.self { box-shadow: inset 0 0 0 2px var(--team), 0 0 0 2px var(--apx-accent); }
+
+/* a special tournament in the room list (apex-lobby.js) */
+#ui .multiplayer-ui .apex-lobby .room .special {
+	grid-column: 1 / 3;
+	justify-self: start;
+	padding: 2px 9px;
+	border-radius: var(--apx-r-pill);
+	background-color: rgba(245, 197, 24, 0.14);
+	box-shadow: inset 0 0 0 1px rgba(245, 197, 24, 0.6);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	color: #f5c518;
+}

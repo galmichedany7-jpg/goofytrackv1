@@ -65,7 +65,8 @@
   }
 
   // ================================================================== host: what the list shows
-  // details: { host, countryCode, players, race, kind, phase, laps, info: { mode, track, maxPlayers } }
+  // details: { host, countryCode, players, race, kind, special, phase, laps, info: { mode, track, maxPlayers } }
+  // (special: a special tournament, the server keeps the flag for a creator's room only)
   // (kind: the race room's format, apex-room.js: 'race', or a tournament: 'tournament', 'endurance')
   function hostFrame(details) {
     if (host == null || host.code == null || host.socket.readyState !== WebSocket.OPEN) return;
@@ -77,7 +78,7 @@
       host.socket.send(JSON.stringify({ version: '0.6.3', type: 'roomInfo', info: {
         host: details.host, countryCode: details.countryCode, track: info.track || '', players: details.players,
         maxPlayers: info.maxPlayers ?? null, mode: details.race ? (details.kind === 'tournament' || details.kind === 'endurance' ? details.kind : 'race') : info.mode === 1 ? 'competitive' : 'casual',
-        phase: details.phase, laps: details.laps, listed: listed(),
+        phase: details.phase, laps: details.laps, listed: listed(), special: details.special === true,
       } }));
     } catch (e) { /* the socket is closing */ }
   }
@@ -90,12 +91,12 @@
     if (parent) parent.appendChild(e);
     return e;
   };
-  const MODE_TEXT = { casual: () => 'Casual', competitive: () => tr('Compétitif', 'Competitive'), race: () => tr('Course', 'Race'),
-    tournament: () => tr('Tournoi course', 'Race tournament'), endurance: () => tr('Tournoi endurance', 'Endurance tournament') };
+  const MODE_TEXT = { casual: () => tr('Décontracté', 'Casual'), competitive: () => tr('Compétitif', 'Competitive'), race: () => 'Sprint',
+    tournament: () => 'Grand Prix', endurance: () => 'Endurance' };
   const RACING = new Set(['race', 'tournament', 'endurance']);
   const PHASE_TEXT = {
     quali: () => tr('Qualifications', 'Qualifying'), formation: () => tr('Tour de formation', 'Formation lap'),
-    race: () => tr('En course', 'Racing'), results: () => tr('Résultats', 'Results'), strategy: () => tr('Stratégies', 'Strategies'),
+    race: () => tr('En course', 'Racing'), results: () => tr('Résultats', 'Results'), strategy: () => tr('Réglages', 'Setups'),
     null: () => tr('Essais libres', 'Practice'),
   };
   const since = time => {
@@ -129,6 +130,7 @@
       const who = el(row, 'div', 'who');
       if (r.countryCode) { const f = el(who, 'img', 'flag'); f.src = 'images/countries/' + r.countryCode + '.svg'; f.draggable = false; }
       el(who, 'span', 'host', r.host);
+      if (r.special) el(who, 'span', 'special', tr('★ Tournoi spécial', '★ Special tournament'));
       el(who, 'span', 'track', r.track || '—');
       const what = el(row, 'div', 'what');
       el(what, 'span', 'mode ' + r.mode, (MODE_TEXT[r.mode] || MODE_TEXT.casual)() + (RACING.has(r.mode) && r.laps ? ' · ' + r.laps + ' ' + tr(r.laps > 1 ? 'tours' : 'tour', r.laps > 1 ? 'laps' : 'lap') : ''));
@@ -202,6 +204,9 @@
 
   window.ApexLobby = {
     hostSocket, joinSocket, hostFrame,
+    // joins a room by its code, from the join screen (apex-tournament.js: a special tournament's room)
+    join: code => join(code),
+    roomsUrl: () => ROOMS_URL,
     currentRoom,
     session(on) { inSession = on; if (!on) joinedCode = null; roomChanged(); },
     debug: () => ({ host: host && { code: host.code, open: host.socket.readyState }, joinedCode, inSession, room: currentRoom(), listed: listed() }),

@@ -23,14 +23,18 @@ const CIRCUITS = [
   { name: 'Monaco', model: 'monaco', data: MONACO, sums: sumsOf('monaco'), start: 0.18 },
   ...Object.entries(MAP_CIRCUITS).map(([key, c]) => ({ name: c.mesh, model: key, data: JSON.parse(fs.readFileSync(path.join(__dirname, 'tracks', key, key + '.json'), 'utf8')), sums: sumsOf(key), start: c.startHeight })),
 ];
-// Circuits whose pit lane opens in an endurance race (apex-room.js, TOURNAMENT_CIRCUITS): one more road part, the same
-// road without the wall nobody sees that closes the pit lane (its road mesh alone, not the "Invisible" one), by circuit
-// (tools/circuits.js, openRoad). Its checksum is in tracks/<circuit>/checksums.json too. The physics gets it in place of
-// the road during those races.
-const OPEN_PITS = Object.fromEntries(Object.entries(MAP_CIRCUITS).filter(([, c]) => c.openRoad).map(([key, c]) => [key, c.openRoad]));
+// Circuits whose pit lane opens in an endurance race (apex-room.js, TOURNAMENT_CIRCUITS, tools/pit_lane.js): one more
+// road part, the same road with the pit lane open, by circuit: { id, mesh }. On a circuit of tools/circuits.js
+// (openRoad) it is the road without the wall nobody sees that closes the pit lane (its road mesh alone, not the
+// "Invisible" one); Monaco GP has a mesh of its own (tools/make_monaco.js). Its checksum is in
+// tracks/<circuit>/checksums.json too. The physics, and the drawing, get it in place of the road during those races.
+const OPEN_PITS = {
+  ...(MONACO.openRoad ? { monaco: { id: MONACO.openRoad, mesh: 'MonacoRoadOpen' } } : {}),
+  ...Object.fromEntries(Object.entries(MAP_CIRCUITS).filter(([, c]) => c.openRoad).map(([key, c]) => [key, { id: c.openRoad, mesh: c.mesh + 'Road' }])),
+};
 // the road parts of the circuits that bring their own land (with their open pit lane road, OPEN_PITS)
-const LAND_ROADS = CIRCUITS.filter(c => c.data.terrain).flatMap(c => [c.data.ids.road, ...(OPEN_PITS[c.model] ? [OPEN_PITS[c.model]] : [])]);
-const circuitParts = c => [...(OPEN_PITS[c.model] ? [['RoadOpen', OPEN_PITS[c.model]]] : []), ['Road', c.data.ids.road], ['Start', c.data.ids.start], ['Checkpoint', c.data.ids.checkpoint], ['Finish', c.data.ids.finish]].map(([part, id]) => [c.name + part, id]);
+const LAND_ROADS = CIRCUITS.filter(c => c.data.terrain).flatMap(c => [c.data.ids.road, ...(OPEN_PITS[c.model] ? [OPEN_PITS[c.model].id] : [])]);
+const circuitParts = c => [...(OPEN_PITS[c.model] ? [['RoadOpen', OPEN_PITS[c.model].id]] : []), ['Road', c.data.ids.road], ['Start', c.data.ids.start], ['Checkpoint', c.data.ids.checkpoint], ['Finish', c.data.ids.finish]].map(([part, id]) => [c.name + part, id]);
 // The mod's car patterns (build_patterns.js), numbered 16 on after the game's: never reorder them, a car
 // saved with one keeps its number (apex-rarity.js names them in this order)
 const MOD_PATTERNS = ['monaco', 'bignumber', 'diagonal', 'wingtips', 'dotted', 'camo', 'lightning', 'flames', 'tiger', 'barcode', 'carbon',
@@ -71,7 +75,7 @@ const RIVIERA_GROUND = 6318394;    // 0x60693a: the Riviera plain (apex-scenery.
 
 // Fingerprint of this build: the GoofyTrack server only puts players with the same build in a room,
 // so a modified game never meets an older one (their race messages or physics would not match).
-const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-show.js', 'apex-collide.js', 'apex-sand.js', 'apex-endurance.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), ...Object.keys(require('./tools/circuits')).flatMap(key => [path.join('tracks', key, key + '.json'), path.join('tracks', key, 'checksums.json')]),   // the checksums stand for the road meshes
+const BUILD_SOURCES = ['patch_bundle.js', 'apex-room.js', 'apex-show.js', 'apex-collide.js', 'apex-sand.js', 'apex-endurance.js', 'apex-theme.css', 'build_car.js', 'build_patterns.js', 'meshlib.js', path.join('tracks', 'monaco', 'monaco.json'), path.join('tracks', 'monaco', 'checksums.json'), ...Object.keys(require('./tools/circuits')).flatMap(key => [path.join('tracks', key, key + '.json'), path.join('tracks', key, 'checksums.json')]),   // the checksums stand for the road meshes
   ...MOD_TRACKS.map(t => path.join('tracks', t.file))];
 // Hashed as text with LF line endings and no BOM: git on Windows may check the same files out with
 // CRLF (and a ZIP download has LF), which must not make two copies of the same code look different.
@@ -323,7 +327,19 @@ const patches = [
   {
     name: 'host screen describes the race mode and shows its options',
     find: 'case an.Competitive:c.textContent=(0,R.gn)(this,bc,"f").get("Players compete to set the best time in the session.")}},c=document.createElement("div")',
-    replace: 'case an.Competitive:c.textContent=(0,R.gn)(this,bc,"f").get("Players compete to set the best time in the session.");break;case"race":c.textContent=window.ApexRoom.modeInfo()}window.ApexRoom&&window.ApexRoom.hostModeChanged(a,r)},c=document.createElement("div")',
+    replace: 'case an.Competitive:c.textContent=window.ApexRoom?window.ApexRoom.competitiveInfo():(0,R.gn)(this,bc,"f").get("Players compete to set the best time in the session.");break;case"race":c.textContent=window.ApexRoom.modeInfo()}window.ApexRoom&&window.ApexRoom.hostModeChanged(a,r)},c=document.createElement("div")',
+  },
+  {
+    // the two modes of the game say what sets them apart (apex-room.js)
+    name: 'host screen describes the casual mode',
+    find: 'case an.Casual:c.textContent=(0,R.gn)(this,bc,"f").get("Players play to improve their personal best times.");',
+    replace: 'case an.Casual:c.textContent=window.ApexRoom?window.ApexRoom.casualInfo():(0,R.gn)(this,bc,"f").get("Players play to improve their personal best times.");',
+  },
+  {
+    // the button that opens the host screen, and the one that hosts from it: « Héberger », not « Hôte » (a noun)
+    name: 'host buttons are a verb in French',
+    find: 'Host:{ar:"مضيف","de-DE":"Host","es-ES":"Anfitrión","fr-FR":"Hôte",',
+    replace: 'Host:{ar:"مضيف","de-DE":"Host","es-ES":"Anfitrión","fr-FR":"Héberger",',
   },
   {
     name: 'race rooms are hosted as competitive sessions',
@@ -558,7 +574,8 @@ const patches = [
     name: 'HUD context (track, own car)',
     anchor: '(0,R.gn)(this,ta,"m",Ms).call(this),window.addEventListener("keydown",(0,R.GG)(this,ds',
     before: true,
-    insert: 'window.ApexHud&&window.ApexHud.begin({owner:this,track:(0,R.gn)(this,ra,"f"),getSelfCar:()=>(0,R.gn)(this,Xa,"f")}),window.ApexScenery&&window.ApexScenery.track(this,(0,R.gn)(this,ra,"f")),',
+    // ghosts: the time trial ghosts, each with its replay (every state of its run) once simulated
+    insert: 'window.ApexHud&&window.ApexHud.begin({owner:this,track:(0,R.gn)(this,ra,"f"),getSelfCar:()=>(0,R.gn)(this,Xa,"f"),ghosts:()=>(0,R.gn)(this,Ya,"f")}),window.ApexScenery&&window.ApexScenery.track(this,(0,R.gn)(this,ra,"f")),',
   },
   // The replay viewer builds its own scene: circuits with their own town (Monaco GP) show it there too. It also has
   // the free camera of apex-spectate.js
@@ -583,7 +600,7 @@ const patches = [
     // apex-show.js borrows the camera for the picture only (race intro, podium), apex-spectate.js too (spectator, free camera)
     name: 'before each frame: shadow strength',
     find: '(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f"))}addMaterial(e){',
-    replace: 'window.ApexGfx&&window.ApexGfx.frame((0,i.gn)(this,S,"f"),(0,i.gn)(this,E,"f")),window.ApexScenery&&window.ApexScenery.frame(),window.ApexSpectate&&window.ApexSpectate.before((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),window.ApexShow&&window.ApexShow.before((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),window.ApexShow&&window.ApexShow.after((0,i.gn)(this,M,"f")),window.ApexSpectate&&window.ApexSpectate.after((0,i.gn)(this,M,"f"))}addMaterial(e){',
+    replace: 'window.ApexGfx&&window.ApexGfx.frame((0,i.gn)(this,S,"f"),(0,i.gn)(this,E,"f")),window.ApexScenery&&window.ApexScenery.frame(),window.ApexSpectate&&window.ApexSpectate.before((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),window.ApexShow&&window.ApexShow.before((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),(0,i.gn)(this,S,"f").render((0,i.gn)(this,E,"f"),(0,i.gn)(this,M,"f")),window.ApexRoom&&window.ApexRoom.drawn((0,i.gn)(this,M,"f"),(0,i.gn)(this,S,"f")),window.ApexShow&&window.ApexShow.after((0,i.gn)(this,M,"f")),window.ApexSpectate&&window.ApexSpectate.after((0,i.gn)(this,M,"f"))}addMaterial(e){',
   },
   {
     name: 'sky dome material',
@@ -633,6 +650,18 @@ const patches = [
     name: 'a part\'s invisible meshes are added to what the physics collides with',
     find: 'c=new M.eaF(o,a);return[c,r]};',
     replace: 'c=new M.eaF(o,a);if(apexHidden.length){const v=[r.attributes.position.array,...apexHidden.map((e=>(e.index?e.toNonIndexed():e).attributes.position.array))],p=new Float32Array(v.reduce(((e,t)=>e+t.length),0));let k=0;for(const e of v)p.set(e,k),k+=e.length;return[c,{attributes:{position:new M.THS(p,3)}}]}return[c,r]};',
+  },
+  // A road with its pit lane open (OPEN_PITS) is drawn in place of the road during an endurance race (apex-room.js,
+  // openPits): the loaded parts are kept by id, and the meshes that draw a track's parts say which part they draw
+  {
+    name: 'the loaded track parts can be found by id',
+    find: '(0,R.gn)(this,fu,"f").set(e.id,t);const r=await i;',
+    replace: '(0,R.gn)(this,fu,"f").set(e.id,t),(self.apexTrackParts=self.apexTrackParts||new Map).set(e.id,t);const r=await i;',
+  },
+  {
+    name: 'the meshes drawing a track\'s parts say which part they draw',
+    find: 'const l=new y.ZLX(n.geometry,n.material,o.length);',
+    replace: 'const l=new y.ZLX(n.geometry,n.material,o.length);l.userData.apexPart=e.configuration.id,l.userData.apexColor=t;{const m=self.apexPartMeshes=self.apexPartMeshes||new Set;for(const e of m)null==e.parent&&m.delete(e);m.add(l)}',
   },
 
   // ---------------------------------------------------------------- scenery (apex-scenery.js)
@@ -749,8 +778,8 @@ const patches = [
       const roadTiles = JSON.stringify(data.roadCells.map(([i, j]) => [[4 * i - 2, 0, 4 * j - 2], [4 * i + 1, 0, 4 * j + 1]]));
       // the road may have walls nobody sees, in a mesh of its own (tools/make_circuit.js)
       const part = (kind, id, rest) => ',new d(' + JSON.stringify(sums[id] || '') + ',r.A.Special,' + id + ',[["' + name + '","' + name + kind + '"]' + (kind === 'Road' && data.hidden ? ',["' + name + '","' + name + 'RoadInvisible"]' : '') + '],c,' + rest + ')';
-      // the road with its pit lane open (OPEN_PITS): the road mesh alone
-      const open = OPEN_PITS[model] ? ',new d(' + JSON.stringify(sums[OPEN_PITS[model]] || '') + ',r.A.Special,' + OPEN_PITS[model] + ',[["' + name + '","' + name + 'Road"]],c,' + roadTiles + ')' : '';
+      // the road with its pit lane open (OPEN_PITS)
+      const pits = OPEN_PITS[model], open = pits ? ',new d(' + JSON.stringify(sums[pits.id] || '') + ',r.A.Special,' + pits.id + ',[["' + name + '","' + pits.mesh + '"]],c,' + roadTiles + ')' : '';
       return part('Road', data.ids.road, roadTiles) + open + part('Start', data.ids.start, cell + ',null,new i.Pq0(0,' + (start ?? 0.35) + ',0)')
         + part('Checkpoint', data.ids.checkpoint, cell + ',' + detector('Checkpoint')) + part('Finish', data.ids.finish, cell + ',' + detector('Finish'));
     }).join('') + '],f=new Map;for(const e of u){if(f.has(e.id))throw new Error("Duplicate track part id "',
@@ -1004,6 +1033,19 @@ const patches = [
     find: 'const e=(0,l.gn)(this,G,"f").getBuffer("engine");if(null!=e&&null!=(0,l.gn)(this,G,"f").context){',
     replace: 'const e=(0,l.gn)(this,G,"f").getBuffer(' + JSON.stringify(ENGINE_SOUNDS) + '[(0,l.gn)(this,Me,"f").body]??"engine")??(0,l.gn)(this,G,"f").getBuffer("engine");if(null!=e&&null!=(0,l.gn)(this,G,"f").context){',
   },
+  // ---------------------------------------------------------------- the engine through the gears (apex-gearbox.js)
+  {
+    // the pitch and loudness from the gearbox's revs rather than from the wheels' speed; sound only, no physics
+    name: 'the engine\'s sound goes through the gears',
+    find: 'let s;s=n?a?t:Math.max(.7,t/2):a?Math.max(.7,1.15*t):Math.max(.7,t/2),(0,l.gn)(this,O,"f").source.playbackRate.setTargetAtTime(s,0,.05),(0,l.gn)(this,O,"f").gain.gain.setTargetAtTime(Math.min(.285,s/14),0,.05)',
+    replace: 'const apxG=window.ApexGearbox&&window.ApexGearbox.engine(this,a,r,n,(0,l.gn)(this,te,"f").brakeLightEnabled);let s;if(apxG)(0,l.gn)(this,O,"f").source.playbackRate.setTargetAtTime(apxG.pitch,0,.015),(0,l.gn)(this,O,"f").gain.gain.setTargetAtTime(apxG.gain,0,apxG.cutting?.008:.03);else '
+      + 's=n?a?t:Math.max(.7,t/2):a?Math.max(.7,1.15*t):Math.max(.7,t/2),(0,l.gn)(this,O,"f").source.playbackRate.setTargetAtTime(s,0,.05),(0,l.gn)(this,O,"f").gain.gain.setTargetAtTime(Math.min(.285,s/14),0,.05)',
+  },
+  {
+    name: 'the engaged gear by the speedometer',
+    find: '(0,R.gn)(this,La,"f").update((0,R.gn)(this,Xa,"f").getSpeedKmh())',
+    replace: '(0,R.gn)(this,La,"f").update((0,R.gn)(this,Xa,"f").getSpeedKmh()),window.ApexGearbox&&window.ApexGearbox.hud((0,R.gn)(this,Xa,"f"))',
+  },
   {
     name: 'car: the tyres\' lettering follows the rims',
     find: '"Rim"==t.name&&t.color.set(e.rimsColor)',
@@ -1092,7 +1134,7 @@ const workerPatches = [
       const cell = '[[[-2,0,-2],[1,0,1]]]';
       const detector = type => '{type:to.' + type + ',center:[0,3.5,0],size:[' + data.gateWidth + ',7,1]}';
       const part = (kind, id, rest) => ',new lo("",Xa.Special,' + id + ',[["' + name + '","' + name + kind + '"]],ao,' + cell + rest + ')';
-      const open = OPEN_PITS[model] ? ',new lo("",Xa.Special,' + OPEN_PITS[model] + ',[["' + name + '","' + name + 'Road"]],ao,' + cell + ')' : '';
+      const pits = OPEN_PITS[model], open = pits ? ',new lo("",Xa.Special,' + pits.id + ',[["' + name + '","' + pits.mesh + '"]],ao,' + cell + ')' : '';
       return part('Road', data.ids.road, '') + open + part('Start', data.ids.start, ',null,new R(0,' + (start ?? 0.35) + ',0)')
         + part('Checkpoint', data.ids.checkpoint, ',' + detector('Checkpoint')) + part('Finish', data.ids.finish, ',' + detector('Finish'));
     }).join('') + '],co=new Map;for(const t of ho){if(co.has(t.id))throw new Error("Duplicate track part id "',

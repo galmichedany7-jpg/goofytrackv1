@@ -20,6 +20,7 @@
 // (tracks/<circuit>/checksums.json) must be made again, see tools/circuit_track.js.
 const fs = require('fs');
 const path = require('path');
+const PitLane = require('./pit_lane');
 
 const KEY = process.argv[2], cfg = require('./circuits')[KEY];
 if (!cfg) { console.error('Usage: node tools/make_circuit.js <circuit>   (' + Object.keys(require('./circuits')).join(', ') + ')'); process.exit(1); }
@@ -467,7 +468,9 @@ const DECK = 1.2;                                                        // thic
 const onBridge = line.map(q => BRIDGE != null && inU(gpsIndex(q[2]), ...BRIDGE.high));
 // the stretch that runs through the mountain: walls up to a roof ROOF metres over the road, a portal at each end
 const ROOF = 7.5, onTunnel = line.map(q => lineFile.tunnel != null && inU(gpsIndex(q[2]), ...lineFile.tunnel));
-const PIT = lineFile.pit;
+// the line file's pit lane (offset, half: where its middle runs from the centreline, and its half width), as
+// tools/pit_lane.js has it
+const PIT = lineFile.pit && { ...lineFile.pit, inner: lineFile.pit.offset - lineFile.pit.half, outer: lineFile.pit.offset + lineFile.pit.half };
 const pitAt = line.map(q => {
   if (!PIT) return null;
   const u = gpsIndex(q[2]), from = (PIT.from - PIT.taper + N_GPS) % N_GPS, to = (PIT.to + PIT.taper) % N_GPS;
@@ -481,13 +484,8 @@ const section = line.map((q, i) => {
   // e: edge of the asphalt, k: of the kerb, sd: of the gravel, g: of the run-off (the face of the barrier), w: back of the barrier
   return { t, n: [nx, 0, nz], at, e: s => side(s), k: s => side(s) + KERB, sd: s => side(s) + KERB + gravel(s), g: s => side(s) + KERB + runoff(s), w: s => side(s) + OUTSIDE + runoff(s) };
 });
-// The pit lane at a cross-section, [inner edge, outer edge] from the centreline: it opens from the back of the
-// road's barrier over the first half of its taper, then its inner edge moves away from the road
 if (PIT && line.some((_, i) => pitAt[i] != null && sand[i][PIT.side < 0 ? 0 : 1] > 0)) throw new Error('A gravel trap runs into the pit lane');
-const pitLane = (c, p) => {
-  const w = c.w(PIT.side);
-  return [p < 0.5 ? w : w + (PIT.offset - PIT.half - w) * ease((p - 0.5) * 2), w + (PIT.offset + PIT.half - w) * ease(Math.min(1, p * 2))];
-};
+const pitLane = (c, p) => PitLane.edges(PIT, c, p);                     // [inner edge, outer edge] from the centreline
 // both edges must always move forward along the road, or a barrier would cut across it
 let folds = 0, closest = Infinity, tightest = Infinity;
 for (let i = 0; i < line.length; i++) {
@@ -535,7 +533,7 @@ for (let i = 0; i < line.length; i++) {
     strip(kerb, c => s * c.e(s), 0, c => s * c.k(s), kerbY, [0, 1, 0]);
     if (gravel) strip('Sand', c => s * c.k(s), kerbY, c => s * c.sd(s), 0, [0, 1, 0]);   // the gravel trap, level with the road
     if (grass) strip('Grass', c => s * c.sd(s), gravel ? 0 : kerbY, c => s * c.g(s), 0, [0, 1, 0]);   // then grass up to the barrier
-    if (PIT && s === PIT.side && pitAt[i] != null && pitAt[j] != null && pitAt[i] < 0.5 && pitAt[j] < 0.5) {
+    if (PIT && s === PIT.side && PitLane.mouth(pitAt[i], pitAt[j])) {
       // the mouth of the pit lane: open to the eye, closed by a wall nobody sees (the races and time trials do not use the pits)
       strip('Road', c => s * c.g(s), 0, c => s * c.w(s), 0, [0, 1, 0]);
       strip('Invisible', c => s * c.g(s), -0.5, c => s * c.g(s), WALL_H + 3, inward, HIDDEN);
@@ -631,20 +629,7 @@ if (BRIDGE) {
 if (PIT) for (let i = 0; i < line.length; i++) {
   const j = (i + 1) % line.length, pa = pitAt[i], pb = pitAt[j];
   if (pa == null || pb == null) continue;
-  const a = section[i], b = section[j], s = PIT.side, out = [a.n[0] * s, 0, a.n[2] * s], inward = [-out[0], 0, -out[2]];
-  const [ia, oa] = pitLane(a, pa), [ib, ob] = pitLane(b, pb);
-  const lane = (material, u0a, u1a, y0, u0b, u1b, y1, towards) => quad(MESH, material, a.at(s * u0a, y0), a.at(s * u1a, y1), b.at(s * u1b, y1), b.at(s * u0b, y0), towards);
-  lane('Road', ia, oa, 0, ib, ob, 0, [0, 1, 0]);
-  if (oa - ia > 1 && ob - ib > 1) lane('RoadEdgeWhite', oa - 0.4, oa, 0.01, ob - 0.4, ob, 0.01, [0, 1, 0]);
-  lane('RoadBarrier', oa, oa, 0, ob, ob, WALL_H, inward);
-  lane('RoadBarrier', oa, oa + WALL, WALL_H, ob, ob + WALL, WALL_H, [0, 1, 0]);
-  lane('RoadBarrier', oa + WALL, oa + WALL, WALL_H, ob + WALL, ob + WALL, -8, out);
-  if (pa > 0.5 || pb > 0.5) {
-    lane('RoadEdgeWhite', ia, ia + 0.4, 0.01, ib, ib + 0.4, 0.01, [0, 1, 0]);
-    lane('RoadBarrier', ia, ia, 0, ib, ib, WALL_H, out);
-    lane('RoadBarrier', ia - WALL, ia, WALL_H, ib - WALL, ib, WALL_H, [0, 1, 0]);
-    lane('RoadBarrier', ia - WALL, ia - WALL, WALL_H, ib - WALL, ib - WALL, -8, inward);
-  }
+  PitLane.lane(PIT, (...q) => quad(MESH, ...q), section[i], section[j], pa, pb, { thick: WALL, high: WALL_H });
 }
 
 // ------------------------------------------------------------------ start line, checkpoint and finish gates (road along z)
@@ -922,10 +907,8 @@ fs.writeFileSync(path.join(OUT, KEY + '.json'), JSON.stringify({
   // the spins: what they stand over seen from above (apex-town.js plants nothing there), and the cross-sections
   // of `fine` where the road before one stops and the road after it starts
   spins: spinAreas.length ? spinAreas.map((L, k) => ({ area: L.corners, from: SPINS[k].E, to: SPINS[k].X })) : undefined,
-  // the pit lane (apex-town.js dresses it): its side, its edges' offsets from the centreline along the pits, the
-  // fronts of the garages, and the cross-sections along which it runs at full width, in lap order
-  pit: PIT ? { side: PIT.side, inner: PIT.offset - PIT.half, outer: PIT.offset + PIT.half, front: PIT.offset + PIT.half + 1.5,
-    full: (() => { const n = line.length, i0 = pitAt.findIndex((p, i) => p === 1 && pitAt[(i - 1 + n) % n] !== 1), out = []; for (let k = 0; k < n && pitAt[(i0 + k) % n] === 1; k++) out.push((i0 + k) % n); return out; })() } : undefined,
+  // the pit lane (apex-town.js dresses it, apex-room.js finds the cars in it): tools/pit_lane.js
+  pit: PIT ? PitLane.record(PIT, pitAt, line, 2) : undefined,
   sand: sand.map((w, i) => [i, +w[0].toFixed(2), +w[1].toFixed(2)]).filter(r => r[1] > 0 || r[2] > 0),
   grid: lineFile.grid,
   north: (() => { const a = toGame(origin[0], origin[1]), b = toGame(origin[0], origin[1] - 1000); return [(b[0] - a[0]) / 1000, (b[1] - a[1]) / 1000].map(v => +v.toFixed(4)); })(),

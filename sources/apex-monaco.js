@@ -669,14 +669,34 @@
         const squares = 10, w = (rr - l) / squares;
         for (let k = 0; k < squares; k++) for (let row = 0; row < 2; row++) band(P, l + k * w, l + (k + 1) * w, row * 0.9 - 0.9, row * 0.9, (k + row) % 2 ? [0.96, 0.96, 0.96] : [0.08, 0.08, 0.09]);
       });
+      // the grid behind the start line (tools/make_monaco.js, where apex-room.js puts the cars): a box per car, a bar
+      // in front of it and a short line down each side
+      if (data.grid) for (const [x, z, y, tx, tz] of data.grid.slots) {
+        const at = (u, v) => [x - tz * u + tx * v, y + 0.03, z + tx * u + tz * v];
+        const paint = (u0, u1, v0, v1) => B.quad(at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1), LINE.start, UP);
+        paint(-1.6, 1.6, 2.4, 2.75);
+        for (const e of [-1.6, 1.6]) paint(e - 0.12, e + 0.12, -2.6, 2.75);
+      }
     }
 
-    // ---- catch fences on the barriers, all round the lap (not in the tunnel)
+    // ---- the pit lane of tools/make_monaco.js (data.pit, tools/pit_lane.js), in cross-sections of the fine line (3 m)
+    // counted from the start line: the lane with its tapers, the stretch at full width along the boxes
+    const pit = data.pit, pitSide = pit ? pit.side : sideOf(4, p => -otherRoad(p, 0));
+    const fineN = data.fine ? data.fine.length : n * 4, R = data.fineStep || 4;
+    const signed = f => (f > fineN / 2 ? f - fineN : f);
+    const laneFrom = pit ? signed(pit.lane[0]) : -80, laneTo = pit ? signed(pit.lane[1]) : 32;
+    const fullFrom = pit ? signed(pit.full[0]) : -80, fullTo = pit ? signed(pit.full[pit.full.length - 1]) : 32;
+    // does waypoint i (to the next one) touch a mouth of the lane, where the barrier opens during the endurance races?
+    const mouthIn = laneFrom + (fullFrom - laneFrom) / 2, mouthOut = laneTo - (laneTo - fullTo) / 2;
+    const inMouth = i => { const k0 = signed(((i * R) % fineN + fineN) % fineN), k1 = k0 + R; return pit != null && ((k1 > laneFrom && k0 < mouthIn) || (k1 > mouthOut && k0 < laneTo)); };
+
+    // ---- catch fences on the barriers, all round the lap (not in the tunnel, nor at the mouths of the pit lane)
     const tunnelFrom = P.tunnelIn != null ? P.tunnelIn + 1 : -1, tunnelTo = P.tunnelIn != null ? Math.min(P.tunnelIn + 28, P.tunnelOut ?? n) : -1;
     const inTunnel = i => i >= tunnelFrom && i < tunnelTo;
     for (let i = 0; i < n; i++) {
       if (inTunnel(i) || inTunnel(i + 1)) continue;
       for (const s of [-1, 1]) {
+        if (s === pitSide && inMouth(i)) continue;
         // on the back edge of the barrier, in four pieces per waypoint so that it follows the curve (a straight
         // rail from post to post would cut across the outside of a tight corner, over the road)
         const edge = j => beside(j, s * (road.barrier(j, s) - 0.3));
@@ -757,29 +777,71 @@
       }
     }
 
-    // ---- pits along the start straight, on the harbour side: pit lane, garages with red roof panels, a row of trees
-    const pitSide = sideOf(4, p => -otherRoad(p, 0));
+    // ---- pits along the start straight, on the harbour side: the pit lane, drawn here in every mode, behind the barrier
+    // which only opens at its mouths during the endurance races (the road then has the lane too); along the boxes,
+    // garages in the teams' colours with their boxes painted in front of them, an awning, the teams' stands on the
+    // pit wall, a row of trees behind
     {
-      const from = -20, to = 8;                                        // waypoints (12 m each) around the start line
-      // pit lane asphalt and the pit wall
-      for (let i = from; i < to; i++) {
-        const a = beside(i, pitSide * 10.5, 0.02), b = beside(i, pitSide * 23, 0.02), c = beside(i + 1, pitSide * 23, 0.02), d = beside(i + 1, pitSide * 10.5, 0.02);
-        B.quad(a, b, c, d, C.asphalt, UP);
-        const e = beside(i, pitSide * 16.6, 0.03), f = beside(i, pitSide * 16.9, 0.03), g = beside(i + 1, pitSide * 16.9, 0.03), h = beside(i + 1, pitSide * 16.6, 0.03);
-        B.quad(e, f, g, h, C.frame, UP);
+      const outer = pit ? pit.outer : 23, F = outer + 0.6;              // the lane's outer edge, the fronts of the garages
+      const from = Math.floor(fullFrom / R), to = Math.floor(fullTo / R);   // waypoints (12 m each) along the garages
+      // the pit lane's asphalt, opening from the back of the barrier along its tapers (tools/pit_lane.js)
+      const edge = k => {
+        const p = Math.min(1, (k - laneFrom) / (fullFrom - laneFrom), (laneTo - k) / (laneTo - fullTo)), w = road.barrier(k / R, pitSide);
+        return [w, w + (outer - w) * smooth(0, 1, Math.min(1, p * 2))];
+      };
+      for (let k = laneFrom; k < laneTo; k++) {
+        const [ia, oa] = edge(k), [ib, ob] = edge(k + 1);
+        B.quad(beside(k / R, pitSide * ia, 0.02), beside(k / R, pitSide * oa, 0.02), beside((k + 1) / R, pitSide * ob, 0.02), beside((k + 1) / R, pitSide * ib, 0.02), C.asphalt, UP);
       }
-      ribbon(from, to, pitSide * 23.5, pitSide * 36, -1, 5.5, C.walls.white, C.walls.white);
+      claimRibbon(laneFrom / R - 1, laneTo / R + 1, pitSide * 9, pitSide * (outer + 1), 1);
+      // along the boxes: d metres from the start line (< 0 before it), u metres off the centreline on the pits' side
+      const at = (d, u, y) => beside(d / 3 / R, pitSide * u, y);
+      const towardsRoad = d => { const r = right(Math.round(d / 3 / R)); return [-r[0] * pitSide, 0, -r[2] * pitSide]; };
+      const panel = (d0, d1, u0, u1, y0, y1, col, facing) => B.quad(at(d0, u0, y0), at(d1, u0, y0), at(d1, u1, y1), at(d0, u1, y1), col, facing);
+      const wall = (d0, d1, u, y0, y1, col, facing) => B.quad(at(d0, u, y0), at(d1, u, y0), at(d1, u, y1), at(d0, u, y1), col, facing);
+      const D0 = fullFrom * 3, D1 = fullTo * 3, TEAMS = pit ? pit.teams.map(t => t.rgb) : [[0.78, 0.08, 0.08]];
+      // the building: white, two storeys, glass upstairs, red panels on the roof
+      ribbon(from, to, pitSide * (F + 0.1), pitSide * (F + 12), -1, 8.4, C.walls.white, C.walls.white);
+      wall(from * 12, to * 12, F, 5.4, 7.8, C.glassDark, towardsRoad((D0 + D1) / 2));
       for (let i = from; i < to; i++) {
-        const r = right(i), face = [-r[0] * pitSide, 0, -r[2] * pitSide];
-        const a = beside(i + 0.12, pitSide * 23.4, 0), b = beside(i + 0.88, pitSide * 23.4, 0);
-        B.quad([a[0], a[1] + 0.1, a[2]], [b[0], b[1] + 0.1, b[2]], [b[0], b[1] + 3.6, b[2]], [a[0], a[1] + 3.6, a[2]], C.windowDark, face);   // garage doors
-        const p = beside(i + 0.15, pitSide * 26, 5.56), q = beside(i + 0.85, pitSide * 26, 5.56), s = beside(i + 0.85, pitSide * 33, 5.56), t = beside(i + 0.15, pitSide * 33, 5.56);
-        B.quad(p, q, s, t, C.pitRed, UP);                              // red panels on the roof
+        const p = beside(i + 0.15, pitSide * (F + 2.5), 8.45), q = beside(i + 0.85, pitSide * (F + 2.5), 8.45), r = beside(i + 0.85, pitSide * (F + 9.5), 8.45), t = beside(i + 0.15, pitSide * (F + 9.5), 8.45);
+        B.quad(p, q, r, t, C.pitRed, UP);
       }
-      claimRibbon(from - 1, to + 1, pitSide * 9, pitSide * 38, 1);
+      // a garage per team, two cars each: its door open on the garage lit in its colours, its band over the door, tyres
+      // stacked inside, and the box painted on the lane in front of it
+      // (the garages of tools/pit_lane.js, metres along the boxes: an endurance race gives each driver one)
+      const garages = pit ? pit.garages : [];
+      for (const [g0, g1, t] of garages) {
+        const d0 = D0 + g0, d1 = D0 + g1, m = (d0 + d1) / 2, team = TEAMS[t], face = towardsRoad(m);
+        wall(d0 + 0.6, d1 - 0.6, F - 0.02, 0, 4.4, shade(team, 0.32), face);
+        wall(d0 + 0.6, d1 - 0.6, F - 0.03, 3.7, 3.9, [0.95, 0.93, 0.85], face);
+        wall(d0 + 2.5, d1 - 2.5, F - 0.03, 1.2, 2.4, shade(team, 0.6), face);
+        wall(d0, d1, F - 0.04, 4.5, 5.3, team, face);
+        for (const e of [d0, d1 - 0.5]) wall(e, e + 0.5, F - 0.05, 0, 4.5, shade(team, 0.8), face);
+        for (const e of [d0 + 1.4, d1 - 2.2]) for (let h = 0; h < 4; h++) { const c = at(e, F + 1, 0); X.prism(X.ring(c[0], c[2], 0.36, 8), c[1] + h * 0.3, c[1] + h * 0.3 + 0.28, C.crown, shade(C.crown, 0.7)); }
+        const u0 = outer - 5.2, u1 = outer - 0.5, Y = 0.04, line = (a, b, c, e) => panel(a, b, c, e, Y, Y, C.frame, UP);
+        line(d0 + 1, d1 - 1, u0, u0 + 0.18); line(d0 + 1, d0 + 1.18, u0, u1); line(d1 - 1.18, d1 - 1, u0, u1);
+        panel(d0 + 1.18, d1 - 1.18, u0 + 0.18, u0 + 0.7, Y, Y, team, UP);
+      }
+      // the awning over the boxes, and the line between them and the fast lane, in dashes
+      panel(D0, D1, F, outer - 4.6, 6.2, 6.2, [0.86, 0.87, 0.88], UP);
+      panel(D0, D1, F, outer - 4.6, 6.0, 6.0, [0.60, 0.61, 0.63], DOWN);
+      wall(D0, D1, outer - 4.6, 6.0, 6.2, C.pitRed, towardsRoad((D0 + D1) / 2));
+      for (let d = D0 + 2; d + 3 < D1; d += 6) panel(d, d + 3, outer - 5.6, outer - 5.4, 0.04, 0.04, C.frame, UP);
+      // the teams' stands on the pit wall (the road's barrier): a roof on posts over it, screens facing the lane
+      for (let d = D0 + 4, k = 0; d + 10 < D1; d += 22, k++) {
+        const e = d + 16, team = TEAMS[k % TEAMS.length], wallBack = road.barrier(d / 3 / R, pitSide), out = towardsRoad(d).map(v => -v);
+        for (const a of [d, e]) { const c = at(a, wallBack - 0.3, 0); X.prism(X.ring(c[0], c[2], 0.1, 4), c[1] + BARRIER_H, c[1] + 3.4, C.standFrame, null); }
+        panel(d - 0.5, e + 0.5, wallBack - 1.4, wallBack + 0.8, 3.4, 3.4, [0.92, 0.92, 0.92], UP);
+        panel(d - 0.5, e + 0.5, wallBack - 1.4, wallBack + 0.8, 3.2, 3.2, team, DOWN);
+        wall(d - 0.5, e + 0.5, wallBack + 0.8, 3.0, 3.4, team, out);
+        for (let q = d + 1; q + 1.6 < e; q += 2.4) wall(q, q + 1.6, wallBack - 0.2, BARRIER_H + 0.3, BARRIER_H + 1.2, [0.08, 0.12, 0.22], out);
+      }
+      claimRibbon(from - 1, to + 1, pitSide * 9, pitSide * (F + 13), 1);
       // the row of round trees behind the garages
-      for (let i = from; i < to; i += 0.5) { const p = beside(i, pitSide * 41); if (T.site([[p[0] - 2, p[2] - 2], [p[0] + 2, p[2] - 2], [p[0] + 2, p[2] + 2], [p[0] - 2, p[2] + 2]], 12, 6, 3)) { X.tree(p[0], p[2], height(p[0], p[2]), 1.1); stats.trees++; } }
-      claimRibbon(from - 1, to + 1, pitSide * 38, pitSide * 45, 0.5);
+      for (let i = from; i < to; i += 0.5) { const p = beside(i, pitSide * (F + 17)); if (T.site([[p[0] - 2, p[2] - 2], [p[0] + 2, p[2] - 2], [p[0] + 2, p[2] + 2], [p[0] - 2, p[2] + 2]], 12, 6, 3)) { X.tree(p[0], p[2], height(p[0], p[2]), 1.1); stats.trees++; } }
+      claimRibbon(from - 1, to + 1, pitSide * (F + 13), pitSide * (F + 21), 0.5);
+      stats.garages = garages.length;
       // the green footbridge over the straight, just after the start line
       const i = 3, t = road.tangent(i);
       for (const s of [-1, 1]) { const p = beside(i, s * 14); X.prism(X.rect(p[0], p[2], t[0], t[1], 1.2, 1.2), p[1] - 1, p[1] + 9.5, C.standFrame); }

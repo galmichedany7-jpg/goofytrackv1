@@ -929,9 +929,11 @@
       // a flat rectangle between two distances and two offsets, at a height over the road, facing `facing`
       const panel = (d0, d1, u0, u1, y0, y1, col, facing) => B.quad(at(d0, u0, y0), at(d1, u0, y0), at(d1, u1, y1), at(d0, u1, y1), col, facing);
       const wall = (d0, d1, u, y0, y1, col, facing) => B.quad(at(d0, u, y0), at(d1, u, y0), at(d1, u, y1), at(d0, u, y1), col, facing);
-      const F = P.front - 0.06, GARAGE = 13, n = Math.floor((total - 6) / GARAGE);
-      for (let k = 0; k < n; k++) {
-        const d0 = 3 + k * GARAGE, d1 = d0 + GARAGE - 1.2, m = (d0 + d1) / 2, team = TEAMS[Math.floor(k / 2) % TEAMS.length], face = towardsRoad(m);
+      // the garages of tools/pit_lane.js (an endurance race gives each driver one): [from, to, team]
+      const F = P.front - 0.06, GARAGE = 13, garages = P.garages || Array.from({ length: Math.floor((total - 6) / GARAGE) }, (_, k) => [3 + k * GARAGE, 3 + k * GARAGE + GARAGE - 1.2, Math.floor(k / 2)]);
+      const n = garages.length;
+      for (const [d0, d1, t] of garages) {
+        const m = (d0 + d1) / 2, team = P.teams ? P.teams[t].rgb : TEAMS[t % TEAMS.length], face = towardsRoad(m);
         wall(d0 + 0.6, d1 - 0.6, F, 0, 4.4, shade(team, 0.32), face);                    // the open door, the garage lit in its colours
         wall(d0 + 0.6, d1 - 0.6, F - 0.02, 0, 0.6, shade(team, 0.55), face);            // its floor
         wall(d0 + 0.6, d1 - 0.6, F - 0.03, 3.7, 3.9, [0.95, 0.93, 0.85], face);           // the lights along its ceiling

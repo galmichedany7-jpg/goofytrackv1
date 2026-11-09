@@ -1,7 +1,8 @@
 // Builds the Monaco GP circuit from the real track's centreline (tools/monaco_gps.json):
 //
 //   tracks/monaco/monaco.glb         the drivable circuit as custom track parts (road ribbon with kerbs
-//                                    and barriers, start line, checkpoint and finish gates)
+//                                    and barriers, start line, checkpoint and finish gates), and the same
+//                                    road with its pit lane open, for the endurance races
 //   tracks/monaco/monaco.json        where everything goes (tiles, gates, the centreline with its heights,
 //                                    named corners, sea and harbour outlines); apex-monaco.js builds the
 //                                    principality around the circuit from it
@@ -17,6 +18,7 @@
 // (tracks/monaco/checksums.json) must be made again, see tools/monaco_track.js.
 const fs = require('fs');
 const path = require('path');
+const PitLane = require('./pit_lane');
 
 const OUT = path.join(__dirname, '..', 'tracks', 'monaco');
 fs.mkdirSync(OUT, { recursive: true });
@@ -32,6 +34,7 @@ const MAX_GRADE = 0.09;       // steepest slope of the road
 const HEIGHT_SCALE = 0.835;   // the real climb, a little flattened: the Casino square is 35 m above the harbour
 const START_GPS = 121;        // the start line, as an index of the GPS line (on Boulevard Albert Ier)
 const IDS = { road: 240, start: 241, checkpoint: 242, finish: 243 };
+const OPEN_ROAD = 226;        // the same road with its pit lane open, for the endurance races (tools/pit_lane.js)
 const GRID = 5;               // track parts sit on a 5 m grid, heights too
 const LEVEL = 1;              // grid height of the start line: 5 m above the game's plain
 
@@ -48,6 +51,14 @@ const PLACES = {
   sainteDevote: 129, beauRivage: 138, massenet: 153, casino: 1, mirabeau: 8, hairpin: 22, mirabeauBas: 28, portier: 37,
   tunnelIn: 40, tunnelOut: 50, chicane: 56, tabac: 66, piscine: 72, piscineOut: 85, rascasse: 101, noghes: 109,
 };
+// The pit lane, along the start straight on the harbour side (tools/pit_lane.js), in cross-sections of the road (3 m)
+// from the start line: 255 m in all, 135 m of them along the boxes, from the middle of the straight to just before
+// the start line (a lane twice as long took 18 s at the speed limit). It runs against the road's barrier, which is its
+// pit wall, the garages behind it (apex-monaco.js), where the Rascasse stretch leaves them room
+const PIT = { side: 1, from: -70, to: -25, taperIn: 20, taperOut: 20, inner: null, outer: 19.5 };
+// The grid painted behind the start line, a box per car, staggered, the pole on the right (the inside of
+// Sainte-Devote): metres from the line to the first box and between two boxes, metres off the centreline
+const GRID_BOXES = { first: 8, gap: 8, side: 4, slots: 16 };
 // Where the checkpoints may go (GPS index ranges), in lap order
 const GATE_RANGES = [[156, 161], [37.5, 39.3], [60, 67], [86, 96]];
 
@@ -374,25 +385,47 @@ console.log(`Ribbon check: ${folds} folded edge segments, ${closest.toFixed(1)} 
 if (folds > 0 || closest < 1) throw new Error('The road ribbon overlaps itself; raise MIN_RADIUS or GAP');
 // kerbs are painted red and white in the corners only; elsewhere the edge is a white line on grey
 const corner = line.map((_, i) => { let r = Infinity; for (let o = -4; o <= 4; o++) r = Math.min(r, radiusAt(line, (i + o + line.length) % line.length, 4)); return r < 110; });
+// Two roads: MonacoRoad, for every mode, and MonacoRoadOpen, the same with the pit lane, for the endurance races.
+// MonacoRoad must never change (the records made on it would be refused): the open road only adds to it.
+const pitAt = PitLane.profile(line.length, PIT.from, PIT.to, PIT.taperIn, PIT.taperOut);
+const ROADS = ['MonacoRoad', 'MonacoRoadOpen'];
 for (let i = 0; i < line.length; i++) {
   const a = section[i], b = section[(i + 1) % line.length];
   // a strip between two offsets, each end at its own section's offset (the road is wider in the corners)
-  const strip = (material, u0, y0, u1, y1, towards) => quad('MonacoRoad', material, a.at(u0(a), y0), a.at(u1(a), y1), b.at(u1(b), y1), b.at(u0(b), y0), towards);
+  const strip = (material, u0, y0, u1, y1, towards, roads = ROADS) => { for (const mesh of roads) quad(mesh, material, a.at(u0(a), y0), a.at(u1(a), y1), b.at(u1(b), y1), b.at(u0(b), y0), towards); };
   const kerb = corner[i] ? (Math.floor(i / 2) % 2 === 0 ? 'RoadEdgeRed' : 'RoadEdgeWhite') : 'RoadEdgeWhite';
   // the asphalt in 8 lanes and 3 steps along: where the road turns and climbs at once its surface twists,
   // and small facets spread the twist instead of folding it on a few long creases
   for (let k = 0; k < 3; k++) for (let m = 0; m < 8; m++) {
     const P = (c, f) => c.at(-c.e(-1) + f * (c.e(-1) + c.e(1)), 0);
     const along = (f, t) => { const p = P(a, f), q = P(b, f); return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t]; };
-    quad('MonacoRoad', 'Road', along(m / 8, k / 3), along((m + 1) / 8, k / 3), along((m + 1) / 8, (k + 1) / 3), along(m / 8, (k + 1) / 3), [0, 1, 0]);
+    for (const mesh of ROADS) quad(mesh, 'Road', along(m / 8, k / 3), along((m + 1) / 8, k / 3), along((m + 1) / 8, (k + 1) / 3), along(m / 8, (k + 1) / 3), [0, 1, 0]);
   }
   for (const s of [-1, 1]) {
     const out = [a.n[0] * s, 0, a.n[2] * s], inward = [-out[0], 0, -out[2]];
     strip(kerb, c => s * c.e(s), 0, c => s * c.k(s), corner[i] ? 0.05 : 0.01, [0, 1, 0]);
-    strip('RoadBarrier', c => s * c.k(s), corner[i] ? 0.05 : 0.01, c => s * c.k(s), WALL_H, inward);   // the face the cars hit
-    strip('RoadBarrier', c => s * c.k(s), WALL_H, c => s * c.w(s), WALL_H, [0, 1, 0]);
-    strip('RoadBarrier', c => s * c.w(s), WALL_H, c => s * c.w(s), -8, out);   // down to the ground, wherever the town is lower
+    // the mouth of the pit lane: the open road has asphalt where the barrier stands
+    const open = s === PIT.side && PitLane.mouth(pitAt[i], pitAt[(i + 1) % line.length]);
+    const barrier = open ? ROADS.slice(0, 1) : ROADS;
+    if (open) strip('Road', c => s * c.k(s), corner[i] ? 0.05 : 0.01, c => s * c.w(s), 0, [0, 1, 0], ROADS.slice(1));
+    strip('RoadBarrier', c => s * c.k(s), corner[i] ? 0.05 : 0.01, c => s * c.k(s), WALL_H, inward, barrier);   // the face the cars hit
+    strip('RoadBarrier', c => s * c.k(s), WALL_H, c => s * c.w(s), WALL_H, [0, 1, 0], barrier);
+    strip('RoadBarrier', c => s * c.w(s), WALL_H, c => s * c.w(s), -8, out, barrier);   // down to the ground, wherever the town is lower
   }
+}
+// the pit lane itself, in the open road only
+for (let i = 0; i < line.length; i++) {
+  const j = (i + 1) % line.length;
+  if (pitAt[i] != null && pitAt[j] != null) PitLane.lane(PIT, (...q) => quad('MonacoRoadOpen', ...q), section[i], section[j], pitAt[i], pitAt[j], { thick: WALL, high: WALL_H });
+}
+// the grid's boxes along the centreline behind the start line (the straight bends a little): where the middle of
+// each box is [x, z, height of the road] and the road's direction there [x, z]
+const gridSlots = [];
+for (let k = 0; k < GRID_BOXES.slots; k++) {
+  const f = line.length - (GRID_BOXES.first + k * GRID_BOXES.gap) / SPACING, i = Math.floor(f), j = (i + 1) % line.length, t = f - i;
+  const q = [line[i][0] + (line[j][0] - line[i][0]) * t, line[i][1] + (line[j][1] - line[i][1]) * t], y = height[i] + (height[j] - height[i]) * t;
+  const d = tangentAt(line, i, 2), u = k % 2 === 0 ? GRID_BOXES.side : -GRID_BOXES.side;
+  gridSlots.push([q[0] - d[1] * u, q[1] + d[0] * u, y, d[0], d[1]].map(v => +v.toFixed(3)));
 }
 
 // ------------------------------------------------------------------ start line, checkpoint and finish gates (road along z)
@@ -452,7 +485,7 @@ const gameOutline = list => list.map(p => toGame(p[0], p[1]).map(round1));
 const places = {};
 for (const [name, g] of Object.entries(PLACES)) places[name] = Math.round(indexOfGps(g) / STEP);
 fs.writeFileSync(path.join(OUT, 'monaco.json'), JSON.stringify({
-  ids: IDS, lapLength: Math.round(lapLength), roadHalfWidth: ROAD_HALF, gateWidth: 2 * W + 6,
+  ids: IDS, openRoad: OPEN_ROAD, lapLength: Math.round(lapLength), roadHalfWidth: ROAD_HALF, gateWidth: 2 * W + 6,
   level: LEVEL,                                                           // grid height of the start line: 5 m above the plain
   finish: { gx: finish.gx, gy: finish.y, gz: finish.gz, rotation: finish.rotation },
   checkpoints: checkpoints.map(({ gx, y, gz, rotation }) => ({ gx, gy: y, gz, rotation })),
@@ -460,6 +493,10 @@ fs.writeFileSync(path.join(OUT, 'monaco.json'), JSON.stringify({
   // centreline [x, z, height of the road, width of the asphalt on the left, on the right] and the waypoint index of each named place
   waypoints: line.filter((_, i) => i % STEP === 0).map((q, k) => [round1(q[0]), round1(q[1]), +height[k * STEP].toFixed(2), round1(half[k * STEP][0]), round1(half[k * STEP][1])]),
   places,
+  // the pit lane (apex-monaco.js dresses it, apex-room.js finds the cars in it): tools/pit_lane.js
+  pit: PitLane.record(PIT, pitAt, line, 1),
+  // the grid painted behind the start line (apex-monaco.js paints it, apex-room.js puts the cars in its boxes)
+  grid: { ...GRID_BOXES, slots: gridSlots },
   // the same centreline at full resolution (one point every 3 m, as the road is built), for whatever has to
   // follow the road's edges exactly (barrier tops, fences); the waypoints are every STEP of these
   fine: line.map((q, i) => [+q[0].toFixed(2), +q[1].toFixed(2), +height[i].toFixed(2), +half[i][0].toFixed(2), +half[i][1].toFixed(2)]),

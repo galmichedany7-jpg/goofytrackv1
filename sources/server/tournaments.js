@@ -5,7 +5,9 @@
 //
 //   GET  /tournaments?userTokenHash=        { serverTime, tournaments: [...] }: the open ones and those of the last days,
 //                                           each with its board (best first) and the player's own entry
-//   POST /tournaments/create                userToken, userTokenHash, nickname, countryCode, trackId, trackName, minutes
+//   POST /tournaments/create                userToken, userTokenHash, nickname, countryCode, trackId, trackName, minutes,
+//                                           session: a GoofyTrack creator's account session makes it a special tournament
+//                                           (the official ones, where rewards can be won: the game lists only those)
 //   POST /tournaments/time                  userToken, userTokenHash, nickname, countryCode, id, frames
 //   POST /tournaments/stop                  userToken, userTokenHash, id: the host ends it now (the best time so far wins)
 //
@@ -33,9 +35,9 @@ const SAVE_DELAY = 5000;
 const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
 const HEX64 = /^[0-9a-f]{64}$/;
 
-function createTournaments({ githubToken = process.env.GITHUB_TOKEN, gistId = process.env.TOURNAMENTS_GIST_ID,
+function createTournaments({ creatorOf = () => null, githubToken = process.env.GITHUB_TOKEN, gistId = process.env.TOURNAMENTS_GIST_ID,
   file = process.env.TOURNAMENTS_FILE || path.join(__dirname, 'tournaments.json'), log = console.log, now = () => Date.now() } = {}) {
-  // list: [{ id, trackId, trackName, host: { userId, nickname, countryCode }, start, end, stopped,
+  // list: [{ id, trackId, trackName, host: { userId, nickname, countryCode }, start, end, stopped, special,
   //          entries: [{ userId, nickname, countryCode, frames, time }] best first }]
   // keys: userId -> sha256(secret)
   let data = { nextId: 1, list: [], keys: {} };
@@ -114,7 +116,7 @@ function createTournaments({ githubToken = process.env.GITHUB_TOKEN, gistId = pr
     const position = userId ? x.entries.findIndex(e => e.userId === userId) : -1;
     return {
       id: x.id, trackId: x.trackId, trackName: x.trackName, host: { nickname: x.host.nickname, countryCode: x.host.countryCode, self: x.host.userId === userId },
-      start: new Date(x.start).toISOString(), end: new Date(x.end).toISOString(), done, stopped: !!x.stopped, total: x.entries.length,
+      start: new Date(x.start).toISOString(), end: new Date(x.end).toISOString(), done, stopped: !!x.stopped, special: !!x.special, total: x.entries.length,
       entries: x.entries.slice(0, BOARD_SIZE).map(e => ({ nickname: e.nickname, countryCode: e.countryCode, frames: e.frames })),
       self: position < 0 ? null : { position: position + 1, frames: x.entries[position].frames },
       // the winner's public id: their game counts the win when it sees it (apex-tournament.js)
@@ -139,10 +141,11 @@ function createTournaments({ githubToken = process.env.GITHUB_TOKEN, gistId = pr
     const t = now(), running = open(t);
     if (running.length >= MAX_OPEN) return [507, 'too many tournaments'];
     if (running.filter(x => x.host.userId === who.userId).length >= MAX_OPEN_PER_HOST) return [429, 'too many tournaments for this host'];
-    const x = { id: data.nextId++, trackId, trackName, host: who, start: t, end: t + minutes * 60000, stopped: false, entries: [] };
+    const special = creatorOf(form.get('session')) != null;
+    const x = { id: data.nextId++, trackId, trackName, host: who, start: t, end: t + minutes * 60000, stopped: false, special, entries: [] };
     data.list.push(x);
     scheduleSave();
-    log(`tournaments: #${x.id} by ${who.nickname} on ${trackName}, ${minutes} min`);
+    log(`tournaments: #${x.id}${special ? ' (special)' : ''} by ${who.nickname} on ${trackName}, ${minutes} min`);
     return [200, publicTournament(x, who.userId, t)];
   }
 
