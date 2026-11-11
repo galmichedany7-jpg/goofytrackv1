@@ -15,6 +15,14 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.24.3 : bienvenue à Dash
+
+**Nouveautés**
+- **Dash** (#0003) rejoint les VIP de GoofyTrack : il reçoit le badge et le cadre VIP, ainsi que l'Icône **Renault R26 2006** au complet (motif, carrosserie, jantes et aileron).
+- **Pseudo imposé** : l'équipe peut maintenant fixer le pseudo affiché d'un compte (variable `NICKNAMES` du serveur, par exemple `3:Dash`). Le jeu renomme le profil tout seul, et les classements suivent au prochain temps. Le nom de connexion et le mot de passe ne changent pas.
+
+**Mise à jour** : ouvrez GoofyTrack Launcher et cliquez sur Mettre à jour. Le serveur doit être redéployé (Render). Si les variables `VIP_IDS`, `UNLOCKS` ou `NICKNAMES` y sont définies, elles doivent inclure le #0003 (`VIP_IDS=2,3`, `r26:7777+1+3`, `3:Dash`).
+
 ## V2.24.2 : stands à Monaco, réglages d'endurance et tournois spéciaux
 
 **Nouveautés**

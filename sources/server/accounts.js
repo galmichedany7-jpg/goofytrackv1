@@ -25,7 +25,8 @@
 // each other as friends. Friends see each other's profile (name, flag, car), whether they are playing, and
 // the invite code of the room they are in (hosting it or not), to join it in one click:
 //   POST /account/presence  { profile: { nickname, countryCode, carStyle, tokenHash, tokenHashes, badges, distance, driving, vmax }, state: 'menu' | 'playing', room: code | null }
-//                           -> { id, verified, badges, unlocks, requests, online }     every 30 s while the game runs
+//                           -> { id, verified, badges, unlocks, requests, online[, nickname] }     every 30 s while the game runs
+//                              (nickname: the name the team imposes on this account, NICKNAMES; the game renames its profile)
 //   POST /account/unlock    { id, item, give }       -> { id, unlocks }    a creator gives an unlockable item (or takes it, give: false)
 //   GET  /account/friends                            -> { me, friends, requests, sent }
 //   POST /account/friends   { action: 'add' | 'accept' | 'decline' | 'cancel' | 'remove', id }
@@ -88,14 +89,20 @@ const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:7777,shyn:1,chl
   .map(pair => pair.split(':')).map(([name, id]) => [name.normalize('NFC').toLowerCase(), Number(id)]));
 const REMOVED_ACCOUNTS = new Set((process.env.REMOVED_ACCOUNTS ?? 'chloooo').split(',').filter(Boolean).map(name => name.normalize('NFC').toLowerCase()));
 const CREATOR_IDS = new Set((process.env.CREATOR_IDS ?? '7777,1').split(',').filter(Boolean).map(Number));
-// the VIP diamond: friends and the first players, by number (#0003 is 3); "2" by default: Chlo
-const VIP_IDS = new Set((process.env.VIP_IDS ?? '2').split(',').filter(Boolean).map(Number));
+// the VIP diamond: friends and the first players, by number (#0003 is 3); "2,3" by default: Chlo and Dash
+const VIP_IDS = new Set((process.env.VIP_IDS ?? '2,3').split(',').filter(Boolean).map(Number));
 // The garage's unlockable items (apex-rarity.js, `unlock`): the icons, won in tournaments and events. UNLOCKS gives
-// them to accounts by number, "mp4_7a:7777+42,other:…" (by default the McLaren and the Renault to Julio and Dany); a creator gives or takes
+// them to accounts by number, "mp4_7a:7777+42,other:…" (by default the McLaren and the Renault to Julio and Dany, the Renault
+// to Dash #0003 too); a creator gives or takes
 // one with POST /account/unlock { id, item, give }, kept with the account (unlocks). The presence says which a player owns.
 const UNLOCKABLES = ['mp4_7a', 'r26'];
-const UNLOCKS = new Map((process.env.UNLOCKS ?? 'mp4_7a:7777+1,r26:7777+1').split(',').filter(Boolean)
+const UNLOCKS = new Map((process.env.UNLOCKS ?? 'mp4_7a:7777+1,r26:7777+1+3').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([item, ids]) => [item, new Set((ids || '').split('+').filter(Boolean).map(Number))]));
+// The name shown, imposed by number: "3:Dash" by default (fff, account "ffff"). The account's own name
+// cannot change (the game derives the password's keys from it); the presence answers with this one and the game renames
+// its profile to it, so the boards follow at the next record.
+const NICKNAMES = new Map((process.env.NICKNAMES ?? '3:Dash').split(',').filter(Boolean)
+  .map(pair => pair.split(':')).map(([id, name]) => [Number(id), String(name || '').trim().slice(0, 32)]).filter(([, name]) => name));
 const COUNTRY = /^[a-z]{2}$/i;
 // the frames a player can put around their car (apex-account.js, FRAMES there): the badges one of which it needs
 // (by kind: 'p1' for any P1 badge), or null for the colours anyone picks
@@ -441,7 +448,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       id: a.id, name: a.name, verified: verifiedOf(a.id),
       badges: (p.badges || []).filter(b => badgesOf(a).includes(b)),   // those picked, still owned
       frame: frameOf(a),
-      nickname: p.nickname || a.name, countryCode: p.countryCode || null, carStyle: p.carStyle || null,
+      nickname: NICKNAMES.get(a.id) || p.nickname || a.name, countryCode: p.countryCode || null, carStyle: p.carStyle || null,
       online, state: online ? (rooms.has(key) ? 'hosting' : room != null ? 'room' : presence.get(key).state) : 'offline',
       lastSeen: presence.get(key)?.time ?? null,
     };
@@ -459,7 +466,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       const count = (n, max = 1e6) => (Number.isSafeInteger(n) && n >= 0 && n < max ? n : null);
       const stats = p.stats && typeof p.stats === 'object' ? p.stats : {};
       const profile = {
-        nickname: String(p.nickname || '').trim().slice(0, 32) || null,
+        nickname: NICKNAMES.get(s.account.id) || String(p.nickname || '').trim().slice(0, 32) || null,
         countryCode: COUNTRY.test(p.countryCode || '') ? p.countryCode : null,
         carStyle: typeof p.carStyle === 'string' && p.carStyle.length <= 200 ? p.carStyle : null,
         tokenHash: HEX64.test(p.tokenHash || '') ? p.tokenHash : null,   // the player's id on the boards (public)
@@ -485,7 +492,8 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       }
     }
     const a = s.account;
-    return [200, { id: a.id, verified: verifiedOf(a.id), badges: badgesOf(a), unlocks: unlocksOf(a), requests: a.requests.length, online: keysOf(a.friends).filter(isOnline).length, recovery: a.recovery != null }];
+    return [200, { id: a.id, verified: verifiedOf(a.id), badges: badgesOf(a), unlocks: unlocksOf(a), requests: a.requests.length, online: keysOf(a.friends).filter(isOnline).length, recovery: a.recovery != null,
+      ...(NICKNAMES.has(a.id) ? { nickname: NICKNAMES.get(a.id) } : {}) }];
   }
 
   function getFriends(s) {

@@ -431,6 +431,8 @@
       }
       social = { requests: out.requests, online: out.online };
       checkGivenBadges(badges);
+      // a name the team imposes on this account (NICKNAMES of the server): the profile takes it, the boards follow
+      if (typeof out.nickname === 'string' && out.nickname.trim() && p && p.nickname !== out.nickname && window.GoofyGame) renameProfile(out.nickname);
     } catch (e) {
       if (e.status === 401 && account === acc) { account = null; cloud = null; saveAccount(); }
     }
