@@ -200,6 +200,11 @@ const patterns = {
     + paint(rect(212, 885, 600, 139), NAVY) + word('Telefolica', 512, 925, 0, 270, 44, { italic: true, colour: G })
     + paint(`<path d="M0 0h3v20h-3v-15l-3 2v-3z" transform="translate(512 108) scale(9 -2.6)" fill="${G}"/>`, NAVY)
     + word('MARELLE', 512, 128, 'nose', 56, 11, { colour: NAVY }),
+
+  // ---- the Laguna's (build_car.js, Body3), mythic
+  // Laguna GT Monaco GP: the real car's pearl white all over, locked like the icons' (patch_bundle.js, ICONS); its
+  // Monaco GP badge is on the body, on the grille
+  dash: '',
 };
 // ---- shapes (function declarations: hoisted, used above)
 function paint(svg, colour) { return svg.replace(/fill="#0f0"/g, `fill="${colour}"`); }

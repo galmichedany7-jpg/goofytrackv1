@@ -11,6 +11,9 @@
 
   // km/h at the shift point, gear by gear (7 gears, as the F1s since 2004; 1st about the hairpins' speed)
   const GEARS = [100, 140, 178, 214, 248, 282, 315];
+  // a body's own gearbox (build_car.js), by the body: the Laguna GT's six speeds, long, its diesel V6 changing up
+  // low in its revs, so each change drops them further
+  const BODY_GEARS = { 3: [62, 108, 158, 210, 262, 318] };
   const REVERSE = 60;           // km/h at the shift point in reverse
   const IDLE = 0.3;             // the revs at idle, against the shift point's
   const LAUNCH = 0.55;          // the revs held by the clutch, pulling away
@@ -27,13 +30,13 @@
   // A car's gearbox: { gear (0 neutral, -1 reverse), rpm (smoothed, 1 = shift point), shiftAt, cutUntil, blipUntil,
   // at (last step), soundAt (last step from the engine's sound), all in s }
   function box(car) {
-    if (car.apxGearbox == null) car.apxGearbox = { gear: 0, rpm: IDLE, shiftAt: -1, cutUntil: -1, blipUntil: -1, at: -1, soundAt: -1 };
+    if (car.apxGearbox == null) car.apxGearbox = { gear: 0, rpm: IDLE, shiftAt: -1, cutUntil: -1, blipUntil: -1, at: -1, soundAt: -1, gears: GEARS };
     return car.apxGearbox;
   }
 
   // the revs a gear gives at a speed (1 = its shift point)
-  function revs(gear, kmh) {
-    return kmh / (gear < 0 ? REVERSE : GEARS[gear - 1]);
+  function revs(g, gear, kmh) {
+    return kmh / (gear < 0 ? REVERSE : g.gears[gear - 1]);
   }
 
   // Moves a car's gearbox on to now. kmh: the car's speed; throttle: the engine pulling (the game's own "accelerating",
@@ -59,12 +62,12 @@
       }
     }
     if (g.gear > 0 && ground && now - g.shiftAt > SHIFT_GAP) {
-      const r = revs(g.gear, kmh);
-      if (g.gear < GEARS.length && (throttle ? r >= UPSHIFT : r >= 1.02)) {
+      const r = revs(g, g.gear, kmh);
+      if (g.gear < g.gears.length && (throttle ? r >= UPSHIFT : r >= 1.02)) {
         g.gear++;
         g.shiftAt = now;
         if (throttle) g.cutUntil = now + CUT;
-      } else if (g.gear > 1 && revs(g.gear - 1, kmh) < (braking ? DOWN_BRAKING : throttle ? DOWN_THROTTLE : DOWN_LIFTED)) {
+      } else if (g.gear > 1 && revs(g, g.gear - 1, kmh) < (braking ? DOWN_BRAKING : throttle ? DOWN_THROTTLE : DOWN_LIFTED)) {
         g.gear--;
         g.shiftAt = now;
         g.blipUntil = now + 0.09;
@@ -75,14 +78,14 @@
     let target;
     if (g.gear === 0) target = throttle ? 0.8 : IDLE;
     else {
-      target = revs(g.gear, kmh);
-      if (target > 1) target = g.gear === GEARS.length || g.gear < 0 ? 1 + OVERREV * (1 - Math.exp(-(target - 1) / OVERREV)) : 1;
+      target = revs(g, g.gear, kmh);
+      if (target > 1) target = g.gear === g.gears.length || g.gear < 0 ? 1 + OVERREV * (1 - Math.exp(-(target - 1) / OVERREV)) : 1;
       if (throttle && g.gear === 1 && running) target = Math.max(target, LAUNCH);
       if (!ground) target = throttle ? Math.min(1, Math.max(target, LAUNCH) * 1.15) : target * 0.6;
       target = Math.max(IDLE, target);
     }
     // the limiter bouncing at the shift point, when it cannot shift up
-    if (throttle && ground && target >= 0.995 && (g.gear === GEARS.length || g.gear < 0) && revs(g.gear, kmh) < 1.02) {
+    if (throttle && ground && target >= 0.995 && (g.gear === g.gears.length || g.gear < 0) && revs(g, g.gear, kmh) < 1.02) {
       target = 0.985 + 0.015 * Math.sign(Math.sin(now * 2 * Math.PI * 14));
     }
     if (now < g.cutUntil) target *= 0.97;
@@ -128,10 +131,12 @@
   window.ApexGearbox = {
     GEARS,
     // From the engine's sound (this = the car): the sound to play, or null for the game's own
-    // accelerating: the game's own; down: the brake key; ground; brakeLight
-    engine(car, accelerating, down, ground, brakeLight) {
+    // accelerating: the game's own; down: the brake key; ground; brakeLight; body: the car's (BODY_GEARS)
+    engine(car, accelerating, down, ground, brakeLight, body) {
       try {
         const g = box(car);
+        const gears = BODY_GEARS[body] ?? GEARS;
+        if (g.gears !== gears) { g.gears = gears; g.gear = Math.min(g.gear, gears.length); }
         g.soundAt = performance.now() / 1000;
         return step(g, {
           kmh: car.getSpeedKmh(),

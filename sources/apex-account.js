@@ -358,9 +358,21 @@
   }
 
   // shown: a new account's display name, given to the profile played before the save goes to the account
+  // the name an account's keys are derived from: the one it was made with, which a renamed account keeps
+  // (server/accounts.js, RENAMED_ACCOUNTS); a server older than 2.25 does not know the question: the name itself
+  async function keyNameOf(name) {
+    try {
+      const out = await call('POST', '/account/keyname', { name });
+      return typeof out.keyName === 'string' && out.keyName ? out.keyName : name;
+    } catch (e) {
+      if (e.status === 404) return name;
+      throw e;
+    }
+  }
+  const keyNameOfAccount = acc => acc.keyName || acc.name;
   async function logIn(name, password, create, shown = null) {
     name = name.trim();
-    const keys = await deriveKeys(name, password);
+    const keys = await deriveKeys(create ? name : await keyNameOf(name), password);
     const out = await call('POST', create ? '/account/register' : '/account/login', { name, auth: keys.auth });
     if (create && shown) renameProfile(shown);
     // the save's key: the password's own, or the one it wraps since the password changed
@@ -370,17 +382,18 @@
   // password; the account's other PCs are logged out
   async function recoverAccount(name, code, password) {
     name = name.trim();
-    const rk = await recoveryKeys(name, code);
+    const keyName = await keyNameOf(name);
+    const rk = await recoveryKeys(keyName, code);
     const { wrap } = await call('POST', '/account/recover', { name, recoveryAuth: rk.auth });
     const key = await unwrapKey(rk.key, wrap);
-    const keys = await deriveKeys(name, password);
+    const keys = await deriveKeys(keyName, password);
     const out = await call('POST', '/account/reset', { name, recoveryAuth: rk.auth, auth: keys.auth, wrap: await wrapKey(keys.key, key) });
     await enter(out, key, false);
   }
   async function enter(out, key, create) {
     const cloudEntries = create ? {} : await decrypt(out.blob, key);   // a wrong key fails here, before anything changes
     if (!create) await dropEmptyProfiles(cloudEntries);
-    account = { name: out.name, id: out.id, verified: out.verified, session: out.session, key, recovery: !!out.recovery };
+    account = { name: out.name, keyName: out.keyName || out.name, id: out.id, verified: out.verified, session: out.session, key, recovery: !!out.recovery };
     cloud = { version: out.version, entries: cloudEntries };
     saveAccount();
     booting = true;                // no "reload" notice: it reloads right after
@@ -428,6 +441,13 @@
       const unlocks = Array.isArray(out.unlocks) ? out.unlocks : [7777, 1].includes(out.id) ? ['mp4_7a', 'r26'] : [];
       if (acc.id !== out.id || acc.verified !== out.verified || JSON.stringify(acc.badges) !== JSON.stringify(badges) || acc.recovery !== recovery || JSON.stringify(acc.unlocks) !== JSON.stringify(unlocks)) {
         acc.id = out.id; acc.verified = out.verified; acc.badges = badges; acc.recovery = recovery; acc.unlocks = unlocks; saveAccount();
+      }
+      // the account renamed by the team (RENAMED_ACCOUNTS of the server): its new name, the old one kept for its keys
+      if (typeof out.name === 'string' && out.name && out.name !== acc.name) {
+        acc.keyName = typeof out.keyName === 'string' && out.keyName ? out.keyName : keyNameOfAccount(acc);
+        acc.name = out.name;
+        saveAccount();
+        refresh();
       }
       social = { requests: out.requests, online: out.online };
       checkGivenBadges(badges);
@@ -1598,7 +1618,7 @@
         status.className = 'state';
         status.textContent = tr('Création…', 'Making it…');
         try {
-          const code = newRecoveryCode(), acc = account, rk = await recoveryKeys(acc.name, code);
+          const code = newRecoveryCode(), acc = account, rk = await recoveryKeys(keyNameOfAccount(acc), code);
           await call('POST', '/account/recovery', { recoveryAuth: rk.auth, wrap: await wrapKey(rk.key, acc.key) }, acc.session);
           acc.recovery = true;
           saveAccount();
@@ -1618,7 +1638,7 @@
       if (problem) return f.fail(problem);
       f.busy(tr('Changement…', 'Changing…'));
       try {
-        const acc = account, now = await deriveKeys(acc.name, current.value), next = await deriveKeys(acc.name, password.value);
+        const acc = account, now = await deriveKeys(keyNameOfAccount(acc), current.value), next = await deriveKeys(keyNameOfAccount(acc), password.value);
         await call('POST', '/account/password', { auth: now.auth, newAuth: next.auth, wrap: await wrapKey(next.key, acc.key) }, acc.session);
         f.form.reset();
         f.submit.disabled = false;

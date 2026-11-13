@@ -65,6 +65,8 @@
     { fr: 'Champion',          en: 'Champion',          rarity: 'mythic' },
     { fr: 'McLaren MP4/7A 1992', en: 'McLaren MP4/7A 1992', rarity: 'icon', unlock: 'mp4_7a' },
     { fr: 'Renault R26 2006', en: 'Renault R26 2006', rarity: 'icon', unlock: 'r26' },
+    // the Laguna's (Body3): the real car's pearl white, locked (patch_bundle.js, ICONS)
+    { fr: 'Laguna GT Monaco GP', en: 'Laguna GT Monaco GP', rarity: 'mythic' },
   ];
   // by the game's model index (Wheel0..11, PolyTrack's own; the first three were the free ones)
   const RIMS = [
@@ -83,6 +85,8 @@
     // the mod's (build_car.js, Wheel12..)
     { fr: 'McLaren MP4/7A 1992', en: 'McLaren MP4/7A 1992', rarity: 'icon', unlock: 'mp4_7a' },
     { fr: 'Renault R26 2006', en: 'Renault R26 2006', rarity: 'icon', unlock: 'r26' },
+    // the Laguna GT Monaco GP's (Wheel14), with its body
+    { fr: 'Laguna GT Monaco GP', en: 'Laguna GT Monaco GP', rarity: 'mythic' },
   ];
   // by the game's model index (Exhaust0..7, PolyTrack's own; the first two were the free ones)
   const EXHAUSTS = [
@@ -116,6 +120,8 @@
     { fr: 'GoofyTrack F1',     en: 'GoofyTrack F1',     rarity: 'common' },
     { fr: 'McLaren MP4/7A 1992', en: 'McLaren MP4/7A 1992', rarity: 'icon', unlock: 'mp4_7a' },
     { fr: 'Renault R26 2006', en: 'Renault R26 2006', rarity: 'icon', unlock: 'r26' },
+    // Dash's car, a road coupé (build_car.js: the 2008 model fitted onto the F1's wheels and hitbox)
+    { fr: 'Laguna GT de Dash', en: 'Dash\'s Laguna GT', rarity: 'mythic' },
   ];
   const ITEMS = { pattern: PATTERNS, rims: RIMS, exhaust: EXHAUSTS, wing: WINGS, body: BODIES };
   const RANK = Object.keys(RARITIES);   // common first

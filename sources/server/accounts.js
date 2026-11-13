@@ -20,6 +20,7 @@
 //   POST /account/recovery  { recoveryAuth, wrap }           -> {}             a new recovery code (session)
 //   POST /account/recover   { name, recoveryAuth }           -> { wrap }       the code checked: its wrap
 //   POST /account/reset     { name, recoveryAuth, auth, wrap } -> as login     a new password; every PC logged out
+//   POST /account/keyname   { name }                          -> { keyName }   the name to derive the keys from (RENAMED_ACCOUNTS)
 //
 // Each account also has a public number (#0001, #0002... in the order they were made), by which players add
 // each other as friends. Friends see each other's profile (name, flag, car), whether they are playing, and
@@ -45,6 +46,12 @@
 // REMOVED_ACCOUNTS ("chloooo", the default) deletes accounts by name as the server starts, before the numbers move:
 // their file in the gist (its history keeps it), their sessions, and their number in the others' friends lists and
 // requests (Chloooo #0002, a second account of Chlo's, in 2.24.1).
+//
+// RENAMED_ACCOUNTS ("ffff:Dash", the default) renames accounts as the server starts: the account named before the colon
+// is then named after it, logs in and shows by that name (the old one still logs in). The game derives the password's
+// keys from the name the account was made with: the account keeps it (keyName), and the game asks for it before
+// deriving them, POST /account/keyname { name } -> { keyName } (the name itself for any other name, known or not).
+// Its file in the gist goes with its name (the old one deleted, its history keeps it).
 //
 // Badges, shown next to a player's name: 'creator' (CREATOR_IDS), 'vip' (VIP_IDS), 'p1:<trackId>', 'p2:…', 'p3:…' while the
 // player holds that place on a circuit of the mod (records.js), and the counted badges, 'km:<km>', 'h:<hours>' and 'kmh:<km/h>',
@@ -88,6 +95,8 @@ const ONLINE = 75 * 1000;               // since the last presence: the game sen
 const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:7777,shyn:1,chlo:2').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([name, id]) => [name.normalize('NFC').toLowerCase(), Number(id)]));
 const REMOVED_ACCOUNTS = new Set((process.env.REMOVED_ACCOUNTS ?? 'chloooo').split(',').filter(Boolean).map(name => name.normalize('NFC').toLowerCase()));
+const RENAMED_ACCOUNTS = new Map((process.env.RENAMED_ACCOUNTS ?? 'ffff:Dash').split(',').filter(Boolean)
+  .map(pair => pair.split(':')).map(([from, to]) => [from.normalize('NFC').toLowerCase(), String(to || '').trim()]).filter(([, to]) => to));
 const CREATOR_IDS = new Set((process.env.CREATOR_IDS ?? '7777,1').split(',').filter(Boolean).map(Number));
 // the VIP diamond: friends and the first players, by number (#0003 is 3); "2,3" by default: Chlo and Dash
 const VIP_IDS = new Set((process.env.VIP_IDS ?? '2,3').split(',').filter(Boolean).map(Number));
@@ -98,9 +107,8 @@ const VIP_IDS = new Set((process.env.VIP_IDS ?? '2,3').split(',').filter(Boolean
 const UNLOCKABLES = ['mp4_7a', 'r26'];
 const UNLOCKS = new Map((process.env.UNLOCKS ?? 'mp4_7a:7777+1,r26:7777+1+3').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([item, ids]) => [item, new Set((ids || '').split('+').filter(Boolean).map(Number))]));
-// The name shown, imposed by number: "3:Dash" by default (fff, account "ffff"). The account's own name
-// cannot change (the game derives the password's keys from it); the presence answers with this one and the game renames
-// its profile to it, so the boards follow at the next record.
+// The name shown, imposed by number: "3:Dash" by default (fff, account "ffff", renamed Dash in 2.25: RENAMED_ACCOUNTS).
+// The presence answers with this one and the game renames its profile to it, so the boards follow at the next record.
 const NICKNAMES = new Map((process.env.NICKNAMES ?? '3:Dash').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([id, name]) => [Number(id), String(name || '').trim().slice(0, 32)]).filter(([, name]) => name));
 const COUNTRY = /^[a-z]{2}$/i;
@@ -200,6 +208,21 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       }
       log(`accounts: ${a.name} #${a.id} removed`);
     }
+    // accounts renamed (RENAMED_ACCOUNTS): under their new name, keeping the one their keys come from
+    for (const [from, to] of RENAMED_ACCOUNTS) {
+      const a = accounts.get(from), key = keyOf(to);
+      if (a == null || !NAME.test(to) || accounts.has(key)) continue;
+      a.keyName ??= a.name;
+      const old = a.name;
+      a.name = to;
+      accounts.delete(from);
+      accounts.set(key, a);
+      if (byId.get(a.id) === from) byId.set(a.id, key);
+      for (const h of a.sessions) bySession.set(h, key);
+      changed(from);       // saveNow deletes its old file
+      changed(key);
+      log(`accounts: ${old} #${a.id} renamed ${to}`);
+    }
     // reserved numbers changed since the accounts were made: they move, and every list that holds the old one
     for (const [key, id] of RESERVED_IDS) {
       const a = accounts.get(key);
@@ -291,7 +314,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
     if (name.toLowerCase() === 'anonymous') return [400, { error: 'anonymous' }];   // the game's name for a new profile (2.24)
     if (registrations.over(address)) return [429, { error: 'too many accounts' }];
     const key = keyOf(name);
-    if (accounts.has(key) || REMOVED_ACCOUNTS.has(key)) return [409, { error: 'name taken' }];   // a removed one would go at the next start
+    if (accounts.has(key) || REMOVED_ACCOUNTS.has(key) || RENAMED_ACCOUNTS.has(key)) return [409, { error: 'name taken' }];   // a removed one would go at the next start
     if (accounts.size >= MAX_ACCOUNTS) return [507, { error: 'too many accounts' }];
     registrations.hit(address);
     const salt = crypto.randomBytes(16).toString('hex'), hash = await scrypt(body.auth, salt);
@@ -306,7 +329,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   async function login(body) {
     const name = String(body.name || '').trim();
     if (!NAME.test(name) || !HEX64.test(body.auth || '')) return [400, { error: 'bad request' }];
-    const key = keyOf(name), account = accounts.get(key);
+    const key = keyFor(name), account = accounts.get(key);
     if (failedLogins.over(key)) return [429, { error: 'too many attempts' }];
     // same answer, and about the same time, for an unknown name and a wrong password
     const hash = await scrypt(body.auth, account ? account.salt : '0'.repeat(32));
@@ -316,9 +339,22 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
     }
     return loggedIn(key);
   }
+  // the account a name logs into: its own, or the one it was renamed (RENAMED_ACCOUNTS)
+  function keyFor(name) {
+    const key = keyOf(name);
+    if (accounts.has(key) || !RENAMED_ACCOUNTS.has(key)) return key;
+    return keyOf(RENAMED_ACCOUNTS.get(key));
+  }
+  // the name an account's keys are derived from (unknown names: themselves, as for any account never renamed)
+  function keyName(body) {
+    const name = String(body.name || '').trim();
+    if (!NAME.test(name)) return [400, { error: 'bad request' }];
+    const account = accounts.get(keyFor(name));
+    return [200, { keyName: account?.keyName ?? name }];
+  }
   const loggedIn = key => {
     const account = accounts.get(key);
-    return [200, { name: account.name, id: account.id, verified: verifiedOf(account.id), session: newSession(key), version: account.version, blob: account.blob,
+    return [200, { name: account.name, keyName: account.keyName ?? account.name, id: account.id, verified: verifiedOf(account.id), session: newSession(key), version: account.version, blob: account.blob,
       wrap: account.wrap ?? null, recovery: account.recovery != null }];
   };
 
@@ -353,7 +389,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   async function recoveryOf(body) {
     const name = String(body.name || '').trim();
     if (!NAME.test(name) || !HEX64.test(body.recoveryAuth || '')) return { error: [400, { error: 'bad request' }] };
-    const key = keyOf(name), account = accounts.get(key), r = account?.recovery;
+    const key = keyFor(name), account = accounts.get(key), r = account?.recovery;
     if (failedRecoveries.over(key)) return { error: [429, { error: 'too many attempts' }] };
     const ok = await authMatches(body.recoveryAuth, r ? r.salt : '0'.repeat(32), r ? r.hash : '0'.repeat(64));
     if (!ok || r == null) { failedRecoveries.hit(key); return { error: [403, { error: 'wrong name or code' }] }; }
@@ -492,7 +528,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       }
     }
     const a = s.account;
-    return [200, { id: a.id, verified: verifiedOf(a.id), badges: badgesOf(a), unlocks: unlocksOf(a), requests: a.requests.length, online: keysOf(a.friends).filter(isOnline).length, recovery: a.recovery != null,
+    return [200, { id: a.id, name: a.name, keyName: a.keyName ?? a.name, verified: verifiedOf(a.id), badges: badgesOf(a), unlocks: unlocksOf(a), requests: a.requests.length, online: keysOf(a.friends).filter(isOnline).length, recovery: a.recovery != null,
       ...(NICKNAMES.has(a.id) ? { nickname: NICKNAMES.get(a.id) } : {}) }];
   }
 
@@ -610,10 +646,11 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
     if (!ready) { reply(res, 503, { error: 'accounts not loaded yet' }); return true; }
     const route = req.method + ' ' + url.pathname;
     (async () => {
-      if (['POST /account/register', 'POST /account/login', 'POST /account/recover', 'POST /account/reset'].includes(route)) {
+      if (['POST /account/register', 'POST /account/login', 'POST /account/recover', 'POST /account/reset', 'POST /account/keyname'].includes(route)) {
         const body = await readJson(req);
         if (body == null || typeof body !== 'object') return [400, { error: 'bad request' }];
         const address = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+        if (route === 'POST /account/keyname') return keyName(body);
         if (route === 'POST /account/recover') return recover(body);
         if (route === 'POST /account/reset') return reset(body);
         return route === 'POST /account/register' ? register(body, address) : login(body);

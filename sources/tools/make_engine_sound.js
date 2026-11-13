@@ -18,6 +18,14 @@
 // over half the sound, at its strongest from 400 to 800 Hz and losing about 6 dB an octave above. Darker than the
 // V12, a hum with a growl rather than a scream.
 //
+// laguna, the Laguna GT's V6 3.0 dCi 235 (Renault-Nissan V9X, a 60-degree V6 diesel, twin turbos): no recording
+// measured here, its spectrum built from what such an engine is. Three firings a turn, the loudest line (the 6th of
+// lines every half order of the revs); at a standstill (x0.7) it idles at about 750 rpm, flat out (x2) it turns at
+// 4 200, where the diesel changes up. The two banks are not quite alike, so the half orders and the 1.5th order
+// (the 3rd line) hum under it; above, the lines fall away about 14 dB an octave, the firing's own multiples standing
+// out. Over them the diesel's clatter: a breath of noise from about 350 Hz to 2.5 kHz, in a short knock at each
+// firing (CLATTER) rather than a steady hiss, and the turbos' whistle, faint, high above the rest (WHISTLE).
+//
 //   node tools/make_engine_sound.js [name...]   (all of them by default)
 const fs = require('fs');
 const path = require('path');
@@ -52,9 +60,26 @@ const ENGINES = {
       -31, -32, -32, -34, -35, -36, -36, -35, -37, -37, -37, -37, -38, -39, -39, -39, -41, -41, -42, -43, -43, -44, -43, -43],
     BREATH: [0.09, 0.17, 0.012],
   },
+  laguna: {
+    UNIT: 17.5,     // Hz between the lines (half orders): the firing at 105 Hz, 37 Hz at idle and 210 Hz flat out
+    FIRE: 6,
+    NOISE: 0.85,    // the clatter, nearly as loud as the lines
+    SEED: 235,
+    SHAKE: 0.3,
+    KNEE: 0.75,
+    PROFILE: Array.from({ length: 110 }, (_, i) => {
+      const n = i + 1;
+      const base = [-20, -13, -7, -12, -15, 0, -14, -11, -9, -14, -16, -5][n - 1] ?? -8 - 14 * Math.log2(n / 12);
+      return base + (n > 12 && n % 6 === 0 ? 6 : 0) + (n > 12 ? 2 * Math.sin(n * 2.3) : 0);
+    }),
+    BREATH: [0.35, 0.5, 0.05],
+    CLATTER: 6,       // the knock: the breath at each firing, sharpened to this power (1: a gentle swell, as the F1s)
+    CLATTER_FLOOR: 0.15,
+    WHISTLE: [2600, 0.035],   // the turbos: Hz (5.2 kHz flat out), and its share of the sound
+  },
 };
 
-function make(name, { UNIT, FIRE, NOISE, SEED, SHAKE, KNEE, PROFILE, BREATH }) {
+function make(name, { UNIT, FIRE, NOISE, SEED, SHAKE, KNEE, PROFILE, BREATH, CLATTER = 1, CLATTER_FLOOR = 0.4, WHISTLE = null }) {
   const OUT = path.join(__dirname, '..', 'audio', `engine_${name}.wav`);
   // a seeded random number generator (mulberry32): the same sound on every run
   let seed = SEED;
@@ -88,11 +113,16 @@ function make(name, { UNIT, FIRE, NOISE, SEED, SHAKE, KNEE, PROFILE, BREATH }) {
     PROFILE.forEach((db, n) => { v += 10 ** (db / 20) * Math.sin(2 * Math.PI * (n + 1) * UNIT * w + phases[n]); });
     const f = FIRE * UNIT * w, firing = 0.5 - 0.5 * Math.cos(2 * Math.PI * f), s = strengthAt(f);
     lines[i] = v * (0.85 + 0.15 * s);
-    breath[i] = noise[i] * s * (0.4 + 0.6 * firing);
+    breath[i] = noise[i] * s * (CLATTER_FLOOR + (1 - CLATTER_FLOOR) * firing ** CLATTER);
   }
   const rmsOf = x => Math.sqrt(x.reduce((sum, v) => sum + v * v, 0) / x.length);
   const ln = rmsOf(lines), br = rmsOf(breath);
   const out = lines.map((v, i) => v / ln * Math.sqrt(1 - NOISE ** 2 / (1 + NOISE ** 2)) + breath[i] / br * NOISE / Math.sqrt(1 + NOISE ** 2));
+  // the turbos' whistle, wavering a little (whole cycles in the loop)
+  if (WHISTLE) for (let i = 0; i < N; i++) {
+    const t = i / RATE;
+    out[i] += WHISTLE[1] * Math.SQRT2 * Math.sin(2 * Math.PI * WHISTLE[0] * t + 3 * Math.sin(2 * Math.PI * 2 * t));
+  }
   // to the loudness wanted, the rare peaks above KNEE rounded off under 1 (a soft limiter: the rest stays untouched)
   const room = 0.99 - KNEE;
   const limit = v => (Math.abs(v) < KNEE ? v : Math.sign(v) * (KNEE + room * Math.tanh((Math.abs(v) - KNEE) / room)));

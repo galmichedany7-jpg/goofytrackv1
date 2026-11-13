@@ -15,6 +15,20 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.25 : la Laguna de Dash
+
+**Nouveautés**
+- **Nouvelle carrosserie mythique : Laguna GT de Dash**, la voiture de Dash. Un vrai coupé de route (Renault Laguna Coupé GT phase 2, édition Monaco GP) au milieu des F1, dans l'onglet Carrosserie du garage. Le badge **monaco gP** est sur la calandre, à côté de la plaque, et les étriers de frein sont rouges.
+- Ce n'est qu'un design : la voiture garde les roues, la physique et la hitbox des autres carrosseries, rien n'est avantagé. Les porte-à-faux ont été raccourcis pour rester au plus près de la hitbox.
+- Elle prend **tous les motifs et toutes les peintures**, toutes les jantes, et **tous les ailerons** : l'aileron arrière se pose sur le coffre, l'aileron avant devient une lame sous le pare-chocs. Ses feux arrière s'allument au freinage.
+- **Nouveau motif mythique : Laguna GT Monaco GP**, le blanc nacré de la vraie voiture, qui ne se change pas (comme les couleurs d'une Icône). Il va aussi sur les autres carrosseries.
+- **Nouvelles jantes mythiques : Laguna GT Monaco GP**, les jantes de la Monaco GP : dix branches par paires, cinq écrous, le losange au centre. En noir dans la couleur des jantes, comme sur la voiture de Dash.
+- **Son moteur de la Laguna** : le V6 3.0 dCi 235 de la vraie voiture, un V6 diesel. Un ralenti grave vers 750 tr/min, le claquement du diesel à chaque explosion, le sifflement des turbos, et une **boîte 6 rapports** à elle, longue, qui passe les vitesses bas dans les tours comme un diesel. Les F1 gardent leur son et leurs 7 rapports.
+- Toute la panoplie de la Laguna (carrosserie, motif, jantes) est offerte à tous les joueurs, sans rien à débloquer.
+- **Le compte de Dash s'appelle maintenant « Dash »** (au lieu de « ffff ») : c'est son identifiant de connexion et celui affiché sous son nom. Il peut se connecter avec « Dash » ou avec l'ancien nom, avec le même mot de passe, sa sauvegarde et son code de secours ne changent pas. L'équipe peut renommer d'autres comptes avec la variable `RENAMED_ACCOUNTS` du serveur (par exemple `ffff:Dash`).
+
+**Mise à jour** : ouvrez GoofyTrack Launcher et cliquez sur Mettre à jour. Tous les joueurs d'une room doivent avoir la même version. Le serveur doit être redéployé (Render) pour le renommage du compte de Dash ; pour se connecter en tapant « Dash », il faut la version 2.25 du jeu (avant, il faut taper l'ancien nom).
+
 ## V2.24.3 : bienvenue à Dash
 
 **Nouveautés**

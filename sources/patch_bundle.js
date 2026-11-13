@@ -38,26 +38,30 @@ const circuitParts = c => [...(OPEN_PITS[c.model] ? [['RoadOpen', OPEN_PITS[c.mo
 // The mod's car patterns (build_patterns.js), numbered 16 on after the game's: never reorder them, a car
 // saved with one keeps its number (apex-rarity.js names them in this order)
 const MOD_PATTERNS = ['monaco', 'bignumber', 'diagonal', 'wingtips', 'dotted', 'camo', 'lightning', 'flames', 'tiger', 'barcode', 'carbon',
-  'spa', 'strasbourg', 'dijon', 'montbeliard', 'coaster', 'killer_loop', 'goofy', 'champion', 'mp4_7a', 'r26'];
+  'spa', 'strasbourg', 'dijon', 'montbeliard', 'coaster', 'killer_loop', 'goofy', 'champion', 'mp4_7a', 'r26', 'dash'];
 // The mod's wings (build_car.js draws Wing0.., apex-rarity.js names them in this order)
 const WING_COUNT = 10;
 // The mod's bodies (build_car.js: the car's own Body, then Body1..), and its rims and exhausts after the game's
 // 12 and 8 (Wheel12.., Exhaust8..)
-const BODY_COUNT = 3, MOD_RIMS = 2, MOD_EXHAUSTS = 2;
+const BODY_COUNT = 4, MOD_RIMS = 3, MOD_EXHAUSTS = 2;
+// The Laguna Coupé (Body3) wears its wings as build_car.js fits them onto it (WingNL: the rear one up on its boot
+// lid, the brake light its tail lights)
+const LAGUNA_BODY = 3;
 // The rims whose tyres are lettered: on the side the game mirrors, turned round instead (build_car.js)
 const TURNED_RIMS = [12, 13];
 // The icons' patterns (apex-rarity.js): real cars' liveries, which keep their own colours. The car style gives
 // them in place of the primary and secondary colours (those picked stay for the other patterns), and their wings
 // take the pattern. [primary, secondary] by pattern, then the colours of its two inks when they are not black and
 // gold (build_patterns.js: blue and black there).
-const ICONS = { mp4_7a: [0xf3f3ef, 0xf2361e], r26: [0x1677cc, 0xf7c600, 0x0e1c48, 0xf2f4f7] };
+// (dash, the Laguna GT Monaco GP's, is not an icon but keeps its colours as they do: the pearl white of the real car)
+const ICONS = { mp4_7a: [0xf3f3ef, 0xf2361e], r26: [0x1677cc, 0xf7c600, 0x0e1c48, 0xf2f4f7], dash: [0xefefea, 0xefefea] };
 const ICON_COLOURS = JSON.stringify(Object.fromEntries(Object.entries(ICONS).map(([name, colours]) => [16 + MOD_PATTERNS.indexOf(name), colours.slice(0, 2)])));
 // The inks as the shader takes them (linear, as three.js turns the picked colours): by pattern, and the default
 const linear = hex => [hex >> 16 & 255, hex >> 8 & 255, hex & 255].map(c => c / 255).map(c => +(c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4).toFixed(4));
 const ICON_INKS = JSON.stringify(Object.fromEntries(Object.entries(ICONS).filter(([, colours]) => colours.length > 2).map(([name, colours]) => [16 + MOD_PATTERNS.indexOf(name), colours.slice(2).map(linear)])));
 const INKS = JSON.stringify([[0.012, 0.012, 0.012], [0.85, 0.55, 0.02]]);
 // The engine's sound by body (build_car.js), in audio/ (tools/make_engine_sound.js); the others have the game's
-const ENGINE_SOUNDS = { 1: 'engine_mp4_7a', 2: 'engine_r26' };
+const ENGINE_SOUNDS = { 1: 'engine_mp4_7a', 2: 'engine_r26', 3: 'engine_laguna' };
 // The lettering of the tyres (build_car.js, TireText), from the rims' colour: on dark rims gold, or white on the
 // R26's (Wheel13); black on light ones
 const LETTERING = (hex, rims) => '(((' + hex + '>>16&255)*.299+(' + hex + '>>8&255)*.587+(255&' + hex + ')*.114)<150?13==' + rims + '?15263976:15776808:1118481)';
@@ -975,8 +979,8 @@ const patches = [
   {
     name: 'car: loads the wings',
     find: 'B.models={chassis:r(i("Body",!0)),suspension:r(i("Suspension",!0)),rims:a,exhausts:s,',
-    replace: 'const W=new Map;for(let e=0;e<w.A.wings.length;e++)W.set(e,r(i(w.A.wings[e].model,!0)));const Bd=new Map;for(let e=0;e<w.A.bodies.length;e++)Bd.set(e,r(i(w.A.bodies[e].model,!0)));'
-      + 'B.models={chassis:r(i("Body",!0)),suspension:r(i("Suspension",!0)),rims:a,exhausts:s,wings:W,bodies:Bd,',
+    replace: 'const W=new Map,WL=new Map;for(let e=0;e<w.A.wings.length;e++)W.set(e,r(i(w.A.wings[e].model,!0))),WL.set(e,r(i(w.A.wings[e].model+"L",!0)));const Bd=new Map;for(let e=0;e<w.A.bodies.length;e++)Bd.set(e,r(i(w.A.bodies[e].model,!0)));'
+      + 'B.models={chassis:r(i("Body",!0)),suspension:r(i("Suspension",!0)),rims:a,exhausts:s,wings:W,wingsL:WL,bodies:Bd,',
   },
   {
     // on the chassis like the exhaust, after it: the wing's brake light is the one the game lights. The body is
@@ -985,14 +989,14 @@ const patches = [
     find: '(0,l.gn)(this,ye,"f").add((0,l.gn)(this,we,"f"));for(const e of(0,l.gn)(this,xe,"f"))(0,l.gn)(this,me,"f").add(e);',
     replace: '(0,l.gn)(this,ye,"f").add((0,l.gn)(this,we,"f")),this.apxWingMix={value:1},'
       + 'this.apxInk=[{value:new c.Pq0},{value:new c.Pq0}],this.apxSetInks=e=>{const t=' + ICON_INKS + '[e]??' + INKS + ';this.apxInk[0].value.set(...t[0]),this.apxInk[1].value.set(...t[1])},this.apxSetInks((0,l.gn)(this,Me,"f").pattern),'
-      + 'this.apxWing=B.models.wings.get((0,l.gn)(this,Me,"f").wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing),'
+      + 'this.apxWingOf=e=>(' + LAGUNA_BODY + '==e.body?B.models.wingsL:B.models.wings).get(e.wing).clone(),this.apxWing=this.apxWingOf((0,l.gn)(this,Me,"f")),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing),'
       + 'this.apxSetBody=e=>{const t=B.models.bodies.get(e).clone();(0,l.gn)(this,D,"m",We).call(this,t);const n=(0,l.gn)(this,ye,"f");(0,l.gn)(this,ge,"f").removeMaterial(n.material),n.geometry=t.geometry,n.material=t.material},'
       + '0!=(0,l.gn)(this,Me,"f").body&&this.apxSetBody((0,l.gn)(this,Me,"f").body);for(const e of(0,l.gn)(this,xe,"f"))(0,l.gn)(this,me,"f").add(e);',
   },
   {
     name: 'car: changes its wing and paints it',
     find: '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):',
-    replace: 'e.wing!=(0,l.gn)(this,Me,"f").wing&&((0,l.gn)(this,ye,"f").remove(this.apxWing),(0,l.gn)(this,ge,"f").removeMaterial(this.apxWing.material),this.apxWing=B.models.wings.get(e.wing).clone(),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing)),'
+    replace: '(e.wing!=(0,l.gn)(this,Me,"f").wing||(' + LAGUNA_BODY + '==e.body)!=(' + LAGUNA_BODY + '==(0,l.gn)(this,Me,"f").body))&&((0,l.gn)(this,ye,"f").remove(this.apxWing),(0,l.gn)(this,ge,"f").removeMaterial(this.apxWing.material),this.apxWing=this.apxWingOf(e),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing)),'
       + 'e.body!=(0,l.gn)(this,Me,"f").body&&(this.apxSetBody(e.body),null!=(0,l.gn)(this,O,"f")&&((0,l.gn)(this,O,"f").source.stop(),(0,l.GG)(this,O,null,"f"))),this.apxWingMix.value=null==e.wingHex||e.constructor.isIcon(e.pattern)?1:0,this.apxSetInks(e.pattern),'
       + '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):"Wing"==t.name?t.color.set(e.wingColor):',
   },
@@ -1038,7 +1042,7 @@ const patches = [
     // the pitch and loudness from the gearbox's revs rather than from the wheels' speed; sound only, no physics
     name: 'the engine\'s sound goes through the gears',
     find: 'let s;s=n?a?t:Math.max(.7,t/2):a?Math.max(.7,1.15*t):Math.max(.7,t/2),(0,l.gn)(this,O,"f").source.playbackRate.setTargetAtTime(s,0,.05),(0,l.gn)(this,O,"f").gain.gain.setTargetAtTime(Math.min(.285,s/14),0,.05)',
-    replace: 'const apxG=window.ApexGearbox&&window.ApexGearbox.engine(this,a,r,n,(0,l.gn)(this,te,"f").brakeLightEnabled);let s;if(apxG)(0,l.gn)(this,O,"f").source.playbackRate.setTargetAtTime(apxG.pitch,0,.015),(0,l.gn)(this,O,"f").gain.gain.setTargetAtTime(apxG.gain,0,apxG.cutting?.008:.03);else '
+    replace: 'const apxG=window.ApexGearbox&&window.ApexGearbox.engine(this,a,r,n,(0,l.gn)(this,te,"f").brakeLightEnabled,(0,l.gn)(this,Me,"f").body);let s;if(apxG)(0,l.gn)(this,O,"f").source.playbackRate.setTargetAtTime(apxG.pitch,0,.015),(0,l.gn)(this,O,"f").gain.gain.setTargetAtTime(apxG.gain,0,apxG.cutting?.008:.03);else '
       + 's=n?a?t:Math.max(.7,t/2):a?Math.max(.7,1.15*t):Math.max(.7,t/2),(0,l.gn)(this,O,"f").source.playbackRate.setTargetAtTime(s,0,.05),(0,l.gn)(this,O,"f").gain.gain.setTargetAtTime(Math.min(.285,s/14),0,.05)',
   },
   {

@@ -17,6 +17,7 @@ const OUT = process.argv[2] || path.join(APP, 'models', 'car.glb');
 const GROUND = -0.738;          // road surface with suspension at rest
 const FRONT_AXLE_Z = 1.3478, REAR_AXLE_Z = -1.52686;
 const MORPH_REST = 0.108;       // suspension morph offset at rest (influence 0.216 * 0.5)
+const TYRE_RADIUS = 0.331;      // the game's tyre (Wheel0)
 
 // One Part per material
 const main = new Part(), black = new Part(), frame = new Part(), helmet = new Part(), visor = new Part();
@@ -358,6 +359,84 @@ const WINGS = [
   });
 }
 
+// ================================================================ Laguna Coupé: the model, fitted onto the chassis
+// models/laguna.bin (tools/make_laguna.js) holds the model's groups in its own space: x from the centreline, y up
+// from the ground, z back from the front bumper, in the model's unit. Fitted so that its wheel arches sit on the
+// game's wheels (whose places the physics fix): its axles onto FRONT_AXLE_Z and REAR_AXLE_Z, its ground onto
+// GROUND, as wide as the rear tyres (0.893 out) need. The game's wheelbase is longer than the car's at that size,
+// so its overhangs are shortened, more and more towards the bumpers, to end about where the F1 does (the hitbox is
+// the same for every body: the collision shape and the rectangles of apex-collide.js do not change).
+const LAGUNA = (() => {
+  const buf = fs.readFileSync(path.join(__dirname, 'models', 'laguna.bin'));
+  if (buf.toString('ascii', 0, 4) !== 'LGN1') throw new Error('models/laguna.bin: not a Laguna model');
+  const groups = {};
+  let o = 8;
+  for (let g = 0, n = buf.readUInt32LE(4); g < n; g++) {
+    const name = buf.toString('ascii', o, o + 8).trim(), nv = buf.readUInt32LE(o + 8), ni = buf.readUInt32LE(o + 12);
+    o += 16;
+    const pos = Array.from({ length: nv * 3 }, (_, i) => buf.readInt16LE(o + i * 2) / 20000);
+    o += nv * 6;
+    const idx = Array.from({ length: ni }, (_, i) => buf.readUInt16LE(o + i * 2));
+    o += ni * 2;
+    groups[name] = { pos, idx };
+  }
+  return groups;
+})();
+const LAGUNA_FIT = {
+  frontAxle: 0.305, rearAxle: 1.19, length: 1.482,   // in the model: its axles and its rear bumper (z)
+  wheelY: 0.105,                                     // its wheels' centre (radius) above the ground
+  x: 3.05,                                           // across: 0.297 at the rear arches, out to 0.906
+  nose: 2.17, tail: -2.20,                           // its bumpers on the chassis
+  // lowered above the wheel arches, for a sportier stance (the arches keep their size round the tyres): from belt
+  // (in the model) up, every height is cut by chop, eased in over ease
+  belt: 0.19, ease: 0.08, chop: 0.2,
+};
+// a model point onto the chassis: z through the wheelbase as it is, the overhangs shortened along a parabola
+// leaving the axle at the wheelbase's slope (so the arches keep their round)
+function fitLaguna([x, y, z]) {
+  const F = LAGUNA_FIT, k = (FRONT_AXLE_Z - REAR_AXLE_Z) / (F.rearAxle - F.frontAxle);
+  const over = (d, D, T) => k * d + (T - k * D) / (D * D) * d * d;
+  let Z;
+  if (z < F.frontAxle) Z = FRONT_AXLE_Z + over(F.frontAxle - z, F.frontAxle, F.nose - FRONT_AXLE_Z);
+  else if (z > F.rearAxle) Z = REAR_AXLE_Z - over(z - F.rearAxle, F.length - F.rearAxle, REAR_AXLE_Z - F.tail);
+  else Z = FRONT_AXLE_Z - (z - F.frontAxle) * k;
+  // facing the other way from the model (its front towards -z): turned round, not mirrored
+  const a = F.belt, b = F.belt + F.ease;
+  const Y = y < a ? y : y < b ? y - F.chop * (y - a) ** 2 / (2 * F.ease) : y - F.chop * (F.ease / 2 + y - b);
+  return [-x * F.x, GROUND + Y * TYRE_RADIUS / F.wheelY, Z];
+}
+// a group of the model added to a part, fitted
+function addFitted(part, { pos, idx }) {
+  const base = part.count;
+  for (let i = 0; i < pos.length; i += 3) part.v(...fitLaguna([pos[i], pos[i + 1], pos[i + 2]]));
+  for (let i = 0; i < idx.length; i += 3) part.tri(base + idx[i], base + idx[i + 1], base + idx[i + 2]);
+}
+const norm3 = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
+// The Monaco GP badge's lettering: rounded, square-cut lower case, as on the real badge. Each glyph: its width and
+// its strokes, in units of its height (the descender of the g below 0)
+const BADGE_GLYPHS = {
+  m: { w: 0.78, lines: [[[0, 0], [0, 1], [0.66, 1], [0.78, 0.86], [0.78, 0]], [[0.39, 1], [0.39, 0]]] },
+  o: { w: 0.62, lines: [[[0.12, 0], [0.5, 0], [0.62, 0.14], [0.62, 0.86], [0.5, 1], [0.12, 1], [0, 0.86], [0, 0.14], [0.12, 0]]] },
+  n: { w: 0.62, lines: [[[0, 0], [0, 1], [0.5, 1], [0.62, 0.86], [0.62, 0]]] },
+  a: { w: 0.62, lines: [[[0.04, 1], [0.5, 1], [0.62, 0.86], [0.62, 0]], [[0.62, 0], [0.12, 0], [0, 0.14], [0, 0.4], [0.12, 0.52], [0.62, 0.52]]] },
+  c: { w: 0.6, lines: [[[0.6, 1], [0.12, 1], [0, 0.86], [0, 0.14], [0.12, 0], [0.6, 0]]] },
+  g: { w: 0.62, lines: [[[0.62, 0.14], [0.5, 0], [0.12, 0], [0, 0.14], [0, 0.86], [0.12, 1], [0.62, 1], [0.62, -0.22], [0.5, -0.36], [0.04, -0.36]]] },
+  P: { w: 0.62, lines: [[[0, -0.36], [0, 1], [0.5, 1], [0.62, 0.86], [0.62, 0.48], [0.5, 0.34], [0, 0.34]]] },
+};
+// a glyph's strokes as flat bars half h wide (in glyph units), place(u, v) giving the point of the glyph's (u, v)
+function strokeGlyph(part, lines, place, h) {
+  for (const line of lines) for (let k = 0; k < line.length - 1; k++) {
+    const [u1, v1] = line[k], [u2, v2] = line[k + 1], l = Math.hypot(u2 - u1, v2 - v1);
+    const du = (u2 - u1) / l * h, dv = (v2 - v1) / l * h;
+    const a = part.v(...place(u1 - du + dv, v1 - dv - du)), b = part.v(...place(u2 + du + dv, v2 + dv - du));
+    const c = part.v(...place(u2 + du - dv, v2 + dv + du)), d = part.v(...place(u1 - du - dv, v1 - dv + du));
+    part.quad(a, b, c, d);
+  }
+}
+// The wings on the Laguna (WingNL): the same, the rear one lifted onto the boot lid and set back over its end; the
+// front one stays under the bumper, a splitter. Their brake light is the Laguna's tail lights.
+const LAGUNA_WING = { lift: 0.335, back: 0.12 };
+
 // ================================================================ Icon bodies (Body1..)
 // The garage's Body tab swaps the chassis for one of these (patch_bundle.js): Body1.. after the car's own Body,
 // never reordered (the index is saved in the car style; apex-rarity.js names them). Same paint UVs and the same
@@ -503,9 +582,45 @@ const BODIES = [
     }
     return p;
   },
+  // 3 Laguna Coupé GT Monaco GP (Dash's car, a road coupé): the 3D model of the 2008 Renault Laguna Coupé
+  // (models/laguna.bin, made by tools/make_laguna.js), fitted onto the chassis below (fitLaguna). Its paint takes
+  // every pattern; its windows are the visor's glass, its trim black, metal or chrome; its tail lights come with the
+  // wings (WingNL below), as the game lights the brake light of the wing only
+  () => {
+    const p = { main: new Part(), black: new Part(), frame: new Part(), helmet: new Part(), visor: new Part(), chrome: new Part(), lamp: new Part(),
+      badge: new Part(), red: new Part(), caliper: new Part() };
+    const into = { paint: p.main, black: p.black, metal: p.frame, under: p.frame, chrome: p.chrome, light: p.chrome, glass: p.visor, head: p.lamp };
+    for (const [name, g] of Object.entries(LAGUNA)) if (into[name]) addFitted(into[name], g);
+    // the Monaco GP badge on the lower grille, left of the number plate seen from the front (+x): a chrome-edged
+    // silver plate, monaco in red and gP in dark grey. The grille's front runs from z 2.10 (x 0.3) to 2.05 (x 0.5).
+    {
+      const c = [0.40, -0.392, 2.087], t = norm3([1, 0, -0.25]), up = [0, 1, 0], n = norm3([0.25, 0, 1]);
+      const at = (u, v, w) => [0, 1, 2].map(k => c[k] + t[k] * u + up[k] * v + n[k] * w);
+      const quad = (part, u0, v0, u1, v1, w) => part.quad(part.v(...at(u0, v0, w)), part.v(...at(u1, v0, w)), part.v(...at(u1, v1, w)), part.v(...at(u0, v1, w)));
+      quad(p.chrome, -0.092, -0.027, 0.092, 0.027, 0.006);
+      quad(p.badge, -0.086, -0.021, 0.086, 0.021, 0.008);
+      const h = 0.022, gap = 0.25, words = [['monaco', p.red], ['gP', p.black]];
+      const width = w => [...w].reduce((s, ch) => s + BADGE_GLYPHS[ch].w + gap, -gap);
+      let u = -(words.reduce((s, [w]) => s + width(w), 0) + 0.55) * h / 2;
+      for (const [word, part] of words) {
+        for (const ch of word) {
+          strokeGlyph(part, BADGE_GLYPHS[ch].lines, (gu, gv) => at(u + gu * h, (gv - 0.32) * h, 0.010), 0.085);
+          u += (BADGE_GLYPHS[ch].w + gap) * h;
+        }
+        u += (0.55 - gap) * h;
+      }
+    }
+    // the red brake calipers behind each wheel's spokes, at the back of the discs (on the body: they stay put while
+    // the wheels turn)
+    for (const [wx, wz] of [[0.627909, FRONT_AXLE_Z], [0.720832, REAR_AXLE_Z]])
+      for (const s of [1, -1]) box(p.caliper, s * (wx + 0.045), -0.40, wz - 0.16, 0.05, 0.15, 0.07);
+    return p;
+  },
 ];
-// each body's helmet (Body1..), its material made below
-const HELMETS = ['Helmet92', 'Helmet06'];
+// each body's helmet (Body1..), its material made below (the Laguna has no driver to be seen)
+const HELMETS = ['Helmet92', 'Helmet06', 'Helmet'];
+// the materials of a body's own parts beyond the five every body has
+const BODY_EXTRAS = { chrome: 'Chrome', lamp: 'Headlight', badge: 'BadgeFace', red: 'BadgeRed', caliper: 'Caliper' };
 
 // ================================================================ Icon rims (Wheel12..) and exhausts (Exhaust8..)
 // After the game's own (patch_bundle.js lists them, apex-rarity.js names them), never reordered. A rim is drawn
@@ -591,6 +706,44 @@ const RIMS = [
     tyreWord(text, 'MICHOULIN', 0);
     tyreWord(text, 'MICHOULIN', Math.PI);
   },
+  // 14 Laguna GT Monaco GP: ten spokes in five pairs, each pair splitting from the hub towards the rim, dished in
+  // (the rims' colour: gloss black on the Monaco GP), five wheel nuts round a small cap with the Renault lozenge in
+  // chrome, the brake disc behind (its red calipers are on the Laguna's body)
+  ({ rim, metal, chrome }) => {
+    lathe(rim, [[-0.143, 0.252], [0.150, 0.252], [0.170, 0.258], [0.172, 0.250], [0.164, 0.243], [0.14, 0.238], [-0.12, 0.238]]);
+    lathe(metal, [[0.05, 0.215], [0.05, 0.10]], 30);   // the brake disc
+    lathe(metal, [[0.03, 0.215], [0.03, 0.10]], 30);
+    for (let k = 0; k < 5; k++) {
+      const a = 2 * Math.PI * k / 5, ca = Math.cos(a), sa = Math.sin(a);
+      const at = (r, t, x) => [x, r * ca - t * sa, r * sa + t * ca];
+      for (const s of [1, -1]) {
+        const ti = s * 0.016, to = s * 0.064;
+        hexa(rim, [at(0.068, ti - 0.014, 0.128), at(0.240, to - 0.021, 0.158), at(0.240, to + 0.021, 0.158), at(0.068, ti + 0.014, 0.128),
+          at(0.068, ti - 0.014, 0.108), at(0.240, to - 0.021, 0.140), at(0.240, to + 0.021, 0.140), at(0.068, ti + 0.014, 0.108)]);
+      }
+    }
+    lathe(rim, [[0.08, 0.078], [0.132, 0.078], [0.140, 0.066]], 30);
+    cap(rim, Array.from({ length: 30 }, (_, k) => [0.140, 0.066 * Math.cos(2 * Math.PI * k / 30), 0.066 * Math.sin(2 * Math.PI * k / 30)]), true);
+    // the wheel nuts
+    for (let k = 0; k < 5; k++) {
+      const a = 2 * Math.PI * (k + 0.5) / 5;
+      const nut = [[0.140, 0.010], [0.152, 0.010]].map(([x, r]) => Array.from({ length: 6 }, (_, j) => [x, 0.050 * Math.cos(a) + r * Math.cos(Math.PI * j / 3), 0.050 * Math.sin(a) + r * Math.sin(Math.PI * j / 3)]));
+      loft(nut, metal);
+      cap(metal, nut[1], true);
+    }
+    // the centre cap and its lozenge, an outline 0.044 high
+    lathe(rim, [[0.140, 0.032], [0.146, 0.032], [0.148, 0.026]], 24);
+    cap(rim, Array.from({ length: 24 }, (_, k) => [0.148, 0.026 * Math.cos(2 * Math.PI * k / 24), 0.026 * Math.sin(2 * Math.PI * k / 24)]), true);
+    const lozenge = [[0, 0.022], [0.014, 0], [0, -0.022], [-0.014, 0], [0, 0.022]];
+    for (let k = 0; k < 4; k++) {
+      const [t1, r1] = lozenge[k], [t2, r2] = lozenge[k + 1], l = Math.hypot(t2 - t1, r2 - r1), w = 0.0028;
+      const nt = (r2 - r1) / l * w, nr = -(t2 - t1) / l * w;
+      // (y up, z along the tread: the outline stands up on the cap's face)
+      const P = (t, r, x) => [x, r, t];
+      hexa(chrome, [P(t1 - nt, r1 - nr, 0.152), P(t2 - nt, r2 - nr, 0.152), P(t2 + nt, r2 + nr, 0.152), P(t1 + nt, r1 + nr, 0.152),
+        P(t1 - nt, r1 - nr, 0.147), P(t2 - nt, r2 - nr, 0.147), P(t2 + nt, r2 + nr, 0.147), P(t1 + nt, r1 + nr, 0.147)]);
+    }
+  },
 ];
 const EXHAUSTS = [
   // 8 MP4/7A 1992 (icon): two oval pipes either side of the gearbox, low over the diffuser
@@ -651,7 +804,7 @@ function uvs(part) {
   for (let i = 0; i < part.count; i++) {
     const [x, y, z] = part.pos.slice(i * 3, i * 3 + 3);
     uv[i * 2] = 0.5 + Math.atan2(x, y - UV_AXIS_Y) / Math.PI;
-    uv[i * 2 + 1] = (UV_Z_FRONT - z) / UV_LENGTH;
+    uv[i * 2 + 1] = Math.min(1, Math.max(0, (UV_Z_FRONT - z) / UV_LENGTH));   // (the Laguna's bumpers reach past)
   }
   return uv;
 }
@@ -713,17 +866,35 @@ const addMesh = (name, primitives) => {
   json.nodes.push({ mesh: json.meshes.length - 1, name });
   json.scenes[0].nodes.push(json.nodes.length - 1);
 };
+// the Laguna's own: its chrome (grille, badges, handles, exhaust tips) and its headlights
+json.materials.push({ name: 'Chrome', pbrMetallicRoughness: { baseColorFactor: [0.78, 0.79, 0.81, 1], metallicFactor: 0.55, roughnessFactor: 0.22 } });
+json.materials.push({ name: 'Headlight', pbrMetallicRoughness: { baseColorFactor: [0.86, 0.88, 0.92, 1], metallicFactor: 0.3, roughnessFactor: 0.12 } });
+// its Monaco GP badge (a silver plate, red lettering) and its red brake calipers
+json.materials.push({ name: 'BadgeFace', pbrMetallicRoughness: { baseColorFactor: [0.84, 0.85, 0.87, 1], metallicFactor: 0.4, roughnessFactor: 0.3 } });
+json.materials.push({ name: 'BadgeRed', pbrMetallicRoughness: { baseColorFactor: [0.80, 0.03, 0.05, 1], metallicFactor: 0, roughnessFactor: 0.35 } });
+json.materials.push({ name: 'Caliper', pbrMetallicRoughness: { baseColorFactor: [0.72, 0.02, 0.03, 1], metallicFactor: 0.1, roughnessFactor: 0.35 } });
 BODIES.forEach((build, i) => {
   const p = build();
-  addMesh('Body' + (i + 1), [[p.main, 'Main'], [p.black, 'AirIntake'], [p.frame, 'Metal'], [p.helmet, HELMETS[i]], [p.visor, 'Visor']]
-    .map(([part, m]) => primitive(part, matIndex(m), { withUv: true })));
+  addMesh('Body' + (i + 1), [[p.main, 'Main'], [p.black, 'AirIntake'], [p.frame, 'Metal'], [p.helmet, HELMETS[i]], [p.visor, 'Visor'],
+    ...Object.entries(BODY_EXTRAS).map(([key, m]) => [p[key], m])]
+    .filter(([part]) => part && part.count > 0).map(([part, m]) => primitive(part, matIndex(m), { withUv: true })));
+});
+// The wings as they sit on the Laguna (WingNL, patch_bundle.js puts them on in place of WingN): the rear one lifted
+// and set back (LAGUNA_WING), and the Laguna's tail lights for their brake light
+WINGS.forEach((build, i) => {
+  const parts = { w: new Part(), f: new Part(), light: new Part() };
+  build(parts);
+  for (const part of Object.values(parts))
+    for (let v = 0; v < part.pos.length; v += 3) if (part.pos[v + 2] < 0) { part.pos[v + 1] += LAGUNA_WING.lift; part.pos[v + 2] -= LAGUNA_WING.back; }
+  addFitted(parts.light, LAGUNA.tail);
+  addMesh('Wing' + i + 'L', [[parts.w, 'Wing'], [parts.f, 'Metal'], [parts.light, 'BrakeLight']].filter(([p]) => p.count > 0).map(([p, m]) => primitive(p, matIndex(m), { withUv: true })));
 });
 // the game's tyre, as Wheel0 has it (Draco compressed: its primitive is shared as it is)
 const tyre = json.meshes[json.nodes.find(n => n.name === 'Wheel0').mesh].primitives.find(p => json.materials[p.material].name === 'Tire');
 RIMS.forEach((build, i) => {
-  const parts = { rim: new Part(), metal: new Part(), text: new Part() };
+  const parts = { rim: new Part(), metal: new Part(), text: new Part(), chrome: new Part() };
   build(parts);
-  addMesh('Wheel' + (12 + i), [tyre, ...[[parts.rim, 'Rim'], [parts.metal, 'Metal'], [parts.text, 'TireText']].filter(([p]) => p.count > 0).map(([p, m]) => primitive(p, matIndex(m), { bare: true }))]);
+  addMesh('Wheel' + (12 + i), [tyre, ...[[parts.rim, 'Rim'], [parts.metal, 'Metal'], [parts.text, 'TireText'], [parts.chrome, 'Chrome']].filter(([p]) => p.count > 0).map(([p, m]) => primitive(p, matIndex(m), { bare: true }))]);
 });
 EXHAUSTS.forEach((build, i) => {
   const parts = { metal: new Part(), black: new Part() };

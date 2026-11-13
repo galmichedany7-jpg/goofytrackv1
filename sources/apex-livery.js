@@ -122,8 +122,12 @@
   function lockPaint(panel, style) {
     const locked = gameModule(CAR_STYLE).A.isIcon?.(style.pattern) ?? false;
     const name = locked ? window.ApexRarity?.info(style.pattern)?.name : null;
-    const text = tr(`Couleur d'origine de l'Icône « ${name} » : elle fait partie du design et ne se change pas.`,
-      `The original colour of the Icon "${name}": it is part of the design and cannot be changed.`);
+    // (an icon, or a pattern that keeps its colours as they do: the Laguna GT Monaco GP's white)
+    const icon = window.ApexRarity?.info(style.pattern)?.rarity === 'icon';
+    const text = icon ? tr(`Couleur d'origine de l'Icône « ${name} » : elle fait partie du design et ne se change pas.`,
+      `The original colour of the Icon "${name}": it is part of the design and cannot be changed.`)
+      : tr(`Couleur d'origine du motif « ${name} » : elle fait partie du design et ne se change pas.`,
+        `The original colour of the pattern "${name}": it is part of the design and cannot be changed.`);
     for (const box of [panel.apxPrimaryBox, panel.apxPrimaryBox?.nextElementSibling, panel.apxWingBox]) {
       if (box == null) continue;
       box.classList.toggle('apx-locked', locked);

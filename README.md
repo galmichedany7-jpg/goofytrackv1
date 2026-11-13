@@ -4,7 +4,7 @@ Jeu de course pour Windows et macOS, construit sur [PolyTrack](https://www.kodub
 
 > Projet de fan, non affilié à Kodub. Ce dépôt ne contient aucun fichier de PolyTrack : la première installation télécharge PolyTrack 0.6.3 depuis sa version web officielle (et Electron depuis GitHub), puis le transforme en GoofyTrack. Pas besoin d'installer PolyTrack.
 
-**Version actuelle : 2.24.3** 
+**Version actuelle : 2.25** 
 Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 
 ![Menu principal](sources/docs/menu.jpg)
@@ -12,7 +12,7 @@ Le détail de chaque version est dans les [patch notes](sources/PATCHNOTES.md).
 ## Ce que ça change
 
 **Voiture**
-- Nouvelles Carrosseries de F1
+- Nouvelles Carrosseries de F1, et la **Laguna GT de Dash** (mythique, avec son motif blanc et ses jantes Laguna GT Monaco GP) : une vraie voiture de route, posée sur les mêmes roues et la même hitbox que les F1, qui prend tous les motifs, ailerons et jantes
 - Nouvelles personnalisations : 16 livrées redessinées pour la nouvelle carrosserie
 
 ![Garage](sources/docs/garage.jpg)
@@ -213,6 +213,7 @@ Le serveur garde aussi la sauvegarde de chaque compte ([`server/accounts.js`](so
 - **Mot de passe** : il ne quitte jamais le PC. Le jeu en tire deux clés (PBKDF2, 310 000 tours) : l'une chiffre la sauvegarde (AES-GCM, après compression), l'autre sert à se connecter et le serveur n'en garde qu'une empreinte (scrypt). Le serveur ne stocke donc qu'un bloc illisible, et ne peut pas réinitialiser un mot de passe.
 - **Sauvegarde** : une liste d'entrées (profil, record, piste perso, réglage), chacune avec l'heure de sa dernière modification. Une suppression reste dans la liste, pour être reportée sur les autres PC. Deux sauvegardes se fusionnent entrée par entrée : le meilleur temps pour un record, la plus récente pour le reste.
 - **Synchronisation** : au lancement, le jeu attend la sauvegarde du compte (8 secondes au plus) avant de lire la sienne. Ensuite, elle est envoyée 4 secondes après chaque changement. Chaque envoi porte le numéro de la version de départ : si un autre PC a envoyé entre-temps, le serveur répond 409 avec la version plus récente, que le jeu fusionne avant de renvoyer.
+- **Renommer un compte** : `RENAMED_ACCOUNTS` (`ffff:Dash` par défaut) renomme un compte au démarrage du serveur. Le compte garde son premier nom pour dériver ses clés (le jeu le demande avant de se connecter, `POST /account/keyname`) : même mot de passe, même sauvegarde, même code de secours, et l'ancien nom se connecte encore.
 - **Amis** : chaque compte reçoit un numéro public dans l'ordre de création (#0001, #0002…). `RESERVED_IDS` garde des numéros pour certains pseudos (`julio:7777,shyn:1` par défaut : le #7777 reste à Julio et le #0001 à Shyn même si un autre compte est créé avant ; un compte de ce pseudo qui a un autre numéro prend le sien au démarrage du serveur, ses amis suivent), `CREATOR_IDS` (`7777,1` par défaut) donne la coche « créateur ». Le jeu envoie sa présence toutes les 30 s (profil affiché, au menu ou en jeu). Un joueur est en ligne pendant 75 s après la dernière. Le jeu qui héberge une room ajoute la session du compte à l'adresse du serveur multijoueur (`&account=`) : le serveur sait ainsi à qui est la room. Un joueur qui a rejoint une room en donne le code avec sa présence ; il ne compte que tant que la room est ouverte. Le code n'est montré qu'aux amis du joueur. La présence et les rooms restent en mémoire, sans être enregistrées.
 - **Fiches de joueur** : avec sa présence, le jeu envoie les stats de la carte de profil (pistes bouclées, circuits du mod, pistes perso) et l'identifiant public du joueur sur les classements. `/account/player?name=` les rend à n'importe qui, avec sa meilleure place sur les classements du serveur. Le nom du créateur d'une map est relié au compte de même nom (les noms de compte sont uniques). L'auteur des circuits du mod est donné dans [`tracks/index.js`](sources/tracks/index.js).
 - **Limites** : 10 connexions ratées par pseudo toutes les 15 minutes, 5 créations de compte par adresse et par heure, 10 sessions (PC) par compte, 500 comptes, 8 Mo par sauvegarde, 100 amis et 50 demandes en attente par compte.
@@ -255,6 +256,7 @@ Tout est dans `sources/`, sauf `GoofyTrack Launcher.exe` et les fichiers masqué
 | `layout.js` | Le dossier GoofyTrack : fichiers masqués, relais pour les anciens updaters, rangement après la mise à jour depuis la 2.17 |
 | `config.js`, `asar.js` | Emplacement du jeu, lecture de l'archive |
 | `build_car.js`, `meshlib.js` | Génération procédurale du modèle 3D de la voiture |
+| `models/laguna.bin`, `tools/make_laguna.js` | Carrosserie Laguna Coupé : le modèle 3D de la Renault Laguna Coupé 2008 (OBJ) réduit à sa carrosserie, classée par matière (peinture, noir, chrome, vitres, phares, feux), que `build_car.js` cale sur les roues du jeu |
 | `build_patterns.js` | Génération des 16 livrées |
 | `patch_bundle.js` | Points d'accroche ajoutés au code du jeu |
 | `apex-room.js` | Tableau de room, fantôme, mode course et tournois course et endurance |
