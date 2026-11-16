@@ -1,0 +1,75 @@
+<!-- The studio card shown as the game opens (2.26): "GoofyGames" on the theme's ink, while the game loads behind it,
+     then a fade to its loading screen. build.js puts it first in <body>, so that it is the window's very first paint
+     (electron/main.js opens the window on the same ink: no white flash). Shown once per window: the page reloaded by
+     the account (apex-account.js) goes straight to the game. A click or a key skips it. -->
+<style>
+  /* the game's own font (index.html preloads it), declared here as the game's styles come later, with its script */
+  @font-face { font-family: ForcedSquare; src: url(forced_square.woff2) format("woff2"), url(forced_square.woff) format("woff"); font-display: block; }
+  html, body { background: #07080b; }
+  #goofy-splash {
+    position: fixed; inset: 0; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #07080b; color: #f3f5f8; font-family: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    transition: opacity 0.7s ease; cursor: default; user-select: none;
+  }
+  #goofy-splash.gone { opacity: 0; pointer-events: none; }
+  #goofy-splash .mark, #goofy-splash .sub { font-family: ForcedSquare, Arial, sans-serif; }
+  #goofy-splash .mark {
+    font-size: clamp(36px, 7vw, 96px); font-weight: 700; font-style: italic; letter-spacing: 0.04em;
+    opacity: 0; transform: translateY(8px); animation: goofy-in 0.9s ease 0.25s forwards;
+  }
+  #goofy-splash .mark span { color: #f20d16; }
+  #goofy-splash .line {
+    width: clamp(120px, 22vw, 300px); height: 3px; margin-top: 18px; border-radius: 2px; background: #f20d16;
+    transform: scaleX(0); animation: goofy-line 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.6s forwards;
+  }
+  #goofy-splash .sub {
+    margin-top: 16px; font-size: clamp(12px, 1.3vw, 17px); font-weight: 600; letter-spacing: 0.5em; text-indent: 0.5em;
+    text-transform: uppercase; color: rgba(243, 245, 248, 0.6); opacity: 0; animation: goofy-in 0.8s ease 1s forwards;
+  }
+  /* the game's loading bar, copied: where the game draws its own (or near the bottom until it does), its progress */
+  #goofy-splash .bar {
+    position: fixed; left: 50%; bottom: 16%; width: min(420px, 70vw); height: 6px; transform: translateX(-50%);
+    border-radius: 999px; background: #222835; overflow: hidden; opacity: 0; animation: goofy-in 0.6s ease 0.4s forwards;
+  }
+  #goofy-splash .bar > div {
+    width: 0; height: 100%; border-radius: 999px; background: #f20d16; box-shadow: 0 0 14px rgba(242, 13, 22, 0.6); transition: width 0.2s ease;
+  }
+  @keyframes goofy-in { to { opacity: 1; transform: none; } }
+  @keyframes goofy-line { to { transform: scaleX(1); } }
+</style>
+<div id="goofy-splash"><div class="mark">Goofy<span>Games</span></div><div class="line"></div><div class="sub">présente</div><div class="bar"><div></div></div></div>
+<script>
+  (() => {
+    const splash = document.getElementById('goofy-splash');
+    let seen = false;
+    try { seen = sessionStorage.getItem('goofy-splash') === '1'; sessionStorage.setItem('goofy-splash', '1'); } catch (e) { /* storage blocked */ }
+    if (!/^fr/i.test(navigator.language || '')) splash.querySelector('.sub').textContent = 'presents';
+    let done = false;
+    const end = () => {
+      if (done) return;
+      done = true;
+      splash.classList.add('gone');
+      setTimeout(() => splash.remove(), 800);
+      removeEventListener('keydown', end, true);
+    };
+    if (seen) { splash.remove(); return; }
+    // the game's loading bar (main.bundle.js: .loading-ui > div > div > div, its width the progress) followed every
+    // 50 ms (a timer, which runs even while the window is still hidden: electron/main.js shows it once painted): the
+    // bar stays where the game's is when the card fades out; once the game has removed it, loading is done
+    const bar = splash.querySelector('.bar'), fill = bar.firstElementChild;
+    let followed = false;
+    const timer = setInterval(() => {
+      if (!splash.isConnected) { clearInterval(timer); return; }
+      const game = document.querySelector('#ui .loading-ui > div > div > div');
+      if (game != null) {
+        followed = true;
+        fill.style.width = game.style.width || '0%';
+        const r = game.parentElement.parentElement.getBoundingClientRect();
+        if (r.width >= 100 && r.height <= 24) Object.assign   // once the game's styles have shaped it(bar.style, { left: r.left + 'px', top: r.top + 'px', bottom: 'auto', width: r.width + 'px', height: r.height + 'px', transform: 'none' });
+      } else if (followed) fill.style.width = '100%';
+    }, 50);
+    setTimeout(end, 2800);
+    splash.addEventListener('pointerdown', end);
+    addEventListener('keydown', end, true);
+  })();
+</script>

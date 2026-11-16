@@ -13,7 +13,7 @@
 //                                   two timed attempts each in qualifying, a grid drawn at random without
 //                                   qualifying; the winner counts a tournament won
 //                      endurance    each driver picks a strategy (apex-endurance.js), then a race against the clock
-//                                   (15 to 20 minutes) with fuel, tyres and pit stops; once the time is up, every car
+//                                   (10 to 20 minutes) with fuel, tyres and pit stops; once the time is up, every car
 //                                   finishes as it next crosses the line; the most laps win
 //
 // 1 and 2 only use data the game already exchanges, so they work next to unmodified players.
@@ -60,12 +60,17 @@
   const BOX_DEPTH = 7.5;              // metres in from the lane's outer edge: the working lane, where the boxes are
   const PIT_HEIGHT = 6;               // metres above or below the pit lane that still count as in it
   const KINDS = ['race', 'tournament', 'endurance'];
+  // the formats a host picks (2.26: the Sprint is gone, its free race is now called Grand Prix); 'tournament', the
+  // GP with a grid, pits and two qualifying attempts, is only the special tournaments' (apex-tournament.js)
+  const FORMATS = ['race', 'endurance'];
+  const formatOn = (k, kind) => k === kind || (k === 'race' && kind === 'tournament');
   const QUALI_ATTEMPTS = 2;           // timed laps each in a tournament's qualifying
-  const MIN_MINUTES = 15, MAX_MINUTES = 20;   // an endurance race
+  const MIN_MINUTES = 10, MAX_MINUTES = 20;   // an endurance race (10 minutes since 2.26)
   const START_GATE = 40;              // metres either side of the middle of the road: the line that counts endurance laps, pit lane included
   const LOOP_DISTANCE = 50;           // metres; a finish this close to the start makes the track a circuit
   const TELEPORT_DISTANCE = 40;       // metres in one frame: a respawn, not a crossing
   const MAX_LAPS = 20;
+  const ENDURANCE_GATE_LAPS = 80;     // laps of checkpoint gates the physics gets in an endurance race (simTrack)
   const SETTINGS_KEY = 'goofytrack.raceSettings';
   const WATCH_JOIN_MS = 60000;        // "Watch" in the room list holds for the room joined within a minute
 
@@ -78,36 +83,37 @@
   // Texts follow the game's language setting (published by a hook), the system language until then
   const TEXTS_FR = {
     top: 'MEILLEURS TEMPS', race: 'COURSE', quali: 'QUALIFS', formation: 'FORMATION', results: 'RÉSULTATS', go: 'PARTEZ',
-    mode: 'Course', modeInfo: 'Affrontez d\'autres joueurs sur des maps boucles ! Vous pouvez réaliser des tours de chauffe ou bien démarrer directement !',
+    mode: 'Course', modeInfo: 'Uniquement sur les circuits en boucle.',
     laps: 'Tours', qualiOpt: 'Qualifications', formationOpt: 'Tour de formation',
     lapsOf: (a, b) => `${a}/${b}`, lap: 'TOUR', best: 'Meilleur', last: 'Dernier',
     waitGrid: 'En attente de la grille', finished: p => `ARRIVÉE  P${p}`, notLoop: 'Piste sans boucle : 1 tour', contact: 'Collisions activées',
     start: 'Lancer', toFormation: 'Tour de formation', toRace: 'Départ', stop: 'Arrêter', done: 'Terminer',
     qualiHud: 'QUALIFICATIONS', formationHud: 'TOUR DE FORMATION', resultsHud: 'COURSE TERMINÉE',
     buildMismatch: "Erreur : votre version de GoofyTrack n'est pas celle de l'hôte. Installez le même build que lui.",
-    gameMode: 'Mode de jeu', casual: 'Décontracté', competitive: 'Compétitif', changeTrack: 'Changer de piste',
-    casualInfo: 'Roulez à votre rythme : chacun cherche à battre son propre record, sans classement de la session.',
-    competitiveInfo: 'Chrono contre tous : le meilleur temps réalisé pendant la session mène le classement et remporte la session.',
+    gameMode: 'Mode de jeu', casual: 'Occasionnel', competitive: 'Compétitif', changeTrack: 'Changer de piste',
+    casualInfo: 'Roulez à votre rythme et battez votre record entre joueurs, sans classements dans la partie !',
+    competitiveInfo: 'Devenez le joueur le plus rapide de la session en vous affrontant avec un classement entre joueurs !',
     selectTrack: 'Sélectionner la piste', back: 'Retour', confirm: 'Valider', nextSession: 'Prochaine session', personalBest: 'RECORD PERSONNEL', sessionBest: 'MEILLEUR TEMPS DE LA SESSION',
     youPropose: 'Vous proposez une nouvelle session', hostProposes: "L'hôte propose une nouvelle session", voteTrack: 'Circuit',
     yes: 'Oui', no: 'Non', accept: 'Accepter', decline: 'Refuser', cancelVote: 'Annuler la proposition',
     tally: (y, n, t) => `${y} pour · ${n} contre · ${t} joueurs`,
     accepted: 'Proposition acceptée', declined: 'Proposition refusée', cancelled: "Proposition annulée par l'hôte",
     startsIn: s => `Nouvelle session dans ${s} s`,
+    quitRace: 'Quitter maintenant compte comme un abandon : dernière place de la course dans vos stats.',
     watch: 'Regarder', drive: 'Reprendre le volant', watchers: n => n + (n > 1 ? ' spectateurs' : ' spectateur'),
-    format: 'Format', kind_race: 'Sprint', kind_tournament: 'Grand Prix', kind_endurance: 'Endurance',
-    info_race: 'Sprint : une course rapide sur n\'importe quelle piste en boucle, tours et options au choix.',
-    info_tournament: 'Grand Prix : 2 tentatives chronométrées en qualifications (sinon grille tirée au sort), tour de formation, puis la course. Le vainqueur remporte le Grand Prix. Circuits avec grille et stands uniquement.',
-    info_endurance: 'Endurance : chacun règle sa voiture (réservoir, moteur, pneus), puis course contre la montre avec ravitaillements dans son propre box, stands à 100 km/h (stop-and-go si on dépasse plus de 2 s). Le plus de tours gagne. Circuits avec grille et stands uniquement.',
-    minutes: 'Durée', minutesValue: m => `${m} min`, notEligible: 'Grand Prix et Endurance : piste sans grille ni stands valides. Circuits prévus : Forest Speedway et Monaco GP.',
+    format: 'Format', kind_race: 'Grand Prix', kind_tournament: 'Grand Prix', kind_endurance: 'Endurance',
+    info_race: 'Affrontez les autres joueurs sur une course sans contraintes, avec des qualifications ou non !',
+    info_tournament: 'Grand Prix officiel : 2 tentatives chronométrées en qualifications (sinon grille tirée au sort), tour de formation, puis la course. Circuits avec grille et stands uniquement.',
+    info_endurance: 'Le mode le plus difficile de GoofyTrack : un Grand Prix avec arrêts aux stands ! Choisissez votre stratégie : réservoir, vitesse et usure des pneus, et faites le plus de tours en un temps imparti !',
+    minutes: 'Durée', minutesValue: m => `${m} min`, notEligible: 'Cette piste n\'a pas de grille ni de stands valides. Circuits prévus : Forest Speedway et Monaco GP.',
     attempt: (a, b) => `Tentative ${a}/${b}`, qualiDone: 'Qualifications terminées', strategy: 'RÉGLAGES', strategyHud: 'RÉGLAGE DES VOITURES',
     waitStrategies: (a, b) => `${a}/${b} pilotes ont validé`, timeLeft: t => `${t} restantes`, lastLap: 'DERNIER TOUR', lapsDone: n => `${n} T`,
-    tournamentWon: 'TOURNOI GAGNÉ', randomGrid: 'Grille tirée au sort',
-    onlyCircuits: 'Grand Prix et Endurance : seuls les circuits avec une grille et des stands sont proposés.',
+    tournamentWon: 'TOURNOI GAGNÉ', grandPrixWon: 'GRAND PRIX GAGNÉ', enduranceWon: 'ENDURANCE GAGNÉE', randomGrid: 'Grille tirée au sort',
+    onlyCircuits: 'Seuls les circuits avec une grille et des stands sont proposés.',
   };
   const TEXTS_EN = {
     top: 'BEST TIMES', race: 'RACE', quali: 'QUALIFYING', formation: 'FORMATION', results: 'RESULTS', go: 'GO',
-    mode: 'Race', modeInfo: 'Take on other players on looping tracks! Warm up with practice laps, or go straight to the start!',
+    mode: 'Race', modeInfo: 'Looping circuits only.',
     laps: 'Laps', qualiOpt: 'Qualifying', formationOpt: 'Formation lap',
     lapsOf: (a, b) => `${a}/${b}`, lap: 'LAP', best: 'Best', last: 'Last',
     waitGrid: 'Waiting for the grid', finished: p => `FINISHED  P${p}`, notLoop: 'Track does not loop: 1 lap', contact: 'Collisions on',
@@ -115,24 +121,25 @@
     qualiHud: 'QUALIFYING', formationHud: 'FORMATION LAP', resultsHud: 'RACE OVER',
     buildMismatch: "Error: your GoofyTrack build is not the same as the host's. Install the same build.",
     gameMode: 'Game Mode', casual: 'Casual', competitive: 'Competitive', changeTrack: 'Change Track',
-    casualInfo: 'Drive at your own pace: everybody chases their own record, no session standings.',
-    competitiveInfo: 'Time trial against everybody: the best time set in the session leads the standings and wins the session.',
+    casualInfo: 'Drive at your own pace and beat your record with other players, no standings in the game!',
+    competitiveInfo: 'Become the fastest player of the session, with live standings between players!',
     selectTrack: 'Select Track', back: 'Back', confirm: 'Confirm', nextSession: 'Next session', personalBest: 'PERSONAL BEST', sessionBest: 'FASTEST OF THE SESSION',
     youPropose: 'You propose a new session', hostProposes: 'The host proposes a new session', voteTrack: 'Track',
     yes: 'Yes', no: 'No', accept: 'Accept', decline: 'Decline', cancelVote: 'Cancel the proposal',
     tally: (y, n, t) => `${y} for · ${n} against · ${t} players`,
     accepted: 'Proposal accepted', declined: 'Proposal declined', cancelled: 'Proposal cancelled by the host',
     startsIn: s => `New session in ${s} s`,
+    quitRace: 'Leaving now counts as retiring: last place of the race in your stats.',
     watch: 'Watch', drive: 'Back to driving', watchers: n => n + (n > 1 ? ' spectators' : ' spectator'),
-    format: 'Format', kind_race: 'Sprint', kind_tournament: 'Grand Prix', kind_endurance: 'Endurance',
-    info_race: 'Sprint: a quick race on any looping track, laps and options as you like.',
-    info_tournament: 'Grand Prix: 2 timed attempts in qualifying (otherwise a grid drawn at random), formation lap, then the race. The winner takes the Grand Prix. Circuits with a grid and pits only.',
-    info_endurance: 'Endurance: everybody sets up their car (tank, engine, tyres), then a race against the clock with pit stops in a box of your own, 100 km/h in the pit lane (a stop-and-go after 2 s over). The most laps win. Circuits with a grid and pits only.',
-    minutes: 'Duration', minutesValue: m => `${m} min`, notEligible: 'Grand Prix and Endurance: this track has no proper grid and pits. The circuits made for them: Forest Speedway and Monaco GP.',
+    format: 'Format', kind_race: 'Grand Prix', kind_tournament: 'Grand Prix', kind_endurance: 'Endurance',
+    info_race: 'Take on the other players in a race with no constraints, with or without qualifying!',
+    info_tournament: 'Official Grand Prix: 2 timed attempts in qualifying (otherwise a grid drawn at random), formation lap, then the race. Circuits with a grid and pits only.',
+    info_endurance: 'The toughest mode in GoofyTrack: a Grand Prix with pit stops! Pick your strategy: tank, speed and tyre wear, and drive the most laps in the time given!',
+    minutes: 'Duration', minutesValue: m => `${m} min`, notEligible: 'This track has no proper grid and pits. The circuits made for them: Forest Speedway and Monaco GP.',
     attempt: (a, b) => `Attempt ${a}/${b}`, qualiDone: 'Qualifying done', strategy: 'SETUPS', strategyHud: 'SETTING UP THE CARS',
     waitStrategies: (a, b) => `${a}/${b} drivers have confirmed`, timeLeft: t => `${t} left`, lastLap: 'LAST LAP', lapsDone: n => `${n} L`,
-    tournamentWon: 'TOURNAMENT WON', randomGrid: 'Grid drawn at random',
-    onlyCircuits: 'Grand Prix and Endurance: only the circuits with a grid and pits are shown.',
+    tournamentWon: 'TOURNAMENT WON', grandPrixWon: 'GRAND PRIX WON', enduranceWon: 'ENDURANCE WON', randomGrid: 'Grid drawn at random',
+    onlyCircuits: 'Only the circuits with a grid and pits are shown.',
   };
   const T = new Proxy({}, {
     get: (_, key) => ((window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr') ? TEXTS_FR : TEXTS_EN)[key],
@@ -294,6 +301,31 @@
   function sendToHost(obj) {           // client -> host
     if (ctx.connection.apexHostIsMod) ctx.connection.apexSend(encode(obj));
   }
+  // ---- liveries changed during the session (2.26, F3 in apex-livery.js): player id -> car style (serialized), kept by
+  // the connection; the host hears them and tells everybody, the player list keeps them (styleOf, patch_bundle.js)
+  const CAR_STYLE = 8724;              // webpack id of the car style (PolyTrack 0.6.3)
+  const stylesOf = connection => (connection.apexStyles ??= new Map());
+  function applyStyle(connection, id, s) {
+    if (typeof s !== 'string' || s.length > 4000 || id == null) return;
+    stylesOf(connection).set(id, s);
+    if (ctx == null || connection !== ctx.connection || id === selfId) return;
+    try { ctx.remotes().get(id)?.car?.setCarStyle(gameModule(CAR_STYLE).A.deserializeSafe(s)); } catch (e) { console.warn('Apex: livery', e); }
+    const p = players.find(q => q.id === id);
+    if (p) try { p.carStyle = gameModule(CAR_STYLE).A.deserializeSafe(s); } catch (e) { /* kept as it was */ }
+  }
+  function onStyleMessage(connection, msg, peer) {
+    if (msg.t === 'style' && peer != null) {           // host: a player's
+      applyStyle(connection, peer.id, msg.s);
+      const bytes = encode({ t: 'style', id: peer.id, s: msg.s });
+      for (const other of connection.apexPeers()) if (other.apexMod) sendToPeer(other, bytes);
+      return true;
+    }
+    if (msg.t === 'style' && peer == null) { applyStyle(connection, msg.id, msg.s); return true; }   // player: from the host
+    if (msg.t === 'styles' && peer == null && Array.isArray(msg.list)) { for (const [id, s] of msg.list) applyStyle(connection, id, s); return true; }
+    return false;
+  }
+  // endurance rooms and the special tournaments' GP keep the car the session started with (as tournaments do)
+  const carLocked = () => ctx != null && kindOf(room()) != null && kindOf(room()) !== 'race';
   function greetPeers() {
     if (!isHost()) return;
     for (const peer of ctx.connection.apexPeers()) {
@@ -305,10 +337,23 @@
   const decode = payload => {
     try { return JSON.parse(new TextDecoder().decode(payload)); } catch (e) { return null; }
   };
-  const roomMessage = r => ({ t: 'room', race: !!r.race, laps: r.laps, quali: r.quali, formation: r.formation, kind: KINDS.includes(r.kind) ? r.kind : 'race', minutes: r.minutes });
+  const roomMessage = r => ({ t: 'room', race: !!r.race, laps: r.laps, quali: r.quali, formation: r.formation, kind: KINDS.includes(r.kind) ? r.kind : 'race', minutes: r.minutes,
+    special: r.special === true });   // a special tournament's room: the guests count it as one too (statKind, 2.26)
   // the event's format (null: not a race room), and whether the track can hold a tournament
   const kindOf = r => (r.race ? (KINDS.includes(r.kind) ? r.kind : 'race') : null);
   const eligible = () => course != null && course.circuit != null && course.loop;
+  // the player's card keeps four counts apart (2.26, ApexStats.event): a race between players, Grand Prix ('gp', kind
+  // 'race', on a circuit with a grid and pits only: Forest Speedway, Monaco GP; on another track it is a race only) or
+  // Endurance ('end'), and a special tournament's room (room().special, server.js), Grand Prix ('tGp', kind
+  // 'tournament') or Endurance ('tEnd'). Only the last two are tournaments (played, won: the Cup badge)
+  function statKind() {
+    if (race == null) return null;
+    const special = !!room().special;
+    if (race.kind === 'endurance') return special ? 'tEnd' : 'end';
+    if (race.kind === 'tournament' && special) return 'tGp';
+    return eligible() ? 'gp' : null;
+  }
+  const countsAsTournament = () => /^t/.test(statKind() || '');
 
   // ================================================================== GoofyTrack accounts of the players
   // Each player tells the host their account number (apex-account.js) once the host greets them ('acct'), and the
@@ -340,9 +385,16 @@
     }
     return false;
   }
+  // a player's account number, as the room knows it
+  const accountOfPlayer = player => (player.isSelf ? accountId(window.ApexAccount?.id) : lastConnection?.apexAccounts?.get(player.id) ?? null);
   // a row of the game's player list (patch_bundle.js): a click opens the player's card, your own for your row
   function playerRow(row, player) {
     if (!window.ApexAccount) return;
+    // the co-creators' check mark, the VIPs' emblem and violet name (apex-account.js), once the game has filled the row
+    queueMicrotask(() => {
+      const name = row.querySelector('.nickname'), id = accountOfPlayer(player);
+      if (name != null && id != null) window.ApexAccount.markName?.(name, id);
+    });
     row.classList.add('apex-openable');
     row.addEventListener('click', event => {
       if (event.target.closest('button') != null) return;          // the host's kick button
@@ -353,6 +405,17 @@
     row.dataset.apexPlayer = player.id;
     row.classList.toggle('apex-watching', spectatorsOf(lastConnection).has(player.id));
   }
+
+  // the name tag over a VIP's car is framed in violet (patch_bundle.js: apexSetVip), the statuses asked as they come
+  setInterval(() => {
+    if (ctx == null || lastConnection == null || !window.ApexAccount?.cachedStatus) return;
+    const players = lastConnection.getPlayers?.() || [];
+    for (const [id, remote] of ctx.remotes?.() || []) {
+      const player = players.find(p => p.id === id);
+      const status = player ? window.ApexAccount.cachedStatus(accountOfPlayer(player)) : null;
+      remote.car?.apexSetVip?.(!!status?.vip);
+    }
+  }, 1000);
 
   // ================================================================== spectators (apex-spectate.js)
   // A player who watches the room tells the host ('spec'), and the host sends everybody the ids of those who watch
@@ -648,6 +711,11 @@
 
   // The physics gets the track with one more checkpoint, out of reach above the track, so that a
   // multi-lap race never "finishes" for the game. Laps are counted by updateLaps() instead.
+  // On a tournament circuit (Forest Speedway, Monaco GP) each checkpoint gate is also laid once per lap, all at the
+  // same place, numbered on from lap to lap: the physics collects them again every lap, so a reset puts the car
+  // back at the last gate of the lap under way, not of the first lap. (Their gates are posts behind the barriers
+  // and a banner overhead, so the copies change nothing for the driving. The game's own gates, road pieces, are
+  // not copied.) The checkpoint counter and marker follow the lap's count (shownCheckpoint).
   // An endurance race also opens the pit lane: the circuit's road is swapped for the same road without the wall
   // that closes the pit lane everywhere else.
   function simTrack(track) {
@@ -658,10 +726,20 @@
       const TrackData = gameModule(MOD_TRACK_DATA).A;
       const copy = new TrackData(track.environment, track.sunDirection);
       const road = endurance && course != null && course.circuit != null ? course.circuit.road : null;
+      const orders = new Set();
+      track.forEachPart((x, y, z, id, rotation, axis, color, checkpointOrder) => { if (checkpointOrder != null) orders.add(checkpointOrder); });
+      const rank = new Map([...orders].sort((a, b) => a - b).map((o, k) => [o, k])), C = rank.size;
+      const laps = course != null && course.circuit != null && C > 0 ? Math.min(endurance ? ENDURANCE_GATE_LAPS : race.laps, Math.floor(60000 / C)) : 1;
       let maxOrder = -1, maxY = -Infinity, px = 0, pz = 0;
       track.forEachPart((x, y, z, id, rotation, axis, color, checkpointOrder, startOrder) => {
-        copy.addPart(x, y, z, road != null && id === road[0] ? road[1] : id, rotation, axis, color, checkpointOrder, startOrder);
-        if (checkpointOrder != null) maxOrder = Math.max(maxOrder, checkpointOrder);
+        const part = road != null && id === road[0] ? road[1] : id;
+        if (checkpointOrder != null && laps > 1) {
+          for (let l = 0; l < laps; l++) copy.addPart(x, y, z, part, rotation, axis, color, l * C + rank.get(checkpointOrder), startOrder);
+          maxOrder = Math.max(maxOrder, laps * C - 1);
+        } else {
+          copy.addPart(x, y, z, part, rotation, axis, color, checkpointOrder, startOrder);
+          if (checkpointOrder != null) maxOrder = Math.max(maxOrder, checkpointOrder);
+        }
         if (y > maxY) { maxY = y; px = x; pz = z; }
       });
       copy.addPart(px, maxY + 400, pz, CHECKPOINT_PART, 0, 0, 0, maxOrder + 1, null);
@@ -792,19 +870,23 @@
     attempts: new Map(), // id -> timed laps driven in a tournament's qualifying
     done: new Set(),     // ids that completed the formation lap
     strat: new Map(),    // id -> strategy picked for an endurance race (apex-endurance.js)
-    progress: new Map(), // id -> { lap, ms, pen } laps completed, race clock at the last one, stop-and-gos still owed
+    progress: new Map(), // id -> { lap, ms, pen, best } laps completed, race clock at the last one, stop-and-gos still owed, best lap (endurance)
     boxes: new Map(),    // id -> garage of the circuit's pits, an endurance race's own box (tools/pit_lane.js)
+    pits: new Set(),     // ids in the pit lane, an endurance race: "PIT" on the board (2.26)
     results: [],         // [{ id, ms, lap }] finishing order
   });
   const newRun = () => ({ lap: 0, nextCp: 0, lastPos: null, lastLapMs: null, lastLapTime: null, best: null, sentDone: false, finished: false, attempts: 0, sentRun: false, strategy: null, picking: false, fuelled: false });
   const endurance = () => race != null && race.kind === 'endurance';
+  // a driver on the grid of a race under way against others, not finished nor counted yet: leaving is retiring
+  const retiring = () => ctx != null && race != null && run != null && race.phase === 'race' && !run.counted && !run.finished
+    && race.grid != null && race.grid.length >= 2 && race.grid.some(s => s.id === selfId);
   const raceMs = () => race.minutes * 60000;
 
   const stateMessage = () => ({
     t: 'state', n: race.n, phase: race.phase, laps: race.laps, grid: race.grid, kind: race.kind, minutes: race.minutes,
     lights: race.phase === 'race' ? Math.max(0, Math.round(race.goAt - performance.now())) : 0,
     quali: [...race.quali], attempts: [...race.attempts], done: [...race.done], strat: [...race.strat].map(([id]) => id),
-    progress: [...race.progress].map(([id, p]) => [id, p.lap, p.ms, p.pen || 0]), results: race.results, boxes: [...race.boxes],
+    progress: [...race.progress].map(([id, p]) => [id, p.lap, p.ms, p.pen || 0, p.best || 0]), results: race.results, boxes: [...race.boxes], pits: [...race.pits],
   });
   const publish = () => { if (isHost() && race != null) broadcast(stateMessage()); renderBoard(); };
 
@@ -889,13 +971,19 @@
       if (!race.quali.has(id) || msg.ms < race.quali.get(id)) race.quali.set(id, msg.ms);
     } else if (msg.t === 'st' && race.phase === 'strategy') {
       race.strat.set(id, window.ApexEndurance ? window.ApexEndurance.strategyOf(msg.s) : msg.s);
+    } else if (msg.t === 'pit' && race.phase === 'race' && race.kind === 'endurance') {
+      if (msg.on === true) race.pits.add(id); else race.pits.delete(id);
     } else if (msg.t === 'fd' && race.phase === 'formation') {
       race.done.add(id);
     } else if (msg.t === 'lap' && race.phase === 'race' && Number.isInteger(msg.lap) && msg.lap >= 0 && Number.isFinite(msg.ms)) {
       if (race.results.some(r => r.id === id)) return;
       if (race.kind === 'endurance') {
         const pen = Number.isInteger(msg.pen) && msg.pen > 0 ? Math.min(msg.pen, 20) : 0;
-        race.progress.set(id, { lap: msg.lap, ms: msg.ms, pen });
+        // the best lap (2.26): the race clock between two laps completed (the first one from lights out)
+        const prev = race.progress.get(id), lapMs = msg.ms - (prev ? prev.ms : 0);
+        let best = prev ? prev.best || 0 : 0;
+        if (msg.lap > (prev ? prev.lap : 0) && lapMs > 0 && (best === 0 || lapMs < best)) best = lapMs;
+        race.progress.set(id, { lap: msg.lap, ms: msg.ms, pen, best });
         if (msg.done === true) { race.results.push({ id, ms: msg.ms + pen * penaltyMs(), lap: msg.lap, pen }); race.results.sort(byLaps); }
       } else {
         race.progress.set(id, { lap: Math.min(msg.lap, race.laps), ms: msg.ms });
@@ -924,8 +1012,9 @@
     race.attempts = new Map(Array.isArray(msg.attempts) ? msg.attempts : []);
     race.strat = new Map((Array.isArray(msg.strat) ? msg.strat : []).map(id => [id, true]));   // who has picked, not what
     race.done = new Set(msg.done);
-    race.progress = new Map(msg.progress.map(([id, lap, ms, pen]) => [id, { lap, ms, pen: pen || 0 }]));
+    race.progress = new Map(msg.progress.map(([id, lap, ms, pen, best]) => [id, { lap, ms, pen: pen || 0, best: best || 0 }]));
     race.boxes = new Map(Array.isArray(msg.boxes) ? msg.boxes : []);
+    race.pits = new Set(Array.isArray(msg.pits) ? msg.pits : []);
     race.results = msg.results;
     if (phaseChanged) {
       enterPhase(msg.phase);
@@ -1020,10 +1109,17 @@
   // is up, the next crossing ends the driver's race.
   function updateEndurance(state, now) {
     if (slotFor(selfId) == null) return;              // joined during the race: only watching
-    if (!run.fuelled && window.ApexEndurance) { run.fuelled = true; window.ApexEndurance.start(run.strategy); }
-    if (run.finished) { if (window.ApexEndurance) window.ApexEndurance.stop(); return; }
+    if (!run.fuelled && window.ApexEndurance) { run.fuelled = true; window.ApexEndurance.start(run.strategy, race.minutes); }
+    if (run.finished) {
+      if (window.ApexEndurance) window.ApexEndurance.stop();
+      if (run.inPit) { run.inPit = false; report({ t: 'pit', on: false }); }
+      return;
+    }
     if (window.ApexEndurance) window.ApexEndurance.frame(state, pitAt, ownBox());
     const p = state.position, last = run.lastPos;
+    // in the pit lane or out of it: the host shows "PIT" by the name on the board
+    const inPit = pitAt(p) != null;
+    if (inPit !== !!run.inPit) { run.inPit = inPit; report({ t: 'pit', on: inPit }); }
     run.lastPos = { x: p.x, y: p.y, z: p.z };
     if (last == null || Math.hypot(p.x - last.x, p.y - last.y, p.z - last.z) >= TELEPORT_DISTANCE) return;
     if (run.nextCp < course.checkpoints.length) {
@@ -1175,7 +1271,11 @@
       if (position >= 0) {
         run.counted = true;
         window.ApexStats?.race(position + 1);
-        if (race.kind !== 'race' && position === 0) { run.won = true; window.ApexStats?.tournament(); }
+        if (countsAsTournament()) window.ApexStats?.entered?.();   // a tournament played (2.26)
+        if (countsAsTournament() && position === 0) { run.won = true; window.ApexStats?.tournament(); }
+        const kind = statKind();
+        if (kind != null) window.ApexStats?.event?.(kind, position === 0);
+        if (kind === 'gp' || kind === 'end') run.raceWon = position === 0 ? kind : null;
       }
     }
     if (race.phase === 'quali') {
@@ -1194,13 +1294,14 @@
         const left = raceMs() - (now - race.goAt);
         if (run.finished) setHud(T.finished(position >= 0 ? position + 1 : '-'), T.lapsDone(run.lap));
         else setHud(left > 0 ? T.lap + '  ' + (run.lap + 1) : T.lastLap,
-          (left > 0 ? T.timeLeft(clock(left)) : '') + (run.lastLapTime != null ? (left > 0 ? '  ·  ' : '') + T.last + '  ' + formatTime(run.lastLapTime) : ''));
+          (left > 0 ? T.timeLeft(clock(left)) : '') + (run.lastLapTime != null ? (left > 0 ? '  ·  ' : '') + T.last + '  ' + formatTime(run.lastLapTime) : '')
+          + (race.progress.get(selfId)?.best ? '  ·  ' + T.best + '  ' + formatTime(race.progress.get(selfId).best) : ''));
       } else if (run.finished && position >= 0) setHud(T.finished(position + 1), formatTime(race.results[position].ms));
       else setHud(T.lap + '  ' + T.lapsOf(Math.min(run.lap + 1, race.laps), race.laps),
         run.lastLapTime != null ? T.last + '  ' + formatTime(run.lastLapTime) : null);
     } else if (race.phase === 'results') {
       const position = race.results.findIndex(r => r.id === selfId);
-      setHud(run.won ? T.tournamentWon : T.resultsHud, position >= 0 ? T.finished(position + 1) : null);
+      setHud(run.won ? T.tournamentWon : run.raceWon === 'gp' ? T.grandPrixWon : run.raceWon === 'end' ? T.enduranceWon : T.resultsHud, position >= 0 ? T.finished(position + 1) : null);
     }
   }
   const clock = ms => { const s = Math.ceil(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
@@ -1242,12 +1343,15 @@
     }
     if (endurance() && race.phase !== 'quali') {
       const order = raceOrder(), lead = race.progress.get(order[0]);
+      // the fastest lap of the race, on purple as on TV timing
+      const fastest = Math.min(...[...race.progress.values()].map(q => q.best || Infinity));
       order.forEach((id, i) => {
         const p = race.progress.get(id), done = race.results.some(r => r.id === id), laps = p ? p.lap : 0;
         // (a stop-and-go still owed counts PENALTY_MS: shown by the name)
         const late = q => q.ms + (q.pen || 0) * penaltyMs(), pen = p && p.pen > 0 ? '  +' + Math.round(p.pen * penaltyMs() / 1000) + ' s' : '';
         const gap = i === 0 || lead == null ? '' : laps < lead.lap ? '-' + (lead.lap - laps) + ' ' + T.lap : p ? formatGap(late(p) - late(lead)) : '';
-        board.appendChild(row(selfCls(id) + (done ? '' : ' pending'), [['rank', String(i + 1)], ['name', nameOf(id) + pen], ['time', T.lapsDone(laps)], ['gap', gap]], id));
+        board.appendChild(row(selfCls(id) + (done ? '' : ' pending') + (!done && race.pits.has(id) ? ' pit' : '') + (p && p.best && p.best === fastest ? ' fastest' : ''),
+          [['rank', String(i + 1)], ['name', nameOf(id) + pen], ['time', T.lapsDone(laps) + (p && p.best ? '  ' + formatTime(p.best) : '')], ['gap', gap]], id));
       });
       return;
     }
@@ -1322,6 +1426,8 @@
         ['gap', i === 0 ? '' : formatGap(recordFrames(p) - leaderFrames)],
       ], p.id);
       if (up) r.querySelector('.name').prepend(el('span', 'up', '▲' + up));
+      const account = accountOfPlayer(p);   // the statuses next to the name (apex-account.js), once known
+      if (account != null) window.ApexAccount?.markName?.(r.querySelector('.name'), account);
       // the animations go on where they were: the board is drawn again often
       if (fresh) for (const e of [r, r.querySelector('.time')]) e.style.animationDelay = -Math.round(age) + 'ms';
       board.appendChild(r);
@@ -1373,9 +1479,10 @@
     const box = el('div', 'race-settings');
     // the format: free race, race tournament, endurance
     const formats = el('div', 'formats');
-    for (const k of KINDS) {
-      const opt = el(editable ? 'button' : 'div', 'toggle format' + (k === kind ? ' on' : ''), T['kind_' + k]);
-      if (editable) opt.addEventListener('click', () => updateRoom({ kind: k }));
+    for (const k of FORMATS) {
+      const fixed = !editable || !!r.special;   // a special tournament's room keeps its format
+      const opt = el(fixed ? 'div' : 'button', 'toggle format' + (formatOn(k, kind) ? ' on' : ''), T['kind_' + k]);
+      if (!fixed) opt.addEventListener('click', () => updateRoom({ kind: k }));
       formats.appendChild(opt);
     }
     box.appendChild(formats);
@@ -1490,10 +1597,11 @@
     if (mode !== 'race') { if (box != null) box.remove(); return; }
     if (box == null) { box = el('div', 'apex-race-options'); container.appendChild(box); }
     box.textContent = '';
+    if (settings.kind === 'tournament' && !pendingSpecial) { settings.kind = 'race'; saveSettings(settings); }   // the GP picked before 2.26
     // the format, then its settings: laps and the two options, or the endurance race's duration
     const formats = el('div', 'formats');
-    for (const k of KINDS) {
-      const b = el('button', 'button toggle format' + (settings.kind === k ? ' selected' : ''), T['kind_' + k]);
+    for (const k of FORMATS) {
+      const b = el('button', 'button toggle format' + (formatOn(k, settings.kind) ? ' selected' : ''), T['kind_' + k]);
       b.addEventListener('click', () => { settings.kind = k; saveSettings(settings); renderHostOptions(container, mode); });
       formats.appendChild(b);
     }
@@ -1966,7 +2074,50 @@
       if (window.ApexEndurance) { window.ApexEndurance.stop(); window.ApexEndurance.closePicker(); }
     },
 
+    // --- leaving (Escape, patch_bundle.js): the game asks first, solo as well (2.26). In a race under way, the driver
+    // is told that leaving counts as retiring, and it does: last place of the race on their card (ApexStats)
+    quitWarning() { return retiring() ? T.quitRace : ''; },
+    quit() {
+      if (!retiring()) return;
+      run.counted = true;
+      window.ApexStats?.race(race.grid.length);
+      if (countsAsTournament()) window.ApexStats?.entered?.();
+      const kind = statKind();
+      if (kind != null) window.ApexStats?.event?.(kind, false);
+    },
+    // --- the livery changed during a session (F3, apex-livery.js): told to the room; refused in an endurance room or a special GP
+    carLocked,
+    // the garage over a game (apex-livery.js): not in a Race room (Grand Prix, Endurance); the other cars are
+    // silent meanwhile; on the way back the run starts again (a run paused for the garage is not a run)
+    garageLocked: () => ctx != null && !!room().race,
+    muteRemotes(on) {
+      if (ctx == null) return;
+      for (const r of ctx.remotes().values()) {
+        if (r.car == null) continue;
+        if (on) { r.apexVolume = r.car.audioVolume; r.car.audioVolume = 0; } else if (r.apexVolume != null) { r.car.audioVolume = r.apexVolume; r.apexVolume = null; }
+      }
+    },
+    garageClosed() { if (ctx != null) try { ctx.restart(); } catch (e) { console.warn('Apex: restart after the garage', e); } },
+    carStyle(serialized) {
+      if (ctx == null) return;
+      if (isHost()) {
+        applyStyle(ctx.connection, selfId, serialized);
+        broadcast({ t: 'style', id: selfId, s: serialized });
+      } else sendToHost({ t: 'style', s: serialized });
+    },
+    // the car of a player of the room: the livery they picked during the session, else the one they came with
+    styleOf(id, style) {
+      const s = lastConnection != null ? lastConnection.apexStyles?.get(id) : null;
+      if (s == null) return style;
+      try { return gameModule(CAR_STYLE).A.deserializeSafe(s); } catch (e) { return style; }
+    },
     // --- race hooks
+    // The checkpoint counter (bottom left) and the marker over the next gate: in a race of several laps, the
+    // checkpoints of the lap under way, counted here (the physics keeps counting from lap to lap, simTrack)
+    shownCheckpoint(index) {
+      if (race == null || run == null || course == null || race.phase !== 'race' || (race.laps <= 1 && !endurance())) return index;
+      return Math.min(run.nextCp, course.checkpoints.length);
+    },
     startTransform(transform) {
       runCounts = timeTrialPhase();
       return applySlot(transform, slotFor(selfId));
@@ -2005,6 +2156,8 @@
     prepare(change) { settings = sanitizeSettings({ ...settings, ...change }); saveSettings(settings); pendingSpecial = change.special === true; },
     casualInfo: () => T.casualInfo,
     competitiveInfo: () => T.competitiveInfo,
+    casualLabel: () => T.casual,
+    competitiveLabel: () => T.competitive,
     // after each picture (patch_bundle.js): the drivers' names over their boxes
     drawn(camera, renderer) { try { drawBoxNames(camera, renderer); } catch (e) { console.error('Apex: box names', e); boxNames?.remove(); boxNames = null; } },
     buildMismatch: () => T.buildMismatch,
@@ -2022,6 +2175,7 @@
         peer.apexMod = true;
         sendToPeer(peer, encode(accountsMessage(connection)));
         if (connection.apexRoom != null) sendToPeer(peer, encode(roomMessage(connection.apexRoom)));
+        if (stylesOf(connection).size > 0) sendToPeer(peer, encode({ t: 'styles', list: [...stylesOf(connection)] }));
         if (spectatorsOf(connection).size > 0) sendToPeer(peer, encode({ t: 'specs', ids: [...spectatorsOf(connection)] }));
         if (ctx != null && race != null && connection === ctx.connection) sendToPeer(peer, encode(stateMessage()));
         if (ctx != null) renderBoard();
@@ -2029,7 +2183,7 @@
       }
       if (!peer.apexMod) return;
       const msg = decode(payload);
-      if (msg != null && typeof msg === 'object' && (onAccountMessage(connection, msg, peer) || onSpectatorMessage(connection, msg, peer))) return;
+      if (msg != null && typeof msg === 'object' && (onAccountMessage(connection, msg, peer) || onSpectatorMessage(connection, msg, peer) || onStyleMessage(connection, msg, peer))) return;
       if (msg != null && msg.t === 'ballot') { onBallot(peer, msg); return; }
       if (ctx == null || connection !== ctx.connection) return;
       onMessage(msg, peer);
@@ -2046,7 +2200,7 @@
         return;
       }
       const msg = decode(payload);
-      if (msg != null && typeof msg === 'object' && (onAccountMessage(connection, msg, null) || onSpectatorMessage(connection, msg, null) || onNextMessage(connection, msg) || onVoteMessage(connection, msg))) return;
+      if (msg != null && typeof msg === 'object' && (onAccountMessage(connection, msg, null) || onSpectatorMessage(connection, msg, null) || onStyleMessage(connection, msg, null) || onNextMessage(connection, msg) || onVoteMessage(connection, msg))) return;
       if (msg != null && msg.t === 'room') { connection.apexRoom = roomMessage(msg); if (ctx != null) renderBoard(); return; }
       if (ctx == null || connection !== ctx.connection) return;
       onMessage(msg, null);

@@ -56,7 +56,42 @@
     return found;
   }
 
+  // ---------------------------------------------------------------- ghosts that no longer replay (2.26)
+  // The game found a ghost that does not reach the finish in its time: the track or the physics changed since it was
+  // set. Its name goes in the game's message; on a track of the mod it is reported to our server (signed as the
+  // records are), which takes it off the board once two players have seen it fail on a build other than the record's.
+  const modTrack = id => (Array.isArray(window.GOOFY_MOD_TRACKS) ? window.GOOFY_MOD_TRACKS : []).some(t => t.id === id);
+  const french = () => String(window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr');
+  const reported = new Set();     // trackId:nickname:frames, once per game
+  let invalid = [];               // names of the ghosts found since the last message
+  function invalidGhost(sceneTrack, settings, build) {
+    try {
+      const nickname = String(settings?.nickname || '').trim(), frames = settings?.time?.numberOfFrames;
+      if (nickname && !invalid.includes(nickname)) invalid.push(nickname);
+      const trackId = sceneTrack?.getTrackData?.().getId?.();
+      if (!modTrack(trackId) || !nickname || !(frames > 0)) return;
+      const key = trackId + ':' + nickname + ':' + frames;
+      if (reported.has(key)) return;
+      reported.add(key);
+      const p = window.ApexAccount?.profile?.();
+      if (p == null || typeof p.token !== 'string') return;
+      const body = new URLSearchParams({ userToken: secret(p.token), userTokenHash: hash(p.token), trackId, nickname, frames: String(frames), build: String(build || '') });
+      fetch(server() + 'invalidRecord', { method: 'POST', body }).catch(() => { /* next time */ });
+    } catch (e) { console.warn('GoofyTrack records: invalid ghost', e); }
+  }
+  function invalidText() {
+    const names = invalid;
+    invalid = [];
+    if (names.length === 0) return null;
+    const who = names.join(', ');
+    return french()
+      ? `Fantôme invalide : ${who}. La piste ou le jeu a changé depuis ce temps, il ne retombe plus sur son chrono. Sur une piste du mod, il est signalé et sera retiré du classement.`
+      : `Invalid ghost: ${who}. The track or the game changed since this time was set, it no longer replays to its time. On a mod track, it is reported and will be taken off the board.`;
+  }
+
   window.ApexRecords = {
+    invalidGhost,
+    invalidText,
     hash,
     secret,
     uploaded,

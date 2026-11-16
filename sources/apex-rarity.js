@@ -144,7 +144,14 @@
   };
   // a car style as the game saves it (base64url): byte 1 is the pattern
   function ofStyle(style) {
-    try { return info(atob(String(style).replace(/-/g, '+').replace(/_/g, '/')).charCodeAt(1)); } catch (e) { return null; }
+    return partsOf(style)?.pattern ?? null;
+  }
+  // its body (byte 20, missing on the cars saved before the bodies: the F1's own) and its pattern (byte 1)
+  function partsOf(style) {
+    try {
+      const bytes = atob(String(style).replace(/-/g, '+').replace(/_/g, '/'));
+      return { body: info(bytes.length > 20 ? bytes.charCodeAt(20) : 0, 'body') ?? info(0, 'body'), pattern: info(bytes.charCodeAt(1)) };
+    } catch (e) { return null; }
   }
 
   const css = document.createElement('style');
@@ -244,12 +251,14 @@
   #ui .customization-panel-ui > .options-panel > button.apx-rarity.icon::after,
   #ui .customization-panel-ui > .options-panel > button.apx-rarity.icon > .apx-sparkles > i { animation: none; }
 }
-.livery-ui .slot .name .pattern { display: block; margin-top: 4px; font-size: 16px; }`;
+.livery-ui .slot .name .pattern { display: block; margin-top: 4px; font-size: 16px; font-weight: 600; }
+.livery-ui .slot .name .pattern .sep { color: rgba(255, 255, 255, 0.45); font-weight: normal; }`;
   document.head.appendChild(css);
 
   window.ApexRarity = {
     info,
     ofStyle,
+    partsOf,
     owned,
     // a tile of the garage's Pattern, Rims, Exhaust, Wing or Body tab, sorted by rarity (the tabs are flex columns)
     item(kind, button, index) {

@@ -85,11 +85,15 @@ const COUNTED_BADGES = {
   km: { count: 'distance', unit: 1000, tiers: [500, 1000, 2500, 5000, 10000, 40075], max: 1e10 },   // metres
   h: { count: 'driving', unit: 3600, tiers: [5, 10, 25, 50, 100, 250], max: 1e9 },                   // seconds
   kmh: { count: 'vmax', unit: 10, tiers: [574.8], max: 20000 },                                      // tenths of km/h (the game's top speed)
+  // since 2.26: races won online, tournaments won, official tracks finished (the game's counts)
+  win: { count: 'raceWins', unit: 1, tiers: [1, 10, 25, 50, 100, 250], max: 1e6 },
+  cup: { count: 'tournamentWins', unit: 1, tiers: [1, 3, 5, 10, 25, 50], max: 1e6 },
+  map: { count: 'tracksDone', unit: 1, tiers: [10, 25, 50, 75, 95], max: 1e4 },
 };
 // the stats a game sends with its presence, shown on the player's card (apex-account.js, publicStats), and the most
 // each may say: the tracks, then what the game counts (metres, seconds, km/h, races and the sum of their places)
 const STATS = { tracks: 1e6, circuits: 1e6, custom: 1e6, official: 1e6, metres: 1e11, timedMetres: 1e11, seconds: 1e10, topKmh: 1e4,
-  finishes: 1e8, races: 1e7, wins: 1e7, podiums: 1e7, places: 1e9, tournaments: 1e6 };
+  finishes: 1e8, races: 1e7, wins: 1e7, podiums: 1e7, places: 1e9, tournaments: 1e6, entered: 1e6, gps: 1e6, gpWins: 1e6, ends: 1e6, endWins: 1e6, tGps: 1e6, tGpWins: 1e6, tEnds: 1e6, tEndWins: 1e6 };
 const STATS_SAVE = 10 * 60 * 1000;      // the counts change all the time while driving: saved at most every 10 minutes, unless more changed
 const ONLINE = 75 * 1000;               // since the last presence: the game sends one every 30 s
 const RESERVED_IDS = new Map((process.env.RESERVED_IDS ?? 'julio:7777,shyn:1,chlo:2').split(',').filter(Boolean)
@@ -98,8 +102,12 @@ const REMOVED_ACCOUNTS = new Set((process.env.REMOVED_ACCOUNTS ?? 'chloooo').spl
 const RENAMED_ACCOUNTS = new Map((process.env.RENAMED_ACCOUNTS ?? 'ffff:Dash').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([from, to]) => [from.normalize('NFC').toLowerCase(), String(to || '').trim()]).filter(([, to]) => to));
 const CREATOR_IDS = new Set((process.env.CREATOR_IDS ?? '7777,1').split(',').filter(Boolean).map(Number));
-// the VIP diamond: friends and the first players, by number (#0003 is 3); "2,3" by default: Chlo and Dash
-const VIP_IDS = new Set((process.env.VIP_IDS ?? '2,3').split(',').filter(Boolean).map(Number));
+// the VIP diamond: friends and the first players, by number (#0003 is 3) or by the name they log in with (it never
+// changes, unlike the name shown); "2,3,befasel,teknah" by default: Chlo, Dash, Buns (befasel) and Teknah (2.26)
+const VIP_ENTRIES = (process.env.VIP_IDS ?? '2,3,befasel,teknah').split(',').map(v => v.trim()).filter(Boolean);
+const VIP_IDS = new Set(VIP_ENTRIES.filter(v => /^\d+$/.test(v)).map(Number));
+const VIP_NAMES = new Set(VIP_ENTRIES.filter(v => !/^\d+$/.test(v)).map(v => v.normalize('NFC').toLowerCase()));
+const isVip = a => VIP_IDS.has(a.id) || VIP_NAMES.has(a.name.normalize('NFC').toLowerCase());
 // The garage's unlockable items (apex-rarity.js, `unlock`): the icons, won in tournaments and events. UNLOCKS gives
 // them to accounts by number, "mp4_7a:7777+42,other:…" (by default the McLaren and the Renault to Julio and Dany, the Renault
 // to Dash #0003 too); a creator gives or takes
@@ -239,6 +247,11 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
         changed(other);
       }
       log(`accounts: ${a.name} renumbered #${old} -> #${id}`);
+    }
+    // the VIPs named (VIP_IDS): who they are, or that nobody logs in with that name
+    for (const name of VIP_NAMES) {
+      const a = accounts.get(name);
+      log(a != null ? `accounts: VIP ${name} is ${a.name} #${a.id}` : `accounts: VIP ${name}: no account logs in with that name`);
     }
   }
 
@@ -451,13 +464,16 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   const bestPlaceOfAccount = a => hashesOf(a).map(h => bestPlace(h, a.profile.bestTrack)).filter(Boolean)
     .reduce((b, p) => (b == null || p.position < b.position || (p.position === b.position && p.trackId === a.profile.bestTrack) ? p : b), null);
   // the badges a player owns now
-  const badgesOf = a => [...(CREATOR_IDS.has(a.id) ? ['creator'] : []), ...(VIP_IDS.has(a.id) ? ['vip'] : []), ...podiumOfAccount(a).map(p => 'p' + p.position + ':' + p.trackId),
+  // (since 2.26 the places on the mod's circuits are no longer badges: they still open the bronze, silver and gold
+  // frames, frameOf)
+  const badgesOf = a => [...(CREATOR_IDS.has(a.id) ? ['creator'] : []), ...(isVip(a) ? ['vip'] : []),
     ...Object.entries(COUNTED_BADGES).flatMap(([kind, c]) => c.tiers.filter(n => (a[c.count] || 0) >= n * c.unit).map(n => kind + ':' + n))];
-  // the frame picked, if the badges it needs are still owned (else none: the game shows its default)
+  // the frame picked, if the badges or places it needs are still owned (else none: the game shows its default)
   const frameOf = a => {
     const needs = FRAMES[a.profile?.frame];
     if (needs === undefined) return null;
-    return needs == null || badgesOf(a).some(b => needs.includes(b.split(':')[0])) ? a.profile.frame : null;
+    const owned = [...badgesOf(a), ...podiumOfAccount(a).map(p => 'p' + p.position)];
+    return needs == null || owned.some(b => needs.includes(b.split(':')[0])) ? a.profile.frame : null;
   };
   // the unlockable items a player owns
   const unlocksOf = a => UNLOCKABLES.filter(item => UNLOCKS.get(item)?.has(a.id) || (a.unlocks || []).includes(item));
@@ -481,7 +497,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   function view(key, friend) {
     const a = accounts.get(key), p = a.profile || {}, online = isOnline(key), room = online ? roomOf(key) : null;
     const out = {
-      id: a.id, name: a.name, verified: verifiedOf(a.id),
+      id: a.id, name: a.name, verified: verifiedOf(a.id), vip: isVip(a),   // the statuses, always shown (2.26)
       badges: (p.badges || []).filter(b => badgesOf(a).includes(b)),   // those picked, still owned
       frame: frameOf(a),
       nickname: NICKNAMES.get(a.id) || p.nickname || a.name, countryCode: p.countryCode || null, carStyle: p.carStyle || null,
@@ -529,6 +545,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
     }
     const a = s.account;
     return [200, { id: a.id, name: a.name, keyName: a.keyName ?? a.name, verified: verifiedOf(a.id), badges: badgesOf(a), unlocks: unlocksOf(a), requests: a.requests.length, online: keysOf(a.friends).filter(isOnline).length, recovery: a.recovery != null,
+      places: [...new Set(podiumOfAccount(a).map(p => 'p' + p.position))],   // the podiums on the mod's circuits: the bronze, silver and gold frames
       ...(NICKNAMES.has(a.id) ? { nickname: NICKNAMES.get(a.id) } : {}) }];
   }
 
@@ -591,8 +608,15 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   }
 
   // a player's public card, looked up by account name (a track's author) or number
+  // by number, by name, or by the token hash of one of its game profiles (a leaderboard's entry, 2.26)
+  const keyOfHash = hash => {
+    if (!HEX64.test(hash)) return null;
+    for (const [key, a] of accounts) if (hashesOf(a).includes(hash)) return key;
+    return null;
+  };
   function getPlayer(req, q) {
-    const key = q.has('id') ? byId.get(Number(String(q.get('id')).replace(/^#/, ''))) : keyOf(String(q.get('name') || '').trim());
+    const key = q.has('id') ? byId.get(Number(String(q.get('id')).replace(/^#/, ''))) : q.has('hash') ? keyOfHash(String(q.get('hash')))
+      : keyOf(String(q.get('name') || '').trim());
     if (key == null || !accounts.has(key)) return [404, { error: 'no such player' }];
     const a = accounts.get(key), s = sessionOf(req);
     const friend = s != null && s.account.friends.includes(a.id);
@@ -606,6 +630,49 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
       out.asked = s.account.requests.includes(a.id);   // they asked first: adding them makes you friends
     }
     return [200, out];
+  }
+
+  // ---------------------------------------------------------------- rankings (2.26)
+  // The GoofyTrack players ranked on one stat of their card (the stats their game sends with its presence, kept in
+  // profile.stats): the top RANKING_SIZE, and where the player asking stands. Worked out at most every RANKING_EVERY
+  // per stat. avgSpeed is the card's average speed, from players with RANKING_MIN_SECONDS of timed driving at least
+  // (a single fast lap would win it otherwise).
+  const RANKING_SIZE = 100, RANKING_EVERY = 30 * 1000, RANKING_MIN_SECONDS = 1800;
+  const RANKINGS = {
+    metres: s => s.metres, seconds: s => s.seconds,
+    avgSpeed: s => (s.seconds >= RANKING_MIN_SECONDS && s.timedMetres > 0 ? Math.round(s.timedMetres / s.seconds * 36) / 10 : null),
+    topKmh: s => s.topKmh, finishes: s => s.finishes, races: s => s.races, wins: s => s.wins, podiums: s => s.podiums,
+    entered: s => s.entered, tournaments: s => s.tournaments,
+    // Grand Prix and Endurance, between players or in a special tournament: played and won
+    gps: s => s.gps, gpWins: s => s.gpWins, ends: s => s.ends, endWins: s => s.endWins,
+    tGps: s => s.tGps, tGpWins: s => s.tGpWins, tEnds: s => s.tEnds, tEndWins: s => s.tEndWins,
+  };
+  const rankings = new Map();           // stat -> { time, list: [{ key, value }] } best first
+  function ranked(stat) {
+    const known = rankings.get(stat);
+    if (known && Date.now() - known.time < RANKING_EVERY) return known.list;
+    const valueOf = RANKINGS[stat], list = [];
+    for (const [key, a] of accounts) {
+      const s = a.profile?.stats, value = s ? valueOf(s) : null;
+      if (Number.isFinite(value) && value > 0) list.push({ key, value, name: NICKNAMES.get(a.id) || a.profile.nickname || a.name });
+    }
+    list.sort((x, y) => y.value - x.value || x.name.localeCompare(y.name));
+    // the same value, the same rank
+    list.forEach((e, i) => { e.rank = i > 0 && e.value === list[i - 1].value ? list[i - 1].rank : i + 1; });
+    rankings.set(stat, { time: Date.now(), list });
+    return list;
+  }
+  function getRankings(req, q) {
+    const stat = String(q.get('stat') || '');
+    if (!Object.hasOwn(RANKINGS, stat)) return [400, { error: 'no such stat', stats: Object.keys(RANKINGS) }];
+    const list = ranked(stat), s = sessionOf(req);
+    const entry = e => {
+      const a = accounts.get(e.key);
+      return { rank: e.rank, id: a.id, name: e.name, countryCode: a.profile?.countryCode || null, verified: verifiedOf(a.id), vip: isVip(a), value: e.value };
+    };
+    const mine = s == null ? null : list.find(e => e.key === s.key);
+    return [200, { stat, players: list.length, minSeconds: stat === 'avgSpeed' ? RANKING_MIN_SECONDS : undefined,
+      top: list.slice(0, RANKING_SIZE).map(entry), me: mine ? entry(mine) : null }];
   }
 
   // the account number of a session when it is a creator's (CREATOR_IDS), else null: the special tournaments and
@@ -656,6 +723,7 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
         return route === 'POST /account/register' ? register(body, address) : login(body);
       }
       if (route === 'GET /account/player') return getPlayer(req, url.searchParams);
+      if (route === 'GET /account/rankings') return getRankings(req, url.searchParams);
       const routes = ['GET /account/save', 'PUT /account/save', 'POST /account/logout', 'POST /account/presence', 'GET /account/friends', 'POST /account/friends',
         'POST /account/password', 'POST /account/recovery', 'POST /account/unlock'];
       if (!routes.includes(route)) return [404, { error: 'not found' }];

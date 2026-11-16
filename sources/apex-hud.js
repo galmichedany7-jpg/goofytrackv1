@@ -261,7 +261,7 @@
     if (value == null) { delta.classList.add('hidden'); return; }
     delta.classList.remove('hidden');
     delta.classList.toggle('ahead', value < 0);
-    delta.textContent = (value < 0 ? '−' : '+') + Math.abs(value).toFixed(2);
+    delta.textContent = (value < 0 ? '−' : '+') + Math.abs(value).toFixed(3);   // to the thousandth (2.26)
   }
 
   // ================================================================== hooks called by the game

@@ -120,10 +120,12 @@
   const style = document.createElement('style');
   style.textContent = `
 #ui .speedometer-ui > .box { display: flex; align-items: stretch; justify-content: flex-end; }
+/* a small red tag apart from the speed (2.26): gear 7 at 200 km/h no longer reads "7 200" */
 #ui .speedometer-ui > .box > .apex-gear {
-  margin: 0 8px 0 4px; padding: 0; min-width: 0.7em; align-self: center;
-  line-height: 1; font-size: 34px; font-weight: 700; text-align: center;
-  color: var(--text-color); opacity: 0.85;
+  margin: 0 14px 0 2px; padding: 4px 7px 3px 7px; min-width: 0.8em; align-self: center;
+  line-height: 1; font-size: 18px; font-weight: 800; text-align: center;
+  border-radius: 6px; color: #ff6a70; background-color: rgba(242, 13, 22, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 106, 112, 0.6);
 }
 `;
   document.head.appendChild(style);

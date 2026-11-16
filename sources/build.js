@@ -53,7 +53,7 @@ run('patch_bundle.js');
 
 // The mod's scripts, loaded before the game in this order (the game calls into them from the hooks of patch_bundle.js)
 // (the account first: it watches the storage from the start)
-const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-spectate.js', 'apex-endurance.js', 'apex-room.js', 'apex-tournament.js', 'apex-lobby.js', 'apex-notes.js', 'apex-update.js', 'apex-rarity.js', 'apex-livery.js', 'apex-gearbox.js'];
+const MOD_SCRIPTS = ['apex-account.js', 'apex-gfx.js', 'apex-hud.js', 'apex-records.js', 'apex-monaco.js', 'apex-town.js', 'apex-scenery.js', 'apex-collide.js', 'apex-show.js', 'apex-spectate.js', 'apex-endurance.js', 'apex-room.js', 'apex-tournament.js', 'apex-lobby.js', 'apex-notes.js', 'apex-update.js', 'apex-rarity.js', 'apex-livery.js', 'apex-gearbox.js', 'apex-rankings.js'];
 for (const file of MOD_SCRIPTS) fs.copyFileSync(path.join(__dirname, file), path.join(APP, file));
 // The account keeps its save on our server, whose address it is handed in front of its script, with the mod's
 // tracks (the profile card counts the circuits finished and asks the server for their boards; the P1 badges
@@ -129,6 +129,9 @@ if (!html.includes(mainScript) || !html.includes('<head>') || !html.includes('</
 const wake = '<script>fetch(' + JSON.stringify(SERVER_URL + 'health') + ').catch(()=>{})</script>';
 // <title>: the window's name (Electron would otherwise show the app's, "PolyTrack")
 html = html.replace('<head>', `<head><title>${MOD_NAME}</title>`).replace(mainScript, wake + MOD_SCRIPTS.map(file => `<script defer="defer" src="${file}"></script>`).join('') + mainScript).replace('</head>', '<link rel="stylesheet" href="apex-theme.css"/></head>');
+// the GoofyGames card, the page's first paint (apex-splash.html)
+if (!html.includes('<body>')) throw new Error('index.html has no <body>');
+html = html.replace('<body>', () => '<body>' + fs.readFileSync(path.join(__dirname, 'apex-splash.html'), 'utf8').replace(/^<!--[\s\S]*?-->\s*/, ''));
 fs.writeFileSync(path.join(APP, 'index.html'), html);
 console.log(`${MOD_NAME} ${MOD_VERSION} installed: apex-theme.css, ${MOD_SCRIPTS.join(', ')}, goofytrack-logo.svg, goofytrack_music.mp3, goofytrack_waiting.mp3, ` + require('./tracks').map(t => t.file).join(', '));
 // The exe carries the version in its properties: refresh them when it changes (or could not be, the game being open)

@@ -53,10 +53,15 @@ app.on('window-all-closed', () => app.quit());
 app.whenReady().then(() => {
   win = new BrowserWindow({
     width: 1024, height: 800, minWidth: 320, minHeight: 200, fullscreen: true, useContentSize: true, autoHideMenuBar: true,
+    // the theme's ink from the first frame (no white flash), and the window shown once the page has painted: the
+    // GoofyGames card (apex-splash.html)
+    backgroundColor: '#07080b', show: false,
     icon: path.join(__dirname, '..', 'images', 'goofytrack_icon.ico'),   // the taskbar and Alt+Tab (Windows)
     webPreferences: { devTools: false, preload: path.join(__dirname, 'preload.js'), backgroundThrottling: false },
   });
   win.removeMenu();
+  win.once('ready-to-show', () => win.show());
+  setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) win.show(); }, 3000);   // never left hidden
   win.webContents.on('before-input-event', (event, input) => {
     if (input.isAutoRepeat || input.type !== 'keyDown') return;
     if (input.code === 'F11' || (input.alt && input.code === 'Enter')) {

@@ -41,6 +41,13 @@ const SAVE_DELAY = 5000;
 // "Anonymous": the name the game gives a new profile. Since 2.24 the game asks for a real one: such records are
 // dropped as the server starts, and refused.
 const anonymous = nickname => String(nickname ?? '').trim().toLowerCase() === 'anonymous';
+// Records the team takes off the boards, by name and time in ms (the frames): "Julio:13985". By default those of an
+// old account named Julio that no longer exists (Killer Loop 13.985, Monaco GP 1:48.884, Montbéliard 34.299): its
+// player drives as Julio #7777 now. Dropped as the server starts.
+const PURGED_RECORDS = (process.env.PURGED_RECORDS ?? 'Julio:13985,Julio:108884,Julio:34299').split(',').filter(Boolean)
+  .map(item => { const k = item.lastIndexOf(':'); return { nickname: item.slice(0, k).trim().toLowerCase(), frames: Number(item.slice(k + 1)) }; })
+  .filter(p => p.nickname && Number.isFinite(p.frames));
+const purged = e => PURGED_RECORDS.some(p => p.frames === e.frames && p.nickname === String(e.nickname ?? '').trim().toLowerCase());
 
 const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -86,13 +93,17 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     } else log(`records: none yet, will be saved to ${file} (set GITHUB_TOKEN to keep them in a gist)`);
     // a host that wipes its disk (Render free plan) forgets every record on each restart
     if (!githubToken && process.env.RENDER) console.error('records: WARNING no GITHUB_TOKEN on Render: the records are lost on every restart (every sleep)');
-    let dropped = 0;
+    let dropped = 0, removed = 0;
     for (const [trackId, entries] of Object.entries(data.tracks)) {
       const kept = entries.filter(e => !anonymous(e.nickname));
       dropped += entries.length - kept.length;
-      if (kept.length) data.tracks[trackId] = kept; else delete data.tracks[trackId];
+      const left = kept.filter(e => !purged(e));
+      for (const e of kept) if (purged(e)) log(`records: ${e.nickname} ${e.frames} ms on ${trackId} taken off the board (PURGED_RECORDS)`);
+      removed += kept.length - left.length;
+      if (left.length) data.tracks[trackId] = left; else delete data.tracks[trackId];
     }
-    if (dropped) { log(`records: ${dropped} "Anonymous" record(s) dropped`); scheduleSave(); }
+    if (dropped) log(`records: ${dropped} "Anonymous" record(s) dropped`);
+    if (dropped || removed) scheduleSave();
     const count = Object.values(data.tracks).reduce((n, t) => n + t.length, 0);
     if (data.styles == null) data.styles = {};
     styleCount = Object.values(data.styles).reduce((n, t) => n + Object.keys(t).length, 0);
@@ -188,7 +199,9 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
       return [200, { uploadId: old.id, previousPosition, newPosition: previousPosition }];
     }
     if (old == null && entries.length >= MAX_ENTRIES_PER_TRACK && frames >= entries[entries.length - 1].frames) return [507, 'board full'];
-    const entry = { id: data.nextId++, userId, nickname, countryCode: countryCode || null, carStyle, frames, recording, time: new Date().toISOString() };
+    // the build it was set with (2.26): a ghost that fails on the very same build is not the track's fault (invalidRecord)
+    const build = String(form.get('build') || '').slice(0, 80) || null;
+    const entry = { id: data.nextId++, userId, nickname, countryCode: countryCode || null, carStyle, frames, recording, time: new Date().toISOString(), build };
     if (old != null) entries.splice(entries.indexOf(old), 1);
     entries.push(entry);
     sorted(entries);
@@ -196,6 +209,29 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
     scheduleSave();
     log(`records: ${nickname} ${frames} ms on ${trackId.slice(0, 8)} (P${positionOf(entries, userId)})`);
     return [200, { uploadId: entry.id, previousPosition, newPosition: positionOf(entries, userId) }];
+  }
+
+  // ---------------------------------------------------------------- ghosts that no longer replay (2.26)
+  //   POST /invalidRecord   userToken, userTokenHash, trackId, nickname, frames, build
+  // A player's game found that the ghost of this record does not reach the finish in its time (the track or the physics
+  // changed since). The reporter must have signed a record before (their key is known). Once INVALID_REPORTS players
+  // on a build other than the record's have reported it, it is taken off the board.
+  const INVALID_REPORTS = 2;
+  function reportInvalid(form) {
+    const trackId = form.get('trackId'), userId = form.get('userTokenHash'), secret = form.get('userToken');
+    const frames = Number(form.get('frames')), nickname = String(form.get('nickname') || '').trim().toLowerCase(), build = String(form.get('build') || '').slice(0, 80);
+    if (!HEX64.test(trackId || '') || !HEX64.test(userId || '') || !HEX64.test(secret || '') || !Number.isSafeInteger(frames) || !nickname) return [400, 'bad request'];
+    if (data.keys[userId] == null || data.keys[userId] !== sha256(secret)) return [403, 'unknown player'];
+    const entries = board(trackId), entry = entries.find(e => e.frames === frames && String(e.nickname || '').trim().toLowerCase() === nickname);
+    if (entry == null) return [200, { removed: false }];
+    if (entry.build && build && entry.build === build) return [200, { removed: false, sameBuild: true }];
+    entry.invalidBy = [...new Set([...(entry.invalidBy || []), userId])];
+    if (entry.invalidBy.length < INVALID_REPORTS) { scheduleSave(); return [200, { removed: false, reports: entry.invalidBy.length }]; }
+    entries.splice(entries.indexOf(entry), 1);
+    if (entries.length === 0) delete data.tracks[trackId];
+    scheduleSave();
+    log(`records: ${entry.nickname} ${entry.frames} ms on ${trackId.slice(0, 8)} taken off the board (its ghost no longer replays)`);
+    return [200, { removed: true }];
   }
 
   // ---------------------------------------------------------------- cars of the official records
@@ -233,20 +269,20 @@ function createRecords({ githubToken = process.env.GITHUB_TOKEN, gistId = proces
 
   // true when the request was one of ours
   function handle(req, res, url) {
-    const routes = { '/leaderboard': true, '/leaderboardUserEntry': true, '/recordings': true, '/carStyle': true, '/carStyles': true };
+    const routes = { '/leaderboard': true, '/leaderboardUserEntry': true, '/recordings': true, '/carStyle': true, '/carStyles': true, '/invalidRecord': true };
     if (!routes[url.pathname]) return false;
     if (!ready) { reply(res, 503, 'records not loaded yet'); return true; }
-    if (req.method === 'GET' && url.pathname !== '/carStyle') {
+    if (req.method === 'GET' && url.pathname !== '/carStyle' && url.pathname !== '/invalidRecord') {
       if (url.pathname === '/leaderboard') reply(res, 200, getLeaderboard(url.searchParams));
       else if (url.pathname === '/leaderboardUserEntry') reply(res, 200, getUserEntry(url.searchParams));
       else if (url.pathname === '/carStyles') reply(res, 200, getStyles(url.searchParams));
       else reply(res, 200, getRecordings(url.searchParams));
       return true;
     }
-    if (req.method === 'POST' && (url.pathname === '/leaderboard' || url.pathname === '/carStyle')) {
+    if (req.method === 'POST' && (url.pathname === '/leaderboard' || url.pathname === '/carStyle' || url.pathname === '/invalidRecord')) {
       let body = '';
       req.on('data', chunk => { body += chunk; if (body.length > 64 * 1024) req.destroy(); });
-      req.on('end', () => { const [status, out] = (url.pathname === '/leaderboard' ? submit : submitStyle)(new URLSearchParams(body)); reply(res, status, out); });
+      req.on('end', () => { const [status, out] = ({ '/leaderboard': submit, '/carStyle': submitStyle, '/invalidRecord': reportInvalid })[url.pathname](new URLSearchParams(body)); reply(res, status, out); });
       return true;
     }
     reply(res, 405, 'method not allowed');

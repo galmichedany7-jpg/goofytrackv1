@@ -1405,6 +1405,23 @@ html body {
 	color: var(--apx-accent);
 }
 
+/* an endurance car in the pit lane (2.26), as on TV timing */
+#ui .apex-room-board > .row.pit > .name::after {
+	content: "PIT";
+	margin-left: 6px;
+	padding: 0 4px;
+	border-radius: 3px;
+	background: #f2c230;
+	color: #111;
+	font-size: 0.75em;
+	font-weight: 800;
+	letter-spacing: 0.05em;
+	vertical-align: 1px;
+}
+
+/* endurance: the fastest lap of the race on purple (2.26) */
+#ui .apex-room-board > .row.fastest > .time { color: #c58bff; }
+
 /* the live board: places gained, personal bests on purple (as on TV timing), a flash as a time comes in */
 #ui .apex-room-board > .row { position: relative; }
 #ui .apex-room-board > .row > .time {
@@ -1975,7 +1992,7 @@ html dialog.message-box-ui > div > p {
 	left: 50%;
 	bottom: 104px;
 	transform: translateX(-50%);
-	min-width: 92px;
+	min-width: 104px;
 	padding: 6px 14px 5px 14px;
 	border-radius: var(--apx-r-pill);
 	background-color: var(--apx-glass-strong);
@@ -1983,6 +2000,7 @@ html dialog.message-box-ui > div > p {
 	color: var(--apx-bad);
 	font-size: 20px;
 	font-weight: 700;
+	font-variant-numeric: tabular-nums;   /* the thousandths change every frame: the digits keep their place */
 	text-align: center;
 	pointer-events: none;
 }

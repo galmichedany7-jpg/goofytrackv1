@@ -21,6 +21,9 @@ execFileSync(csc, [
   `/out:${OUT}`,
   `/win32icon:${path.join(__dirname, '..', 'images', 'goofytrack_icon.ico')}`,
   '/reference:System.Web.Extensions.dll',
+  // the window's images (Launcher.cs): a Monaco GP scene, and goofytrack-logo.svg drawn as a 1100 px PNG (headless
+  // Chrome: --headless=new --default-background-color=00000000 --screenshot), to draw again when the logo changes
+  ...['launcher_bg.jpg', 'launcher_logo.png'].map(f => `/resource:${path.join(__dirname, f)},${f}`),
   path.join(__dirname, 'Launcher.cs'),
 ], { stdio: 'inherit' });
 try { fs.rmSync(OUT + '.old', { force: true }); } catch { /* still open */ }

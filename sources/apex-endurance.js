@@ -6,6 +6,7 @@
 //   engine   more acceleration and a higher top speed, but it burns more
 //   tyres    tyres that wear more slowly, and brakes that fade less as they do
 // The curves (setupParams) are balanced on a model of a 15 minute race: every setup ends within a lap of the others.
+// A shorter race (10 minutes, since 2.26) burns and wears that much faster (RACE_MODEL / its minutes): the same stops.
 // While racing, the throttle burns fuel and the distance, the braking and the cornering wear the tyres. Worn tyres
 // turn and brake less; an empty tank leaves the car crawling. Each driver has a box of their own in the pit lane
 // (apex-room.js draws it at random): stopping there fills the tank, and staying a few seconds puts new tyres on.
@@ -72,6 +73,7 @@
   const BURN = 0.32;                 // litres per second at full throttle
   const IDLE_BURN = 0.02;            // litres per second off the throttle
   const RESERVE = 0.15;              // share of the tank: the warning
+  const WORN_ALERT = 0.75;           // tyre wear at which a pit stop is advised (window.ApexAlert)
   const REFUEL = 6;                  // litres per second, stopped in the pits
   const TYRE_STOP = 4000;            // ms stopped in the pits for new tyres
   const STOPPED_KMH = 3;
@@ -139,8 +141,11 @@
   }
 
   // ---------------------------------------------------------------- the race
-  function start(strategy) {
-    const u = strategyOf(strategy || savedSetup()), s = setupParams(u);   // not confirmed in time: the setup last shown
+  const RACE_MODEL = 15;             // minutes: the race the setups are balanced on
+  function start(strategy, minutes) {
+    const u = strategyOf(strategy || savedSetup()), s = { ...setupParams(u) };   // not confirmed in time: the setup last shown
+    const pace = minutes > 0 && minutes < RACE_MODEL ? RACE_MODEL / minutes : 1;
+    s.burn *= pace; s.wear *= pace;
     car = { strategy: u, params: s, fuel: s.tank, wear: 0, lastFrames: -1, last: null, stoppedAt: 0, pitTyres: false, status: null, alert: false,
       inLane: false, over: 0, flagged: false, penalties: 0, servedAt: 0 };
     sent = null;
@@ -221,6 +226,14 @@
     if (car.status == null && dry) car.status = tr('PANNE SÈCHE · rentrez aux stands', 'OUT OF FUEL · back to the pits');
     else if (car.status == null && car.fuel < s.tank * RESERVE) car.status = tr('RÉSERVE · pensez aux stands', 'LOW FUEL · box soon');
     if (car.status == null && car.penalties > 0) { car.alert = true; car.status = tr('Stop-and-go à faire au stand', 'Stop-and-go to serve in the pits'); }
+    // the pit stop advised (2.26): a banner and a sound once per stint, when the fuel reaches the reserve or the tyres are
+    // worn (WORN_ALERT), out of the pit lane; again after the next stop
+    if (!inLane && !car.advised && (car.fuel < s.tank * RESERVE || car.wear >= WORN_ALERT)) {
+      car.advised = true;
+      window.ApexAlert?.({ kind: 'pit', title: tr('Box, box', 'Box, box'),
+        text: car.fuel < s.tank * RESERVE ? tr('Réserve d\'essence : arrêt aux stands conseillé', 'Low fuel: pit stop advised') : tr('Pneus usés : arrêt aux stands conseillé', 'Worn tyres: pit stop advised') });
+    }
+    if (car.advised && car.fuel >= s.tank * RESERVE && car.wear < WORN_ALERT) car.advised = false;
 
     const grip = 1 - car.wear;
     tell({

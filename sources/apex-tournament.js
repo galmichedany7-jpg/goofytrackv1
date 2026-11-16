@@ -29,6 +29,7 @@
   const ROOMS_EVERY = 45000;           // the special tournaments' rooms
   const SEEN_KEY = 'goofytrack.specialSeen';                // special tournaments and rooms already announced
   const CREDITED_KEY = 'goofytrack.tournaments.credited';   // ids of the chrono tournaments already counted (synced)
+  const ENTERED_KEY = 'goofytrack.tournaments.entered';     // ids of the chrono tournaments counted as played (synced)
 
   const french = () => String(window.apexLanguage || navigator.language || '').toLowerCase().startsWith('fr');
   const tr = (fr, en) => (french() ? fr : en);
@@ -48,8 +49,8 @@
       'one track, 10 minutes to 3 days, the best time set in that time wins. Every finished lap counts, solo or in a room.') },
     tournament: { name: 'Grand Prix', info: tr('une course en plusieurs tours, qualifications en 2 tentatives (sinon grille tirée au sort), tour de formation. Le premier arrivé gagne.',
       'a race over several laps, qualifying in 2 attempts (otherwise a grid drawn at random), formation lap. The first car home wins.') },
-    endurance: { name: 'Endurance', info: tr('15 à 20 minutes, chacun règle sa voiture (réservoir, moteur, pneus), ravitaillements dans son box, stands à 100 km/h. Le plus de tours gagne.',
-      '15 to 20 minutes, everyone sets up their car (tank, engine, tyres), pit stops in your own box, 100 km/h in the pit lane. The most laps win.') },
+    endurance: { name: 'Endurance', info: tr('10 à 20 minutes, chacun règle sa voiture (réservoir, moteur, pneus), ravitaillements dans son box, stands à 100 km/h. Le plus de tours gagne.',
+      '10 to 20 minutes, everyone sets up their car (tank, engine, tyres), pit stops in your own box, 100 km/h in the pit lane. The most laps win.') },
   });
   // the circuits of the race and endurance tournaments, with a painted grid and pits (apex-room.js, TOURNAMENT_CIRCUITS)
   const ROOM_TRACKS = [['Forest Speedway', 'forest'], ['Monaco GP', 'monaco']];
@@ -157,6 +158,17 @@
       : tr(`Vous avez gagné ${won.length} tournois chrono !`, `You won ${won.length} time trial tournaments!`));
   }
 
+  // a time trial tournament played (2.26): counted on the profile card once, at its first time sent
+  function countEntered(id) {
+    if (!window.ApexStats?.entered) return;
+    let done;
+    try { done = JSON.parse(localStorage.getItem(ENTERED_KEY) || '[]'); } catch (e) { done = []; }
+    if (!Array.isArray(done)) done = [];
+    if (done.includes(id)) return;
+    window.ApexStats.entered();
+    try { localStorage.setItem(ENTERED_KEY, JSON.stringify([...done, id].slice(-500))); } catch (e) { /* storage full */ }
+  }
+
   // ---------------------------------------------------------------- driving a tournament's track
   const current = () => (driving == null ? null : list.find(t => t.trackId === driving.id && isOpen(t)) || null);
   function track(sceneTrack) {
@@ -172,7 +184,7 @@
     // the laps of a race start from the grid, on the shared clock: not a time on their own (apex-room.js)
     if (window.ApexRoom && window.ApexRoom.raceActive() && !window.ApexRoom.countsAsRecord()) return;
     post('tournaments/time', { id: String(t.id), frames: String(Math.round(frames)) })
-      .then(out => { merge(out); updateHud(); render(); })
+      .then(out => { merge(out); countEntered(t.id); updateHud(); render(); })
       .catch(e => console.warn('Apex tournaments: time not sent', e.message));
   }
 
@@ -277,7 +289,7 @@
   }
 
   // a special tournament's room: its format, who hosts it, how many drive; join it to drive, or to watch
-  const ROOM_KIND = { tournament: () => 'Grand Prix', endurance: () => 'Endurance', race: () => 'Sprint' };
+  const ROOM_KIND = { tournament: () => 'Grand Prix', endurance: () => 'Endurance', race: () => 'Grand Prix' };
   const ROOM_PHASE = { quali: () => tr('Qualifications', 'Qualifying'), formation: () => tr('Tour de formation', 'Formation lap'), strategy: () => tr('Réglages', 'Setups'),
     race: () => tr('En course', 'Racing'), results: () => tr('Résultats', 'Results') };
   function renderRoom(body, r) {
@@ -399,7 +411,7 @@
       el(form, 'p', 'hint', tr('Sans qualifications, la grille est tirée au sort. Le premier arrivé gagne le tournoi.', 'Without qualifying, the grid is drawn at random. The first car home wins the tournament.'));
     } else {
       el(form, 'label', null, tr('Durée de la course', 'Race duration'));
-      slider(form, 15, 20, creating.raceMinutes, v => { creating.raceMinutes = v; return v + ' min'; });
+      slider(form, 10, 20, creating.raceMinutes, v => { creating.raceMinutes = v; return v + ' min'; });
       el(form, 'p', 'hint', tr('Chaque pilote règle sa voiture avant le départ. Le plus de tours à la fin du temps gagne.', 'Every driver sets up their car before the start. The most laps when the time is up wins.'));
     }
 
@@ -637,6 +649,8 @@
     // apex-hud.js: the track driven (null when it ends), a run that crossed the finish line
     track,
     finished,
+    // a special tournament's time trial on the track driven (the garage stays closed then, apex-livery.js)
+    active: () => current() != null,
     debug: () => ({ list, skew, fetched, failed, driving: driving && driving.id, current: current(), play: play != null }),
   };
 })();

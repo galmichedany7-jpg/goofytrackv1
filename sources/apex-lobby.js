@@ -91,8 +91,8 @@
     if (parent) parent.appendChild(e);
     return e;
   };
-  const MODE_TEXT = { casual: () => tr('Décontracté', 'Casual'), competitive: () => tr('Compétitif', 'Competitive'), race: () => 'Sprint',
-    tournament: () => 'Grand Prix', endurance: () => 'Endurance' };
+  const MODE_TEXT = { casual: () => tr('Occasionnel', 'Casual'), competitive: () => tr('Compétitif', 'Competitive'), race: () => tr('Course · Grand Prix', 'Race · Grand Prix'),
+    tournament: () => tr('Course · Grand Prix', 'Race · Grand Prix'), endurance: () => tr('Course · Endurance', 'Race · Endurance') };
   const RACING = new Set(['race', 'tournament', 'endurance']);
   const PHASE_TEXT = {
     quali: () => tr('Qualifications', 'Qualifying'), formation: () => tr('Tour de formation', 'Formation lap'),

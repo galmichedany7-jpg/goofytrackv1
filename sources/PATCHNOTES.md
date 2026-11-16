@@ -15,6 +15,82 @@ Chaque nouvelle version ajoute son paragraphe en haut de cette liste (le jeu l'a
 **Mise à jour** : ce qu'il faut faire pour passer à cette version (rebuild, serveur…).
 -->
 
+## V2.26 : la grosse mise à jour
+
+**Nouveautés**
+- **Classements des joueurs** : un bouton **🏆 Classements** en haut à droite de l'écran d'accueil classe tous les joueurs GoofyTrack sur chaque stat de la carte de profil : **distance parcourue**, **temps au volant**, **vitesse moyenne** (à partir de 30 minutes de course chronométrée), **vitesse max**, **arrivées**, **courses terminées**, **victoires**, **podiums**, les parties **jouées** et **gagnées** de chaque format (**Course : Grand Prix**, **Course : Endurance**, **Tournoi : Grand Prix**, **Tournoi : Endurance**), puis **tous les tournois joués** et **gagnés**. Le top 100 s'affiche, le podium en or, argent et bronze. Votre place reste visible en bas même hors du top 100. Le classement se met à jour toutes les 30 secondes pendant qu'il est ouvert. Un clic sur un joueur ouvre son profil. Il faut être connecté à son compte pour y figurer.
+- **Votre badge de joueur en partie** : en haut à droite, un bouton **☰** et votre voiture dans son cadre, avec un point rouge quand une demande d'ami attend. Le menu ouvre :
+  - **votre profil**, qui s'affiche en bas à droite pour garder la piste visible ;
+  - **vos amis** (pour accepter une demande sans quitter la partie) ;
+  - **le garage** ;
+  - **le changement de livrée** ;
+  - **les paramètres**.
+  En multijoueur, le classement de la room se décale juste en dessous. Tant que la carte de profil est ouverte, les touches ne conduisent plus la voiture.
+- **Le garage en pleine partie** : un bouton **Garage** dans la barre du jeu (à côté de Paramètres), dans le menu ☰ ou la touche F4. Le jeu est **mis en pause** pendant que vous changez de voiture ou modifiez vos livrées, et reprend tel quel en sortant du garage, avec la nouvelle voiture. En multijoueur, les autres la voient, et votre tour repart de zéro (un tour mis en pause ne compte pas). Le bouton est grisé pendant une course (rooms en mode Course) et pendant un tournoi chrono spécial.
+- **Garage : onglets dans un ordre plus logique**, de la voiture à sa livrée puis à ses pièces : **Carrosserie**, **Motif**, **Peinture**, **Aileron**, **Échappement**, **Jantes**. Le garage s'ouvre toujours sur Carrosserie.
+- **La couleur du casque** : un nouveau sélecteur **Casque** dans l'onglet Peinture. Le casque garde sinon la couleur de sa carrosserie (gris, jaune sur la McLaren MP4/7A, bleu sur la R26), et le bouton **Origine** la remet. Les autres joueurs la voient en ligne et sur vos fantômes. Le sélecteur est grisé sur la Laguna GT de Dash, où on ne voit pas de pilote. Le design complet du casque viendra dans une prochaine mise à jour.
+- **Nouveau logo GoofyTrack** sur l'écran d'accueil, et **nouvelle icône** « GT » pour la fenêtre du jeu, la barre des tâches et le lanceur.
+- **Plus d'écran blanc au lancement** : la fenêtre s'ouvre directement sur fond sombre, avec l'écran **GoofyGames** (le nom s'affiche, souligné de rouge, « présente »), puis l'écran de chargement de GoofyTrack. Le jeu charge pendant ce temps, et la **barre de chargement** est déjà là, au même endroit que celle du jeu : elle continue sans saut quand l'écran GoofyGames s'efface. Un clic ou une touche le passe, et il ne revient pas quand le jeu se recharge tout seul (après la connexion au compte).
+- **Nouveau GoofyTrack Launcher**, façon écran titre : le départ de Monaco GP en fond, le logo en grand en haut à gauche, l'état du jeu juste dessous, et les actions en bas à gauche : **Mettre à jour le jeu**, **Reconstruire le jeu**, puis le gros bouton rouge **Jouer à GoofyTrack**. Les versions s'affichent en bas à droite ; le journal s'ouvre à droite pendant une mise à jour, ou avec « Afficher le journal ». La fenêtre s'agrandit et reste nette sur les écrans à 125 % ou 150 %.
+- **Liste des pistes** : les onglets sont maintenant **Pistes officielles**, **Pistes perso**, puis **Tournois spéciaux**.
+- **Une carte de profil plus claire** :
+  - les onglets sont dans l'ordre **Profil**, **Badges**, **Stats**, **Amis** ;
+  - l'onglet Profil se termine par le nom du compte et l'état de la synchronisation, à la place du long texte d'explication ;
+  - le bouton **Changer de profil** disparaît (le compte suit déjà vos profils sur chaque PC). À la place, un bouton **Modifier mes badges** ouvre l'éditeur directement sur les badges ;
+  - l'onglet Badges commence par **Badges gagnés : x / y**, avec le même bouton **Modifier mes badges** ;
+  - les **circuits créés** passent dans l'onglet Stats, à la fin, à la place de la note sur ce qui est compté ;
+  - **retirer un ami** demande confirmation : « Êtes-vous sûr de vouloir retirer *Nom* de vos amis ? ».
+- **Les raccourcis expliqués dans les Paramètres** : dans **Commandes**, une partie **GoofyTrack** (juste après Véhicule) les liste comme les autres touches, en solo comme en partie :
+  - **F2** : profil ;
+  - **F3** : livrée ;
+  - **F4** : garage ;
+  - **Échap** : quitter.
+- **Alertes en course** : un bandeau en haut de l'écran, avec un petit son, prévient sans interrompre la conduite :
+  - quand une **demande d'ami** arrive, avec un bouton « Voir » ;
+  - en endurance, **« Box, box »** quand l'essence passe sur la réserve ou que les pneus sont usés : un arrêt aux stands est conseillé. L'alerte revient après l'arrêt suivant.
+- **Changer de livrée en un clic : touche F3** (ou ☰ › Changer de livrée). Vos 3 livrées du garage s'affichent par-dessus la piste ; cliquez sur l'une d'elles (ou tapez 1, 2 ou 3) et elle passe sur la voiture tout de suite. Elle devient la voiture de votre profil, comme dans le garage. En multijoueur, les autres joueurs la voient aussi (ils doivent avoir cette version). Impossible pendant une endurance ou un tournoi officiel : chacun garde la voiture du départ.
+- **Cliquer sur un temps du classement** d'une piste ouvre maintenant un choix : **affronter son fantôme** (comme avant) ou **voir son profil** GoofyTrack, retrouvé même quand son pseudo diffère de son nom de compte. La fenêtre rappelle qu'on peut choisir jusqu'à **10 fantômes** à la fois. Un clic sur votre propre temps le choisit directement, comme avant.
+- **Nouveaux badges à paliers**, sur le modèle des badges distance et temps :
+  - **Courses gagnées** en multijoueur : 1, 10, 25, 50, 100, 250 (drapeau à damier) ;
+  - **Tournois gagnés** : 1, 3, 5, 10, 25, 50 (coupe) ;
+  - **Pistes officielles bouclées** : 10, 25, 50, 75 et les 95 (repère sur la carte).
+  Les victoires et pistes déjà comptées avant cette version donnent leurs badges dès le premier lancement.
+- **Endurance : le meilleur tour de chacun** s'affiche dans le classement, à côté du nombre de tours. Le meilleur tour de la course est en violet, comme à la télé. Votre meilleur tour s'affiche aussi sous le compteur de tours.
+- **Didacticiel** : une fois le tour du didacticiel bouclé, un bouton **« Terminer le didacticiel »** apparaît. Qu'on le quitte par ce bouton ou plus tôt avec Échap, le jeu revient au **menu principal**, où la création du compte est demandée. Avant, on arrivait sur la liste des pistes et on pouvait jouer en « Anonymous ».
+- **Des modes plus clairs**, avec les mêmes noms partout (écran Héberger, changement de piste, liste des rooms) et des descriptions plus courtes :
+  - **Occasionnel** (avant « Décontracté ») : roulez à votre rythme et battez votre record entre joueurs, sans classement dans la partie ;
+  - **Compétitif** : devenez le joueur le plus rapide de la session, avec un classement entre joueurs ;
+  - **Course**, uniquement sur les circuits en boucle, avec deux formats :
+    - **Grand Prix**, qui remplace le Sprint : une course sans contraintes sur n'importe quel circuit en boucle, avec ou sans qualifications et tour de formation, et le nombre de tours au choix ;
+    - **Endurance** : le mode le plus difficile, un Grand Prix avec arrêts aux stands, où l'on choisit sa stratégie (réservoir, vitesse, usure des pneus) pour faire le plus de tours dans le temps imparti ;
+  - les **Tournois spéciaux** de l'onglet Jouer restent les tournois officiels, avec récompenses : leur Grand Prix garde ses règles (circuits avec grille et stands, 2 tentatives en qualifications).
+- **Fantômes invalides** : quand un fantôme ne retombe plus sur son temps, parce que la piste ou le jeu a changé depuis, le message dit maintenant **de qui** il s'agit. Sur une piste du mod, il est signalé au serveur. Dès que **deux joueurs différents** l'ont vu échouer, le record est retiré du classement, ce qui laisse son pilote en signer un nouveau. Un record n'est jamais retiré par des joueurs qui ont la même version du jeu que lui. Les fantômes de Monaco GP faits avant la dernière modification du circuit partiront ainsi d'eux-mêmes. Un replay ne peut pas être « remis sur la piste » : c'est une suite de touches, et sur une route modifiée elle ne mène plus au même endroit.
+- **Endurance de 10 minutes** : une course d'endurance peut maintenant durer de 10 à 20 minutes (avant, 15 au minimum), en Multijoueur › Héberger › Course comme dans les Tournois spéciaux. Sur une course plus courte que 15 minutes, l'essence et les pneus s'usent plus vite, dans la même proportion : on fait autant d'arrêts, et l'équilibre des réglages ne change pas.
+- **« PIT » au classement** : en endurance, une étiquette jaune **PIT** s'affiche à côté du nom d'un pilote tant qu'il est dans la voie des stands, comme à la télé.
+- **Des stats par format** : la carte de profil sépare maintenant quatre sections, chacune avec ses parties **jouées** et **gagnées** (et le pourcentage) :
+  - **Course : Grand Prix** : un Grand Prix entre joueurs (Multijoueur › Héberger › Course), terminé sur **Forest Speedway ou Monaco GP**, les circuits avec grille et stands. Sur une autre piste, un Grand Prix compte seulement comme une course ;
+  - **Course : Endurance** : une endurance entre joueurs ;
+  - **Tournoi : Grand Prix** : le Grand Prix d'un tournoi spécial ;
+  - **Tournoi : Endurance** : l'endurance d'un tournoi spécial.
+  Le vainqueur voit **GRAND PRIX GAGNÉ**, **ENDURANCE GAGNÉE** ou **TOURNOI GAGNÉ** à l'arrivée. Quitter en pleine course compte comme une partie jouée.
+- **Tournois joués** : la section **Tous les tournois** compte maintenant les tournois joués, à côté des tournois gagnés. Seuls les tournois spéciaux comptent : un Grand Prix ou une endurance une fois terminé, un tournoi chrono dès qu'on y signe un temps. Une course entre joueurs (Grand Prix ou Endurance) n'est plus un tournoi : elle ne compte plus pour le badge **Coupe**. Les comptes démarrent à cette version.
+- **Échap demande toujours avant de quitter** : en solo aussi, la touche Échap ouvre une confirmation au lieu de quitter la piste d'un coup. Pendant une course contre d'autres joueurs, la fenêtre prévient que **quitter compte comme un abandon**, et c'est le cas : la course est comptée en **dernière place** dans vos stats (et comme tournoi joué si c'en est un). Le bouton Quitter de l'écran d'arrivée ne demande rien.
+- **Des livrées faciles à reconnaître** : dans la fenêtre Livrées du garage, sous le nom de chaque livrée, s'affichent maintenant **sa carrosserie et son motif** (par exemple « GoofyTrack F1 · Monaco GP Edition »), chacun dans la **couleur de sa rareté** (gris Commun, vert Rare, bleu Très rare, violet Épique, jaune Légendaire, rouge Mythique, bleu-vert Icône). Avant, seul le motif était indiqué.
+- **L'écart avec le fantôme au millième** : le chiffre en bas de l'écran, qui dit pendant le tour si vous êtes en avance (vert) ou en retard (rouge) sur votre meilleur fantôme, a maintenant **3 décimales** (+0.123 au lieu de +0.12), comme les écarts des classements de room et de tournoi.
+- **Co-créateur et VIP : des statuts, plus des badges** : ils s'affichent maintenant **d'office à côté du pseudo**, pour tout le monde (carte de profil, liste d'amis, accueil, page d'une piste, classements des joueurs, rooms), **sans prendre une des deux places de badge**. Les co-créateurs gardent leur coche dorée. Les VIP ont un nouvel **emblème VIP** (un écusson violet bordé d'or), leur **pseudo souligné d'un contour violet**, et un **contour violet** autour de leur voiture tant qu'ils n'ont pas choisi un autre cadre. En multijoueur aussi : la coche et l'emblème s'affichent dans la **liste des joueurs** et le **classement de la room**, et l'étiquette au-dessus de la voiture d'un VIP a un **cadre violet**. L'onglet Badges montre votre statut à part.
+- **Nouveaux VIP : Buns et Teknah** reçoivent le statut et le cadre VIP. L'équipe peut maintenant donner le VIP par nom de connexion, en plus du numéro (`VIP_IDS=2,3,befasel,teknah`).
+- **Le rapport engagé plus lisible** : à côté du compteur, le rapport s'affiche maintenant plus petit, en rouge, dans une petite pastille. Avant, il avait la même taille et la même couleur que la vitesse : en 7e à 200 km/h, on pouvait lire « 7 200 ».
+
+**Corrections**
+- **Renommer une livrée** : le crayon ✎ à côté d'une livrée (garage › Livrées) ne réagissait pas, le clic passait à travers et choisissait la livrée. Il ouvre maintenant un champ à la place du nom : **Entrée** (ou un clic ailleurs) garde le nouveau nom, **Échap** annule, et un nom vide remet « Livrée 1, 2 ou 3 ». Le nom s'affiche aussi dans le changement de livrée en partie (F3). 24 caractères au plus.
+- **Points de contrôle en Grand Prix et en endurance** : à partir du 2e tour, le compteur restait bloqué au maximum (« 3/3 »), la flèche du prochain point de contrôle disparaissait, et une réapparition renvoyait au dernier point de contrôle du 1er tour. Maintenant, le compteur et la flèche repartent de zéro à chaque tour. Sur Forest Speedway et Monaco GP, la réapparition se fait au dernier point de contrôle passé dans le tour en cours.
+- **Anciens records de « Julio » retirés** des classements de Killer Loop (13.985), Monaco GP (1:48.884) et Montbéliard (34.299) : ils venaient d'un ancien compte qui n'existe plus. Julio roule maintenant avec son compte #7777.
+
+**Retraits**
+- La stat **« Circuits du mod »** et la section **« Classements des circuits du mod »** de la carte de profil disparaissent, ainsi que les **badges P1, P2 et P3** des circuits du mod. Monter sur le podium d'un circuit du mod débloque toujours les cadres **Bronze** (top 3), **Argent** (P1 ou P2) et **Or** (P1).
+
+**Mise à jour** : ouvrez GoofyTrack Launcher et cliquez sur Mettre à jour. Tous les joueurs d'une room doivent avoir la même version. Le serveur doit être redéployé (Render) pour le VIP de Buns et Teknah, le retrait des anciens records de Julio, la fin des badges de podium, le compteur de tournois joués, les stats par format vues par les autres joueurs, les classements des joueurs, le statut VIP vu par tous, les nouveaux badges, la recherche d'un profil depuis un classement et le retrait des records dont le fantôme ne rejoue plus. Si la variable `VIP_IDS` est définie sur Render, elle doit inclure `befasel,teknah` (ou leurs numéros).
+
 ## V2.25 : la Laguna de Dash
 
 **Nouveautés**

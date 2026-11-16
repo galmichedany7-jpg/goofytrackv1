@@ -17,6 +17,11 @@
 // the wings' own colour, and its "Auto" button goes back to the pattern. The garage's paint panel calls
 // wingPicker(panel, element, picker) once, wingStyle(panel, style, picker) on each car it builds and
 // wingShow(panel, style, picker) when it is handed a car; the panel keeps apxWing and apxWingHex.
+//
+// The helmet colour (Paint tab, sixth picker), made the same way: until it is moved the helmet keeps the colour
+// its body gives it (helmetHex null: grey, the MP4/7A's yellow, the R26's blue), the picker showing it; moved, it
+// is the helmet's own, and its "Origine" button goes back. helmetPicker, helmetStyle and helmetShow, called with
+// the wing's; the panel keeps apxHelmetHex. Greyed out on the Laguna, whose driver cannot be seen.
 (() => {
   'use strict';
 
@@ -137,6 +142,34 @@
     }
   }
 
+  // ---------------------------------------------------------------- the helmet
+  // build_car.js's helmet materials (linear), by body: the car's own, the MP4/7A, the R26, the Laguna
+  const HELMET_LINEAR = [[0.85, 0.85, 0.85], [0.95, 0.62, 0.0], [0.03, 0.12, 0.48], [0.85, 0.85, 0.85]];
+  const NO_DRIVER = 3;   // the Laguna Coupé (patch_bundle.js, LAGUNA_BODY)
+  const toSrgb = v => Math.round(255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055));
+  const helmetDefault = body => { const c = HELMET_LINEAR[body] ?? HELMET_LINEAR[0]; return toSrgb(c[0]) << 16 | toSrgb(c[1]) << 8 | toSrgb(c[2]); };
+  let helmetShowing = false;   // the picker is being set here: its change is not the player's
+  function showHelmet(panel, picker, hex) {
+    if (panel.apxHelmetTarget === hex && panel.apxHelmetShown != null) return;
+    helmetShowing = true;
+    try {
+      panel.apxHelmetShown = null;
+      picker.color = new picker.color.constructor(hex);
+      panel.apxHelmetShown = picker.color.getHex();   // as the picker gives it back (it keeps HSV)
+      panel.apxHelmetTarget = hex;
+    } finally { helmetShowing = false; }
+  }
+  function markHelmet(panel, style) {
+    panel.apxHelmetAuto?.classList.toggle('selected', panel.apxHelmetHex == null);
+    const box = panel.apxHelmetBox;
+    if (box == null) return;
+    const locked = (style.body ?? 0) === NO_DRIVER;
+    box.classList.toggle('apx-locked', locked);
+    let note = box.querySelector(':scope > .apx-lock-note');
+    if (locked && note == null) { note = document.createElement('div'); note.className = 'apx-lock-note'; box.appendChild(note); }
+    if (note != null) note.textContent = locked ? tr('Pas de pilote visible sur cette carrosserie : le casque ne se voit pas.', 'No driver can be seen on this body: the helmet does not show.') : '';
+  }
+
   // ---------------------------------------------------------------- the garage
   let garage = null;
   let bypass = false;          // the next click on the button opens the game's profiles (profile card)
@@ -147,12 +180,15 @@
   css.textContent = '#ui .customization-ui > .profile-button-container{display:none!important}'   // name and flag: the profile card's
     + '.livery-ui .slot .name .badge{margin-left:10px;font-size:18px;opacity:.6}'
     // the pencil that renames a livery, and the field it opens in place of the name
+    // (#ui is pointer-events:none and only the game's .button takes clicks: the pencil and the field must say so)
     + '.livery-ui .slot{position:relative}'
-    + '.livery-ui .slot .apx-rename{position:absolute;right:14px;top:14px;width:34px;height:34px;padding:0;border:none;border-radius:8px;cursor:pointer;'
-    + 'font-size:17px;line-height:34px;color:#cfd3da;background:rgba(255,255,255,.08)}'
+    + '.livery-ui .slot .apx-rename{position:absolute;z-index:2;right:14px;top:14px;width:34px;height:34px;padding:0;border:none;border-radius:8px;cursor:pointer;'
+    + 'pointer-events:auto;font-size:17px;line-height:34px;color:#cfd3da;background:rgba(255,255,255,.08)}'
     + '.livery-ui .slot .apx-rename:hover{color:#fff;background:rgba(255,255,255,.18)}'
-    + '.livery-ui .slot input.apx-livery-name{width:calc(100% - 60px);box-sizing:border-box;padding:4px 8px;font:inherit;font-size:24px;font-weight:700;'
-    + 'color:#fff;background:rgba(0,0,0,.35);border:2px solid var(--accent-color,#e10600);border-radius:8px;outline:none}'
+    + '.livery-ui .slot.apx-renaming .name-container{visibility:hidden}'
+    + '.livery-ui .slot input.apx-livery-name{position:absolute;z-index:2;left:110px;right:14px;top:50%;transform:translateY(-50%);box-sizing:border-box;padding:4px 8px;'
+    + 'pointer-events:auto;-webkit-user-select:text;user-select:text;font:inherit;font-size:24px;font-weight:700;'
+    + 'color:#fff;background:rgba(0,0,0,.55);border:2px solid var(--accent-color,#e10600);border-radius:8px;outline:none}'
     // the wing picker's Auto button, in its title
     + '#ui .customization-panel-ui .color h2{position:relative}'
     + '#ui .customization-panel-ui .color h2 .apx-wing-auto{position:absolute;right:0;top:50%;transform:translateY(-50%);margin:0;padding:2px 8px;'
@@ -167,6 +203,137 @@
     + '#ui .customization-panel-ui .color.apx-locked>.apx-lock-note{display:flex;align-items:center;justify-content:center;position:absolute;inset:30px 8px 8px;'
     + 'padding:10px;border-radius:8px;text-align:center;font-size:14px;line-height:1.3;color:#fff;background:rgba(8,40,44,.88);box-shadow:inset 0 0 0 1px #22e6c8}';
   document.head.appendChild(css);
+
+  // ---------------------------------------------------------------- another livery while driving (2.26)
+  // F3 shows the profile's three liveries over the track: the one picked goes on the car at once and becomes the
+  // profile's car, as in the garage (the leaderboards show it); a room sees it too (apex-room.js). Not in a GP or an
+  // endurance room: everybody keeps the car they started with.
+  const SWITCH_KEY = 'F3';
+  let liveCar = null, liveSeen = 0, quick = null;
+  const driving = () => liveCar != null && performance.now() - liveSeen < 1000;
+  function closeQuick() { quick?.remove(); quick = null; }
+  function switchTo(i) {
+    const e = entry(), style = e && e.slots[i];
+    closeQuick();
+    if (style == null) return;
+    e.active = i;
+    store(e);
+    try {
+      const CarStyle = gameModule(CAR_STYLE).A, carStyle = CarStyle.deserializeSafe(style);
+      const game = window.GoofyGame;
+      if (game) {
+        game.profiles.setCarStyle(carStyle);
+        const p = game.profiles.getCurrentUserProfile();
+        Promise.resolve(game.api?.submitUserProfile(p.token, p.nickname, p.countryCode, p.carStyle)).catch(err => console.warn('GoofyTrack livery: PolyTrack server', err));
+      }
+      liveCar?.setCarStyle(carStyle);
+      window.ApexRoom?.carStyle?.(style);
+    } catch (err) { console.warn('GoofyTrack livery: switch', err); }
+  }
+  function openQuick() {
+    const ui = document.getElementById('ui');
+    if (ui == null) return;
+    closeQuick();
+    quick = document.createElement('div');
+    quick.className = 'apx-quick-livery';
+    const card = quick.appendChild(document.createElement('div'));
+    card.className = 'card';
+    card.appendChild(document.createElement('div')).className = 'title';
+    card.lastChild.textContent = tr('Changer de voiture', 'Change car');
+    const locked = window.ApexRoom?.carLocked?.();
+    if (locked) {
+      card.appendChild(document.createElement('p')).textContent = tr('Pas pendant une endurance ni un tournoi officiel : chacun garde la voiture du départ.', 'Not during an endurance race or an official tournament: everybody keeps the car they started with.');
+    } else {
+      const e = entry();
+      const row = card.appendChild(document.createElement('div'));
+      row.className = 'slots';
+      (e ? e.slots : []).forEach((style, i) => {
+        const b = row.appendChild(document.createElement('button'));
+        b.className = 'slot' + (i === e.active ? ' active' : '');
+        b.disabled = style == null;
+        const img = b.appendChild(document.createElement('img'));
+        if (style != null) thumbnail(style).then(url => { img.src = url; }).catch(() => {});
+        b.appendChild(document.createElement('span')).textContent = (i + 1) + '. ' + (e.names[i] || tr('Livrée ', 'Livery ') + (i + 1));
+        b.addEventListener('click', () => switchTo(i));
+      });
+      card.appendChild(document.createElement('p')).textContent = tr('Touches 1, 2, 3 · F3 ou Échap pour fermer. Les livrées se préparent dans le garage.', 'Keys 1, 2, 3 · F3 or Escape to close. Liveries are made in the garage.');
+    }
+    quick.addEventListener('click', event => { if (event.target === quick) closeQuick(); });
+    ui.appendChild(quick);
+  }
+  window.addEventListener('keydown', event => {
+    if (event.code === SWITCH_KEY && !event.repeat) {
+      if (quick != null) { event.preventDefault(); closeQuick(); return; }
+      if (!driving() || panel != null) return;
+      event.preventDefault();
+      openQuick();
+      return;
+    }
+    if (quick == null) return;
+    const digit = /^Digit([123])$/.exec(event.code) || /^Numpad([123])$/.exec(event.code);
+    if (event.code === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeQuick(); }
+    else if (digit) { event.preventDefault(); event.stopImmediatePropagation(); if (!window.ApexRoom?.carLocked?.()) switchTo(Number(digit[1]) - 1); }
+  }, true);
+  css.textContent += '#ui .apx-quick-livery{position:absolute;inset:0;z-index:103;display:flex;align-items:center;justify-content:center;pointer-events:auto;background:rgba(8,10,14,.45)}'
+    + '#ui .apx-quick-livery .card{display:flex;flex-direction:column;gap:12px;max-width:calc(100% - 32px);padding:18px 20px;border-radius:12px;color:#f3f5f8;background:rgba(12,14,19,.95);box-shadow:inset 0 0 0 1px rgba(255,255,255,.09),0 18px 50px rgba(0,0,0,.45)}'
+    + '#ui .apx-quick-livery .title{font-size:20px;font-weight:800}'
+    + '#ui .apx-quick-livery p{margin:0;font-size:13px;color:rgba(243,245,248,.7)}'
+    + '#ui .apx-quick-livery .slots{display:flex;gap:10px;flex-wrap:wrap}'
+    + '#ui .apx-quick-livery .slot{display:flex;flex-direction:column;align-items:center;gap:6px;width:150px;padding:8px;border:none;border-radius:10px;cursor:pointer;font:inherit;font-size:14px;font-weight:600;color:#f3f5f8;background:rgba(255,255,255,.06)}'
+    + '#ui .apx-quick-livery .slot:hover{background:rgba(255,255,255,.12)}'
+    + '#ui .apx-quick-livery .slot.active{box-shadow:inset 0 0 0 2px var(--accent-color,#e10600)}'
+    + '#ui .apx-quick-livery .slot:disabled{opacity:.35;cursor:default}'
+    + '#ui .apx-quick-livery .slot img{width:134px;height:84px;object-fit:contain}';
+
+  // ---------------------------------------------------------------- the garage while driving (2.26)
+  // The toolbar's Garage button, the in-game menu (apex-account.js) or F4 open the real garage over the game: the game
+  // is paused (the car held, its sound off, its interface hidden) and comes back as it was when the garage is left,
+  // with the car saved there. Not during a race (a Race room, apex-room.js) nor a special tournament's time trial. In a
+  // room, the run starts again on the way back (a run paused for the garage is not a run).
+  const GARAGE_KEY = 'F4';
+  let over = null;                     // { car, hidden: [elements of the game's interface] } while the garage is up
+  const garageAllowed = () => over == null && !window.apexGarageOpen && driving() && typeof window.apexOpenGarage === 'function'
+    && !window.ApexRoom?.garageLocked?.() && !window.ApexTournament?.active?.();
+  function openGarageOver() {
+    if (!garageAllowed()) return false;
+    const ui = document.getElementById('ui'), car = liveCar;
+    closeQuick();
+    const before = ui ? [...ui.children].filter(e => e.style.display !== 'none') : [];
+    over = { car, hidden: [] };
+    window.apexGarageOpen = true;
+    try { car.isPaused = true; car.audioVolume = 0; } catch (e) { /* not a car */ }
+    window.ApexRoom?.muteRemotes?.(true);
+    window.apexOpenGarage(() => {
+      // the game's interface waits under the garage
+      for (const e of before) if (e.isConnected) { e.style.display = 'none'; over.hidden.push(e); }
+    }, () => {
+      const was = over;
+      over = null;
+      window.apexGarageOpen = false;
+      for (const e of was.hidden) e.style.display = '';
+      window.ApexRoom?.muteRemotes?.(false);
+      try {
+        const style = window.GoofyGame?.profiles.getCurrentUserProfile().carStyle;
+        if (style) { was.car.setCarStyle(style); window.ApexRoom?.carStyle?.(style.serialize()); }
+        was.car.audioVolume = 1;
+      } catch (e) { console.warn('GoofyTrack garage: back to the game', e); }
+      window.ApexRoom?.garageClosed?.();
+    });
+    return true;
+  }
+  // the toolbar's Garage button: greyed out where the garage cannot open
+  setInterval(() => {
+    const allowed = garageAllowed() || over != null;
+    for (const b of document.querySelectorAll('#ui .apex-garage-button')) {
+      b.disabled = !allowed;
+      b.title = allowed ? tr('Garage (F4) : le jeu est mis en pause', 'Garage (F4): the game is paused') : tr('Pas pendant une course ni un tournoi', 'Not during a race or a tournament');
+    }
+  }, 500);
+  window.addEventListener('keydown', event => {
+    if (event.code !== GARAGE_KEY || event.repeat || over != null) return;
+    if (openGarageOver()) event.preventDefault();
+  }, true);
+  window.ApexGarage = { open: openGarageOver, allowed: garageAllowed };
 
   function close() {
     if (panel == null) return;
@@ -207,9 +374,8 @@
     pencil.title = tr('Renommer la livrée', 'Rename the livery');
     pencil.addEventListener('click', event => {
       event.stopPropagation();
-      const name = slot.querySelector('.name');
       const e = entry();
-      if (name == null || e == null) return;
+      if (e == null) return;
       const field = document.createElement('input');
       Object.assign(field, { className: 'apx-livery-name', type: 'text', value: e.names[i] || '', placeholder: nameOf(e, i), maxLength: NAME_LENGTH, spellcheck: false });
       let done = false;
@@ -229,7 +395,10 @@
       });
       field.addEventListener('blur', () => finish(true));
       field.addEventListener('click', event => event.stopPropagation());
-      name.replaceWith(field);
+      field.addEventListener('mousedown', event => event.stopPropagation());
+      // over the name, not inside the livery's button (a field in a button loses its clicks)
+      slot.classList.add('apx-renaming');
+      slot.appendChild(field);
       pencil.remove();
       field.focus();
       field.select();
@@ -287,13 +456,24 @@
         badge.textContent = tr('sur la voiture', 'on the car');
         name.appendChild(badge);
       }
-      const rarity = style == null ? null : window.ApexRarity?.ofStyle(style);   // its pattern (apex-rarity.js)
-      if (rarity != null) {
-        const pattern = document.createElement('span');
-        pattern.className = 'pattern';
-        pattern.style.color = rarity.color;
-        pattern.textContent = `${rarity.name} · ${rarity.rarityName}`;
-        name.appendChild(pattern);
+      // its body and its pattern, each in the colour of its rarity (apex-rarity.js): the livery is known at a glance
+      const parts = style == null ? null : window.ApexRarity?.partsOf?.(style);
+      const shown = parts == null ? [] : [parts.body, parts.pattern].filter(p => p != null);
+      if (shown.length > 0) {
+        const line = document.createElement('span');
+        line.className = 'pattern';
+        line.title = shown.map(p => `${p.name} · ${p.rarityName}`).join('\n');
+        shown.forEach((p, k) => {
+          if (k > 0) {
+            const sep = line.appendChild(document.createElement('span'));
+            sep.className = 'sep';
+            sep.textContent = ' · ';
+          }
+          const part = line.appendChild(document.createElement('span'));
+          part.style.color = p.color;
+          part.textContent = p.name;
+        });
+        name.appendChild(line);
       }
       names.appendChild(name);
       button.append(images, names);
@@ -319,6 +499,8 @@
   }
 
   window.ApexLivery = {
+    // the car being driven, every frame (patch_bundle.js): F3 works while it is fresh
+    drivingCar(car) { liveCar = car; liveSeen = performance.now(); },
     garage(api) { garage = api; if (api == null) { close(); wingPanel = null; } else entry(); },
     open,
     label: () => tr('Livrées', 'Liveries'),
@@ -382,5 +564,41 @@
       lockPaint(panel, style);
     },
     bodyLabel: () => tr('Carrosserie', 'Body'),
+    helmetLabel: () => tr('Casque', 'Helmet'),
+    // the helmet picker's box: its Origine button (the body's helmet colour)
+    helmetPicker(panel, element, picker) {
+      const button = document.createElement('button');
+      button.className = 'apx-wing-auto selected';
+      button.textContent = tr('Origine', 'Default');
+      button.title = tr('Le casque garde la couleur d\'origine de la carrosserie', 'The helmet keeps the colour the body gives it');
+      button.addEventListener('click', () => {
+        garage?.click();
+        panel.apxHelmetHex = null;
+        panel.apxHelmetTarget = undefined;
+        panel.apxHelmetShown = null;
+        picker.color = picker.color;   // the panel builds the car again (helmetStyle), now with the body's helmet
+      });
+      element.querySelector('h2')?.appendChild(button);
+      panel.apxHelmetAuto = button;
+      panel.apxHelmetBox = element;
+    },
+    // the car the panel built (wingStyle has put its body on): the colour the picker was moved to
+    helmetStyle(panel, style, picker) {
+      if (picker != null && panel.apxHelmetShown != null && picker.color.getHex() !== panel.apxHelmetShown) {
+        panel.apxHelmetHex = picker.color.getHex();
+        panel.apxHelmetShown = panel.apxHelmetHex;
+        panel.apxHelmetTarget = panel.apxHelmetHex;
+      }
+      style.helmetHex = panel.apxHelmetHex ?? null;
+      if (picker != null && style.helmetHex == null && !helmetShowing) showHelmet(panel, picker, helmetDefault(style.body ?? 0));
+      markHelmet(panel, style);
+    },
+    // the car handed to the panel (it has set apxHelmetHex from it)
+    helmetShow(panel, style, picker) {
+      if (picker == null) return;
+      panel.apxHelmetTarget = undefined;
+      showHelmet(panel, picker, style.helmetHex ?? helmetDefault(style.body ?? 0));
+      markHelmet(panel, style);
+    },
   };
 })();

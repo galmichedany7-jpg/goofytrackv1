@@ -159,6 +159,71 @@ const patches = [
     replace: 'const apexId=n,r=(0,R.gn)(this,as,"f").get(n);if(null!=r&&i>r.resetCounter){let e=' + START + 'window.ApexRoom&&null!=e&&(e=window.ApexRoom.remoteStart(apexId,e));',
   },
   {
+    // Escape asks before leaving, solo as well (the game only asked online); the Exit button of the end screen does not.
+    // In a race under way, leaving is retiring: the dialog says so, and the race counts as the last place (apex-room.js)
+    name: 'Escape asks before leaving, solo as well',
+    find: 'ys=function(){if((0,R.gn)(this,ka,"f")?.cancel(),null==(0,R.gn)(this,Za,"f"))(0,R.gn)(this,ba,"f").call(this);else{let e;',
+    replace: 'ys=function(apexAsk){if((0,R.gn)(this,ka,"f")?.cancel(),null==(0,R.gn)(this,Za,"f")&&!apexAsk)(0,R.gn)(this,ba,"f").call(this);else{let e;',
+  },
+  {
+    name: 'the leaving dialog: solo, and a race under way',
+    find: 'e=(0,R.gn)(this,Za,"f").multiplayerConnection instanceof ri?(0,R.gn)(this,oa,"f").get("Are you sure you want to quit?")+"\\n\\n"+(0,R.gn)(this,oa,"f").get("All connected players will be disconnected!"):(0,R.gn)(this,oa,"f").get("Are you sure you want to quit?"),(0,R.gn)(this,pa,"f").showConfirm(e,(0,R.gn)(this,oa,"f").get("Cancel"),(0,R.gn)(this,oa,"f").get("Confirm"),null,(()=>{(0,R.gn)(this,ba,"f").call(this)}))',
+    replace: 'e=null!=(0,R.gn)(this,Za,"f")&&(0,R.gn)(this,Za,"f").multiplayerConnection instanceof ri?(0,R.gn)(this,oa,"f").get("Are you sure you want to quit?")+"\\n\\n"+(0,R.gn)(this,oa,"f").get("All connected players will be disconnected!"):(0,R.gn)(this,oa,"f").get("Are you sure you want to quit?");const apexWarn=window.ApexRoom?window.ApexRoom.quitWarning():"";apexWarn&&(e+="\\n\\n"+apexWarn),(0,R.gn)(this,pa,"f").showConfirm(e,(0,R.gn)(this,oa,"f").get("Cancel"),(0,R.gn)(this,oa,"f").get("Confirm"),null,(()=>{window.ApexRoom&&window.ApexRoom.quit(),(0,R.gn)(this,ba,"f").call(this)}))',
+  },
+  {
+    name: 'Escape is the key that asks',
+    find: '(0,R.gn)(this,_a,"f").isVisible=!0):(0,R.gn)(this,ta,"m",ys).call(this),e.preventDefault()',
+    replace: '(0,R.gn)(this,_a,"f").isVisible=!0):(0,R.gn)(this,ta,"m",ys).call(this,!0),e.preventDefault()',
+  },
+  // ---------------------------------------------------------------- a time of a leaderboard (2.26)
+  // A click on another player's time asks first (apex-account.js, boardEntry): race their ghost (the game's own pick, up
+  // to 10 at once, apexToggle) or see their GoofyTrack profile, found by the board's token hash (kept in the entry)
+  {
+    name: 'leaderboard rows get their entry',
+    find: '(0,R.gn)(this,Ro,"m",il).call(this,f,i,a,o,c,h,d,u,t,l,n)',
+    replace: '(0,R.gn)(this,Ro,"m",il).call(this,f,i,a,o,c,h,d,u,t,l,n,s[e])',
+  },
+  {
+    name: 'a leaderboard row: the pick becomes apexToggle',
+    find: 'il=function(e,t,n,i,r,a,s,o,l,c,h){const d=document.createElement("button");d.className="button main",o&&((0,R.GG)(this,$o,d,"f"),d.classList.add("self")),d.addEventListener("click",(()=>{(0,R.gn)(this,zo,"f").playUIClick(),(0,R.gn)(this,el,"f").some((e=>e.recordingId==l))?',
+    replace: 'il=function(e,t,n,i,r,a,s,o,l,c,h,apexEntry){const d=document.createElement("button");d.className="button main",o&&((0,R.GG)(this,$o,d,"f"),d.classList.add("self"));const apexToggle=()=>{(0,R.gn)(this,el,"f").some((e=>e.recordingId==l))?',
+  },
+  {
+    name: 'a leaderboard row asks before picking',
+    find: '(0,R.gn)(this,Do,"f").call(this,(0,R.gn)(this,el,"f")))})),(0,R.gn)(this,Oo,"f").appendChild(d)',
+    replace: '(0,R.gn)(this,Do,"f").call(this,(0,R.gn)(this,el,"f")))};d.addEventListener("click",(()=>{(0,R.gn)(this,zo,"f").playUIClick(),window.ApexAccount&&window.ApexAccount.boardEntry?window.ApexAccount.boardEntry({nickname:t,userId:apexEntry&&"string"==typeof apexEntry.apexUserId?apexEntry.apexUserId:null,isSelf:o,selected:(0,R.gn)(this,el,"f").some((e=>e.recordingId==l)),full:(0,R.gn)(this,el,"f").length>=10},apexToggle):apexToggle()})),(0,R.gn)(this,Oo,"f").appendChild(d)',
+  },
+  {
+    // a player's car changed during the session (F3, apex-livery.js; apex-room.js tells the room): the player list keeps it
+    name: 'other cars keep the livery picked during the session',
+    find: 'n.car.setNameTag(e.countryCode,e.nickname),n.car.setCarStyle(e.carStyle)}',
+    replace: 'n.car.setNameTag(e.countryCode,e.nickname),n.car.setCarStyle(window.ApexRoom?window.ApexRoom.styleOf(e.id,e.carStyle):e.carStyle)}',
+  },
+  // ---------------------------------------------------------------- ghosts that no longer replay (2.26, apex-records.js)
+  // A ghost that does not reach the finish in its time (the track or the physics changed since it was set): the game
+  // says which one, and a record of the mod's tracks is reported to our server, which takes it off its board once two
+  // players on another build than the record's have seen it fail
+  {
+    name: 'a ghost that does not replay is reported',
+    find: 't.finishFrames==e.settings.time.numberOfFrames||(0,R.GG)(this,ls,!0,"f")',
+    replace: 't.finishFrames==e.settings.time.numberOfFrames||((0,R.GG)(this,ls,!0,"f"),window.ApexRecords&&window.ApexRecords.invalidGhost((0,R.gn)(this,ra,"f"),e.settings,' + JSON.stringify(BUILD_ID) + '))',
+  },
+  {
+    name: 'the invalid replay message names the ghost',
+    find: '(0,R.gn)(this,pa,"f").show((0,R.gn)(this,oa,"f").get("Invalid replay detected!")',
+    replace: '(0,R.gn)(this,pa,"f").show(window.ApexRecords&&window.ApexRecords.invalidText()||(0,R.gn)(this,oa,"f").get("Invalid replay detected!")',
+  },
+  {
+    name: 'checkpoint counter counts the lap under way',
+    find: 'update(e){const t=e.getNextCheckpointIndex().toString()+"/"',
+    replace: 'update(e){const t=(window.ApexRoom?window.ApexRoom.shownCheckpoint(e.getNextCheckpointIndex()):e.getNextCheckpointIndex()).toString()+"/"',
+  },
+  {
+    name: 'next checkpoint marker follows the lap under way',
+    find: 'n.mesh.visible=t.getNextCheckpointIndex()==n.checkpointIndex&&',
+    replace: 'n.mesh.visible=(window.ApexRoom?window.ApexRoom.shownCheckpoint(t.getNextCheckpointIndex()):t.getNextCheckpointIndex())==n.checkpointIndex&&',
+  },
+  {
     name: 'controls locked until the lights go out',
     find: '.isControlsDisabled=' + MENU_OPEN + '||' + DIALOG_OPEN + ',!' + MENU_OPEN + '&&!' + DIALOG_OPEN + '){',
     replace: '.isControlsDisabled=' + MENU_OPEN + '||' + DIALOG_OPEN + '||!!' + LOCKED + ',!' + MENU_OPEN + '&&!' + DIALOG_OPEN + '&&!' + LOCKED + '){',
@@ -244,6 +309,17 @@ const patches = [
       + 'e=apexShown.countryCode,t=apexShown.name;null!=(0,l.gn)(this,ve,"f")&&(0,l.gn)(this,ve,"f").countryCode==e&&(0,l.gn)(this,ve,"f").name==t||',
   },
   {
+    // a VIP's tag (apex-room.js tells which cars: apexSetVip) has a violet frame (2.26)
+    name: 'name tags: a VIP\'s framed in violet',
+    find: 't.fillStyle="rgba(0,0,0,0.4)",t.fillRect(0,0,e.width,e.height),',
+    replace: 't.fillStyle=this.apexVip?"rgba(46,12,82,0.55)":"rgba(0,0,0,0.4)",t.fillRect(0,0,e.width,e.height),this.apexVip&&(t.strokeStyle="#a24dff",t.lineWidth=8,t.strokeRect(4,4,e.width-8,e.height-8)),',
+  },
+  {
+    name: 'name tags: a car told it is a VIP\'s redraws its tag',
+    find: 'getCarStyle(){return(0,l.gn)(this,Me,"f")}',
+    replace: 'apexSetVip(e){!!e!=!!this.apexVip&&(this.apexVip=!!e,null!=(0,l.gn)(this,ve,"f")&&(0,l.gn)(this,D,"m",Fe).call(this))}getCarStyle(){return(0,l.gn)(this,Me,"f")}',
+  },
+  {
     // so a change in the settings shows at once, even over a running game
     name: 'name tags: redrawn when their settings change',
     find: 'update(e){if((0,l.gn)(this,D,"m",Qe).call(this),',
@@ -298,7 +374,7 @@ const patches = [
   {
     name: 'host screen offers a third game mode',
     find: 'for(const e of[an.Casual,an.Competitive]){const t=document.createElement("button");switch(t.className="button",e){case an.Casual:t.textContent=(0,R.gn)(this,bc,"f").get("Casual");break;case an.Competitive:t.textContent=(0,R.gn)(this,bc,"f").get("Competitive")}',
-    replace: 'for(const e of window.ApexRoom?[an.Casual,an.Competitive,"race"]:[an.Casual,an.Competitive]){const t=document.createElement("button");switch(t.className="button",e){case an.Casual:t.textContent=(0,R.gn)(this,bc,"f").get("Casual");break;case an.Competitive:t.textContent=(0,R.gn)(this,bc,"f").get("Competitive");break;case"race":t.textContent=window.ApexRoom.modeLabel()}',
+    replace: 'for(const e of window.ApexRoom?[an.Casual,an.Competitive,"race"]:[an.Casual,an.Competitive]){const t=document.createElement("button");switch(t.className="button",e){case an.Casual:t.textContent=window.ApexRoom?window.ApexRoom.casualLabel():(0,R.gn)(this,bc,"f").get("Casual");break;case an.Competitive:t.textContent=window.ApexRoom?window.ApexRoom.competitiveLabel():(0,R.gn)(this,bc,"f").get("Competitive");break;case"race":t.textContent=window.ApexRoom.modeLabel()}',
   },
   {
     // "Change track" in a room opens the host screen again (apex-room.js): the mode and the track, then Confirm.
@@ -434,6 +510,12 @@ const patches = [
     replace: 't>0?"custom"==pe&&(0,i.gn)(this,A,"m",ae).call(this,"official"):"official"==pe&&(0,i.gn)(this,A,"m",ae).call(this,"custom")',
   },
   {
+    // the tabs: Official, Custom, then the tournaments
+    name: 'tournaments tab last',
+    find: 'v.appendChild((0,i.gn)(this,I,"f"));const ne=',
+    replace: 'v.appendChild((0,i.gn)(this,I,"f")),window.ApexTournament&&v.appendChild((0,i.gn)(this,P,"f"));const ne=',
+  },
+  {
     name: 'no community tab: remembered tab',
     find: 'if("official"==e||"community"==e||"custom"==e)return e',
     replace: 'if("official"==e||"custom"==e)return e',
@@ -507,7 +589,7 @@ const patches = [
     name: 'mod track leaderboards: upload',
     find: 'const o="https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"leaderboard";let d="version=0.6.3&userToken="+encodeURIComponent(e)+',
     replace: 'const apexMod=!!window.ApexRecords&&' + MOD_TRACK_IDS + '.includes(r),o=apexMod?' + JSON.stringify(SERVER_URL + 'leaderboard') + ':"https://vps.kodub.com/"+(0,R.gn)(this,Af,"f")+"leaderboard";'
-      + 'let d="version=0.6.3&userToken="+encodeURIComponent(apexMod?window.ApexRecords.secret(e):e)+(apexMod?"&userTokenHash="+window.ApexRecords.hash(e):"")+',
+      + 'let d="version=0.6.3&userToken="+encodeURIComponent(apexMod?window.ApexRecords.secret(e):e)+(apexMod?"&userTokenHash="+window.ApexRecords.hash(e)+"&build=' + encodeURIComponent(BUILD_ID) + '":"")+',
   },
 
   // ---------------------------------------------------------------- the car a record was set with (apex-records.js)
@@ -565,9 +647,11 @@ const patches = [
     replace: 'n.push([i,[r[0],r[1]]])))}return window.ApexHud?window.ApexHud.migrateKeys(n,ge.A):n}',
   },
   {
+    // then GoofyTrack's own shortcuts (F2, F3, F4, Escape: apex-account.js), a part of the controls like Vehicle (2.26)
     name: 'mini-map key: listed in the controls settings, under the cockpit camera',
     find: '"Cockpit camera"),ge.A.VehicleCockpitCamera),',
-    replace: '"Cockpit camera"),ge.A.VehicleCockpitCamera),(0,R.gn)(this,qs,"m",yo).call(this,window.ApexHud?window.ApexHud.mapLabel():"Mini-map",ge.A.ApexToggleMinimap),',
+    replace: '"Cockpit camera"),ge.A.VehicleCockpitCamera),(0,R.gn)(this,qs,"m",yo).call(this,window.ApexHud?window.ApexHud.mapLabel():"Mini-map",ge.A.ApexToggleMinimap),'
+      + 'window.ApexAccount&&window.ApexAccount.shortcuts&&((0,R.gn)(this,qs,"m",mo).call(this,window.ApexAccount.shortcuts.title()),window.ApexAccount.shortcuts.rows((0,R.gn)(this,to,"f"))),',
   },
   {
     name: 'mini-map key: shows / hides the mini-map while driving',
@@ -837,18 +921,40 @@ const patches = [
   {
     name: 'settings button in the game toolbar',
     find: 'v.addEventListener("click",(()=>{t.playUIClick(),o()})),m.appendChild(v),(0,R.gn)(this,gi,"f").push(v),null==s)',
-    replace: 'v.addEventListener("click",(()=>{t.playUIClick(),o()})),m.appendChild(v),(0,R.gn)(this,gi,"f").push(v),window.apexOpenSettings&&(()=>{const e=document.createElement("button");e.className="button",e.innerHTML=\'<img class="button-icon" src="images/settings.svg"> \',e.append(document.createTextNode(n.get("Settings"))),e.addEventListener("click",(()=>{t.playUIClick(),window.apexOpenSettings()})),m.appendChild(e),(0,R.gn)(this,gi,"f").push(e)})(),null==s)',
+    replace: 'v.addEventListener("click",(()=>{t.playUIClick(),o()})),m.appendChild(v),(0,R.gn)(this,gi,"f").push(v),window.apexOpenSettings&&(()=>{const e=document.createElement("button");e.className="button",e.innerHTML=\'<img class="button-icon" src="images/settings.svg"> \',e.append(document.createTextNode(n.get("Settings"))),e.addEventListener("click",(()=>{t.playUIClick(),window.apexOpenSettings()})),m.appendChild(e),(0,R.gn)(this,gi,"f").push(e)})(),'
+      // the garage (2.26, apex-livery.js): greyed out where it cannot open (a race, a tournament)
+      + 'window.ApexGarage&&(()=>{const e=document.createElement("button");e.className="button apex-garage-button",e.innerHTML=\'<img class="button-icon" src="images/customize.svg"> \',e.append(document.createTextNode(n.get("Garage"))),e.addEventListener("click",(()=>{t.playUIClick(),window.ApexGarage.open()})),m.appendChild(e),(0,R.gn)(this,gi,"f").push(e)})(),null==s)',
   },
   {
     name: 'the game treats the settings menu as an open dialog',
     find: 'bs=function(){return null!=(0,R.gn)(this,Ba,"f")',
-    replace: 'bs=function(){return!!window.apexSettingsOpen||null!=(0,R.gn)(this,Ba,"f")',
+    replace: 'bs=function(){return!!window.apexSettingsOpen||!!window.apexGarageOpen||null!=(0,R.gn)(this,Ba,"f")',
   },
   {
     // Escape closes the settings menu only, not the game behind it; pause and the other keys wait too
     name: 'game keys are ignored while the settings menu is open',
     find: 'window.addEventListener("keydown",(0,R.GG)(this,ds,(e=>{if(!I.ip()){',
-    replace: 'window.addEventListener("keydown",(0,R.GG)(this,ds,(e=>{if(!I.ip()&&!window.apexSettingsOpen){',
+    replace: 'window.addEventListener("keydown",(0,R.GG)(this,ds,(e=>{if(!I.ip()&&!window.apexSettingsOpen&&!window.apexGarageOpen){',
+  },
+
+  // ---------------------------------------------------------------- the garage while driving (2.26, apex-livery.js)
+  // The garage opens over a game: the game is kept as it is (not updated, so paused; its interface hidden by
+  // apex-livery.js) while the garage is the state on screen, and comes back when the garage is left.
+  {
+    name: 'the garage can be opened over a game',
+    find: '},Q=()=>{o.trigger((async()=>{try{await I.RN("start-editor")}',
+    replace: '},apexGarageOver=window.apexOpenGarage=(apexOpened,apexClosed)=>{o.trigger((async()=>{try{const{default:t}=await i.e(604).then(i.bind(i,7604));await t.initResources();const apexGame=$,apexCamera=apexGame.apexCamera&&apexGame.apexCamera();'
+      + '$=new t(k,w,b,y,d,l,S,r,T,R,e,(()=>{o.trigger((()=>{$.dispose(),$=apexGame,apexGame.apexRebuild&&apexGame.apexRebuild(apexCamera),apexClosed&&apexClosed()}))})),apexOpened&&apexOpened()}catch(e){console.error("GoofyTrack: garage over the game",e),apexClosed&&apexClosed()}}))}'
+      + ',Q=()=>{o.trigger((async()=>{try{await I.RN("start-editor")}',
+  },
+
+  {
+    // the garage loads its own track and mountains into the objects the game shares with it, and empties them when it
+    // closes: the game puts its own back (as it built them), and its camera
+    name: 'the game can rebuild its world after the garage',
+    anchor: 'update(e){const t=(0,R.gn)(this,ta,"m",Ps).call(this);let n;',
+    before: true,
+    insert: 'apexCamera(){return(0,R.gn)(this,la,"f").camera}apexRebuild(e){const t=(0,R.gn)(this,ra,"f");t.loadTrackData((0,R.gn)(this,Ta,"f")),t.refreshMeshes(),(0,R.gn)(this,aa,"f").generateMountains(t.getBounds()),null!=e&&(0,R.gn)(this,la,"f").setCamera(e)}',
   },
 
   // ---------------------------------------------------------------- music
@@ -909,10 +1015,12 @@ const patches = [
   // they are there; multiplayer sends all 20 (binaryLength), which every player of this build reads.
   // The body (build_car.js: 0 the car's own, 1.. the icons') follows in byte 20: a car with the car's own body is
   // saved in 16 or 20 bytes as before.
+  // The helmet colour (null: the colour the body gives it) follows in bytes 21-23, byte 24 set to 1 when it has one:
+  // a car without one is saved in 16, 20 or 21 bytes as before. Multiplayer sends all 25.
   {
     name: 'car style: wing fields',
     find: 'this.pattern=e,this.rims=t,this.exhaust=n,',
-    replace: 'this.pattern=e,this.rims=t,this.exhaust=n,this.wing=0,this.wingHex=null,this.body=0,',
+    replace: 'this.pattern=e,this.rims=t,this.exhaust=n,this.wing=0,this.wingHex=null,this.body=0,this.helmetHex=null,',
   },
   {
     name: 'car style: an icon\'s pattern keeps its colours',
@@ -927,22 +1035,22 @@ const patches = [
   {
     name: 'car style: equals with the wing',
     find: 'this.rimsHex==e.rimsHex}',
-    replace: 'this.rimsHex==e.rimsHex&&this.wing==e.wing&&this.wingHex==e.wingHex&&this.body==e.body}',
+    replace: 'this.rimsHex==e.rimsHex&&this.wing==e.wing&&this.wingHex==e.wingHex&&this.body==e.body&&this.helmetHex==e.helmetHex}',
   },
   {
     name: 'car style: clone with the wing',
     find: 'clone(){return new i(this.pattern,this.rims,this.exhaust,(0,c.gn)(this,r,"f"),(0,c.gn)(this,a,"f"),(0,c.gn)(this,s,"f"),(0,c.gn)(this,o,"f"))}',
-    replace: 'clone(){const e=new i(this.pattern,this.rims,this.exhaust,(0,c.gn)(this,r,"f"),(0,c.gn)(this,a,"f"),(0,c.gn)(this,s,"f"),(0,c.gn)(this,o,"f"));return e.wing=this.wing,e.wingHex=this.wingHex,e.body=this.body,e}',
+    replace: 'clone(){const e=new i(this.pattern,this.rims,this.exhaust,(0,c.gn)(this,r,"f"),(0,c.gn)(this,a,"f"),(0,c.gn)(this,s,"f"),(0,c.gn)(this,o,"f"));return e.wing=this.wing,e.wingHex=this.wingHex,e.body=this.body,e.helmetHex=this.helmetHex,e}',
   },
   {
     name: 'car style: saved as before without a wing of its own',
     find: 'serialize(){return d.l(this.serializeBinary())}',
-    replace: 'serialize(){const e=this.serializeBinary();return d.l(0!=this.body?e:0==this.wing&&null==this.wingHex?e.subarray(0,16):e.subarray(0,20))}',
+    replace: 'serialize(){const e=this.serializeBinary();return d.l(null!=this.helmetHex?e:0!=this.body?e.subarray(0,21):0==this.wing&&null==this.wingHex?e.subarray(0,16):e.subarray(0,20))}',
   },
   {
     name: 'car style: wing bytes',
     find: '(0,c.gn)(this,o,"f")>>16&255],13),e}',
-    replace: '(0,c.gn)(this,o,"f")>>16&255],13),e.set([255&(this.wingHex??0),(this.wingHex??0)>>8&255,(this.wingHex??0)>>16&255,this.wing|(null==this.wingHex?0:128),this.body],16),e}',
+    replace: '(0,c.gn)(this,o,"f")>>16&255],13),e.set([255&(this.wingHex??0),(this.wingHex??0)>>8&255,(this.wingHex??0)>>16&255,this.wing|(null==this.wingHex?0:128),this.body],16),e.set([255&(this.helmetHex??0),(this.helmetHex??0)>>8&255,(this.helmetHex??0)>>16&255,null==this.helmetHex?0:1],21),e}',
   },
   {
     name: 'car style: reads styles saved without a wing',
@@ -952,7 +1060,7 @@ const patches = [
   {
     name: 'car style: reads the wing',
     find: 'return new i(t,n,r,a,s,o,l)}static get defaultPattern',
-    replace: 'const W=new i(t,n,r,a,s,o,l);return e.length>=20&&(W.wing=i.isValidWing(127&e[19])?127&e[19]:0,W.wingHex=128&e[19]?e[16]|e[17]<<8|e[18]<<16:null),e.length>=21&&(W.body=i.isValidBody(e[20])?e[20]:0),W}static get defaultPattern',
+    replace: 'const W=new i(t,n,r,a,s,o,l);return e.length>=20&&(W.wing=i.isValidWing(127&e[19])?127&e[19]:0,W.wingHex=128&e[19]?e[16]|e[17]<<8|e[18]<<16:null),e.length>=21&&(W.body=i.isValidBody(e[20])?e[20]:0),e.length>=25&&1&e[24]&&(W.helmetHex=e[21]|e[22]<<8|e[23]<<16),W}static get defaultPattern',
   },
   {
     name: 'car style: valid wings',
@@ -963,7 +1071,7 @@ const patches = [
   {
     name: 'car style: the wing models',
     find: 'u.binaryLength=16,',
-    replace: 'u.binaryLength=21,u.wings=Object.freeze(Array.from({length:' + WING_COUNT + '},((e,t)=>Object.freeze({model:"Wing"+t})))),'
+    replace: 'u.binaryLength=25,u.wings=Object.freeze(Array.from({length:' + WING_COUNT + '},((e,t)=>Object.freeze({model:"Wing"+t})))),'
       + 'u.bodies=Object.freeze(Array.from({length:' + BODY_COUNT + '},((e,t)=>Object.freeze({model:0==t?"Body":"Body"+t})))),',
   },
   {
@@ -998,7 +1106,7 @@ const patches = [
     find: '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):',
     replace: '(e.wing!=(0,l.gn)(this,Me,"f").wing||(' + LAGUNA_BODY + '==e.body)!=(' + LAGUNA_BODY + '==(0,l.gn)(this,Me,"f").body))&&((0,l.gn)(this,ye,"f").remove(this.apxWing),(0,l.gn)(this,ge,"f").removeMaterial(this.apxWing.material),this.apxWing=this.apxWingOf(e),(0,l.gn)(this,D,"m",We).call(this,this.apxWing),(0,l.gn)(this,ye,"f").add(this.apxWing)),'
       + 'e.body!=(0,l.gn)(this,Me,"f").body&&(this.apxSetBody(e.body),null!=(0,l.gn)(this,O,"f")&&((0,l.gn)(this,O,"f").source.stop(),(0,l.GG)(this,O,null,"f"))),this.apxWingMix.value=null==e.wingHex||e.constructor.isIcon(e.pattern)?1:0,this.apxSetInks(e.pattern),'
-      + '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):"Wing"==t.name?t.color.set(e.wingColor):',
+      + '(0,l.gn)(this,Ee,"f").value=(new c.Pq0).setFromColor(e.secondaryColor),(0,l.gn)(this,me,"f").traverse((t=>{if(t instanceof c.eaF){let n;n=Array.isArray(t.material)?t.material:[t.material];for(const t of n)"Main"==t.name?t.color.set(e.primaryColor):"Wing"==t.name?t.color.set(e.wingColor):"Helmet"==t.name.slice(0,6)?(null==t.userData.apxHelmet&&(t.userData.apxHelmet=t.color.getHex()),t.color.set(e.helmetHex??t.userData.apxHelmet)):',
   },
   {
     // the body's paint, with the pattern left out (carWingPattern 0) when the wing has a colour of its own;
@@ -1048,7 +1156,7 @@ const patches = [
   {
     name: 'the engaged gear by the speedometer',
     find: '(0,R.gn)(this,La,"f").update((0,R.gn)(this,Xa,"f").getSpeedKmh())',
-    replace: '(0,R.gn)(this,La,"f").update((0,R.gn)(this,Xa,"f").getSpeedKmh()),window.ApexGearbox&&window.ApexGearbox.hud((0,R.gn)(this,Xa,"f"))',
+    replace: '(0,R.gn)(this,La,"f").update((0,R.gn)(this,Xa,"f").getSpeedKmh()),window.ApexGearbox&&window.ApexGearbox.hud((0,R.gn)(this,Xa,"f")),window.ApexLivery&&window.ApexLivery.drivingCar((0,R.gn)(this,Xa,"f")),window.ApexAccount&&window.ApexAccount.driving&&window.ApexAccount.driving((0,R.gn)(this,Xa,"f"))',
   },
   {
     name: 'car: the tyres\' lettering follows the rims',
@@ -1211,22 +1319,22 @@ const garagePatches = [
   {
     name: 'wing colour picker',
     find: '(0,i.gn)(this,Yt,"m",bn).call(this,n.get("Rims"),g),',
-    replace: '(0,i.gn)(this,Yt,"m",bn).call(this,n.get("Rims"),g),(0,i.gn)(this,Yt,"m",bn).call(this,' + LIVERY + '?' + LIVERY + '.wingLabel():"Wing",d),' + LIVERY + '&&' + LIVERY + '.wingPicker(this,d.lastChild,(0,i.gn)(this,cn,"f")[4]),',
+    replace: '(0,i.gn)(this,Yt,"m",bn).call(this,n.get("Rims"),g),(0,i.gn)(this,Yt,"m",bn).call(this,' + LIVERY + '?' + LIVERY + '.wingLabel():"Wing",d),' + LIVERY + '&&' + LIVERY + '.wingPicker(this,d.lastChild,(0,i.gn)(this,cn,"f")[4]),(0,i.gn)(this,Yt,"m",bn).call(this,' + LIVERY + '?' + LIVERY + '.helmetLabel():"Helmet",g),' + LIVERY + '&&' + LIVERY + '.helmetPicker(this,g.lastChild,(0,i.gn)(this,cn,"f")[5]),',
   },
   {
     name: 'the car built by the panel has its wing',
     find: '(0,i.gn)(this,cn,"f")[3].color.getHex());(0,i.gn)(this,rn,"f").call(this,t)}',
-    replace: '(0,i.gn)(this,cn,"f")[3].color.getHex());' + LIVERY + '&&' + LIVERY + '.wingStyle(this,t,(0,i.gn)(this,cn,"f")[4]),(0,i.gn)(this,rn,"f").call(this,t)}',
+    replace: '(0,i.gn)(this,cn,"f")[3].color.getHex());' + LIVERY + '&&' + LIVERY + '.wingStyle(this,t,(0,i.gn)(this,cn,"f")[4]),' + LIVERY + '&&' + LIVERY + '.helmetStyle(this,t,(0,i.gn)(this,cn,"f")[5]),(0,i.gn)(this,rn,"f").call(this,t)}',
   },
   {
     name: 'the panel shows the wing of the car',
     find: 'setCarStyle(t){(0,i.GG)(this,Kt,t.pattern,"f"),',
-    replace: 'setCarStyle(t){this.apxWing=t.wing??0,this.apxWingHex=t.wingHex??null,this.apxWingShown=null,this.apxWingSelect&&this.apxWingSelect(),(0,i.GG)(this,Kt,t.pattern,"f"),',
+    replace: 'setCarStyle(t){this.apxWing=t.wing??0,this.apxWingHex=t.wingHex??null,this.apxWingShown=null,this.apxHelmetHex=t.helmetHex??null,this.apxHelmetShown=null,this.apxWingSelect&&this.apxWingSelect(),(0,i.GG)(this,Kt,t.pattern,"f"),',
   },
   {
     name: 'the wing picker shows the wing colour',
     find: '(0,i.gn)(this,cn,"f")[3].color=t.rimsColor}}',
-    replace: '(0,i.gn)(this,cn,"f")[3].color=t.rimsColor,' + LIVERY + '&&' + LIVERY + '.wingShow(this,t,(0,i.gn)(this,cn,"f")[4])}}',
+    replace: '(0,i.gn)(this,cn,"f")[3].color=t.rimsColor,' + LIVERY + '&&' + LIVERY + '.wingShow(this,t,(0,i.gn)(this,cn,"f")[4]),' + LIVERY + '&&' + LIVERY + '.helmetShow(this,t,(0,i.gn)(this,cn,"f")[5])}}',
   },
   {
     // the Wing tab, made like the Exhaust one: dark car, light wings
@@ -1271,11 +1379,11 @@ const garagePatches = [
     replace: 'const f=[{title:' + LIVERY + '?' + LIVERY + '.bodyLabel():"Body",icon:"images/body.svg",panel:this.apxBodyPanel},{title:n.get("Paint"),icon:"images/paint.svg",panel:h},',
   },
   {
-    // the tabs from the car's shape to its colours: Body, Wing, Rims, Exhaust, Pattern, Paint. The game builds the
+    // the tabs: Body, Pattern, Paint, Wing, Exhaust, Rims (the car's shape, its livery, then its parts). The game builds the
     // garage on Paint; it then opens on Body (below)
     name: 'Paint is the tab open',
     find: 'let p=f[0];',
-    replace: '{const o=[this.apxBodyPanel,this.apxWingPanel,(0,i.gn)(this,sn,"f"),(0,i.gn)(this,an,"f"),(0,i.gn)(this,nn,"f"),h];f.sort(((e,t)=>o.indexOf(e.panel)-o.indexOf(t.panel)))}let p=f.find((e=>e.panel==h));',
+    replace: '{const o=[this.apxBodyPanel,(0,i.gn)(this,nn,"f"),h,this.apxWingPanel,(0,i.gn)(this,an,"f"),(0,i.gn)(this,sn,"f")];f.sort(((e,t)=>o.indexOf(e.panel)-o.indexOf(t.panel)))}let p=f.find((e=>e.panel==h));',
   },
   {
     name: 'Paint is the tab picked',

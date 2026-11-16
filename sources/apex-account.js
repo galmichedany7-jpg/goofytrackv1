@@ -36,7 +36,7 @@
   const GAME = 'polytrack_v5_prod_';
   const PROFILES = 3;                                  // the game's slots
   const SETTINGS = [GAME + 'settings', GAME + 'key_bindings', GAME + 'is_music_enabled', GAME + 'unlocked_car_styles',
-    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries', 'goofytrack.badges', 'goofytrack.badgesSeen', 'goofytrack.bestPlace', 'goofytrack.frame', 'goofytrack.profile', 'goofytrack.tournaments.credited'];   // not the keyboard layout: one per PC
+    'goofytrack_ambiance', 'goofytrack.minimapHidden', 'goofytrack.raceSettings', 'goofytrack.liveries', 'goofytrack.badges', 'goofytrack.badgesSeen', 'goofytrack.bestPlace', 'goofytrack.frame', 'goofytrack.profile', 'goofytrack.tournaments.credited', 'goofytrack.tournaments.entered'];   // not the keyboard layout: one per PC
   // the profile played, the same on every PC of the account: its token hash, set when the game's profile changes
   // (the game's user_slot is a slot of this PC); with none yet, the profile that drove the most (apply)
   const PICK_KEY = 'goofytrack.profile';
@@ -426,21 +426,25 @@
     try {
       // with the stats of the profile card, shown to whoever opens the player's card (a track's author)
       const s = p && await profileStats(p);
+      if (s && s.official > officialDone) { officialDone = s.official; checkCountedBadges(); }   // the tracks badges (2.26)
       const out = await call('POST', '/account/presence', {
         profile: p && { nickname: p.nickname, countryCode: p.countryCode, carStyle: p.carStyle, tokenHash: s.hash, tokenHashes: s.hashes,
           stats: publicStats(s), badges: pickedBadges(), bestTrack: get(BEST_KEY), frame: pickedFrame().id,
-          distance: Math.round(bestCount('metres')), driving: Math.round(bestCount('seconds')), vmax: Math.floor(bestCount('vmax') * 10) },   // the counted badges (the server keeps the most; tenths of km/h)
+          distance: Math.round(bestCount('metres')), driving: Math.round(bestCount('seconds')), vmax: Math.floor(bestCount('vmax') * 10),
+          raceWins: Math.round(bestCount('wins')), tournamentWins: Math.round(bestCount('tournaments')), tracksDone: officialDone },   // the counted badges (the server keeps the most; tenths of km/h)
         state: homeReady() ? 'menu' : 'playing',
         room: window.ApexLobby ? window.ApexLobby.currentRoom() : null,
       }, acc.session);
       if (account !== acc) return;
       const badges = Array.isArray(out.badges) ? out.badges : acc.badges;   // an older server has none
       const recovery = typeof out.recovery === 'boolean' ? out.recovery : acc.recovery;   // an older server does not say
+      // the podiums on the mod's circuits (p1, p2, p3), for the bronze, silver and gold frames; an older server still has them as badges
+      const placesWon = Array.isArray(out.places) ? out.places : badges.filter(b => PODIUM_BADGE.test(b)).map(b => b.split(':')[0]);
       // the garage's items it unlocked (apex-rarity.js); a server older than 2.19 does not say: the owners its
       // UNLOCKS gives by default (server/accounts.js)
       const unlocks = Array.isArray(out.unlocks) ? out.unlocks : [7777, 1].includes(out.id) ? ['mp4_7a', 'r26'] : [];
-      if (acc.id !== out.id || acc.verified !== out.verified || JSON.stringify(acc.badges) !== JSON.stringify(badges) || acc.recovery !== recovery || JSON.stringify(acc.unlocks) !== JSON.stringify(unlocks)) {
-        acc.id = out.id; acc.verified = out.verified; acc.badges = badges; acc.recovery = recovery; acc.unlocks = unlocks; saveAccount();
+      if (acc.id !== out.id || acc.verified !== out.verified || JSON.stringify(acc.badges) !== JSON.stringify(badges) || JSON.stringify(acc.places) !== JSON.stringify(placesWon) || acc.recovery !== recovery || JSON.stringify(acc.unlocks) !== JSON.stringify(unlocks)) {
+        acc.id = out.id; acc.verified = out.verified; acc.badges = badges; acc.places = placesWon; acc.recovery = recovery; acc.unlocks = unlocks; saveAccount();
       }
       // the account renamed by the team (RENAMED_ACCOUNTS of the server): its new name, the old one kept for its keys
       if (typeof out.name === 'string' && out.name && out.name !== acc.name) {
@@ -448,6 +452,12 @@
         acc.name = out.name;
         saveAccount();
         refresh();
+      }
+      if (typeof out.requests === 'number' && out.requests > social.requests && account === acc) {
+        showAlert({ kind: 'friend', title: tr('Demande d\'ami', 'Friend request'),
+          text: out.requests > 1 ? tr(`${out.requests} demandes en attente · F2 pour ouvrir votre profil`, `${out.requests} requests waiting · F2 opens your profile`)
+            : tr('Une demande en attente · F2 pour ouvrir votre profil', 'One request waiting · F2 opens your profile'),
+          action: [tr('Voir', 'Show'), openFriends] });
       }
       social = { requests: out.requests, online: out.online };
       checkGivenBadges(badges);
@@ -462,7 +472,7 @@
   // what the others see of the Stats tab (renderPlayer), whole numbers (the server takes nothing else)
   const publicStats = s => {
     const out = { tracks: s.tracks, circuits: s.circuits.length, custom: s.custom, official: s.official };
-    for (const k of ['metres', 'timedMetres', 'seconds', 'topKmh', 'finishes', 'races', 'wins', 'podiums', 'places', 'tournaments']) out[k] = Math.round(s[k] || 0);
+    for (const k of ['metres', 'timedMetres', 'seconds', 'topKmh', 'finishes', 'races', 'wins', 'podiums', 'places', 'tournaments', 'entered', 'gps', 'gpWins', 'ends', 'endWins', 'tGps', 'tGpWins', 'tEnds', 'tEndWins']) out[k] = Math.round(s[k] || 0);
     return out;
   };
 
@@ -498,7 +508,7 @@
       span.classList.add('apex-author');
       span.title = tr('Voir le profil de ', 'See the profile of ') + player.name + ' · ' + idText(player.id);
       span.tabIndex = 0;
-      badgeMarks(span, badgesOfPlayer(player));
+      nameMarks(span, statusOfPlayer(player), badgesOfPlayer(player));
       const show = event => { event.preventDefault(); event.stopPropagation(); openPlayer(player.name); };
       span.addEventListener('click', show);
       span.addEventListener('keydown', event => { if (event.key === 'Enter') show(event); });
@@ -541,14 +551,9 @@
     if (await wait(homeReady)) { sendPresence(); open(); }   // friends see the new name and flag at once
   }
 
-  // the game's own profile list (switch, import), from the garage's last button, which shows the liveries
-  // unless told otherwise; the player is left in the garage, where the list leads
-  async function switchProfile() {
-    const garage = await openGarage();
-    if (garage == null) return;
-    window.ApexLivery?.switchProfile();
-    garage.buttons[garage.buttons.length - 1].click();
-  }
+  // the editor opened on its badges (the card's "Modifier mes badges")
+  let editFocus = null;
+  function editBadges() { editFocus = 'badges'; editProfile(); }
 
   // joins a friend's room as the player would: Multiplayer, the invite code, Join
   async function joinRoom(code) {
@@ -668,7 +673,10 @@
   // vmax: the top speed. It took over from topKmh, counted before the TGV badge existed (speed tests gave it badges
   // never driven for): topKmh is no longer read (the card still shows vmax under that name, countedStats)
   const STATS_EVERY = 60000;
-  const zero = () => ({ metres: 0, timedMetres: 0, seconds: 0, vmax: 0, finishes: 0, races: 0, wins: 0, podiums: 0, places: 0, tournaments: 0 });
+  const zero = () => ({ metres: 0, timedMetres: 0, seconds: 0, vmax: 0, finishes: 0, races: 0, wins: 0, podiums: 0, places: 0, tournaments: 0, entered: 0,
+    gps: 0, gpWins: 0, ends: 0, endWins: 0, tGps: 0, tGpWins: 0, tEnds: 0, tEndWins: 0 });
+  // ApexStats.event's kinds: [played, won]
+  const EVENT_STATS = { gp: ['gps', 'gpWins'], end: ['ends', 'endWins'], tGp: ['tGps', 'tGpWins'], tEnd: ['tEnds', 'tEndWins'] };
   const MAX_STATS = ['vmax'];
   const addStat = (t, k, n) => { t[k] = MAX_STATS.includes(k) ? Math.max(t[k], n) : t[k] + n; };
   const pending = new Map();      // profile token -> counts not written yet
@@ -760,11 +768,29 @@
       if (place <= 3) c.podiums++;
       flushStats();
     },
-    // a tournament won: a race or endurance tournament (apex-room.js), or a time trial one (apex-tournament.js)
+    // a Grand Prix or an endurance race finished (apex-room.js, statKind), won or not (2.26): four counts apart, a race
+    // between players ('gp', 'end') or a special tournament's ('tGp', 'tEnd'); the tournaments also count in the
+    // tournaments played and won (entered, tournament), called by apex-room.js
+    event(kind, won) {
+      const keys = EVENT_STATS[kind], c = keys && counting();
+      if (c == null) return;
+      c[keys[0]]++;
+      if (won) c[keys[1]]++;
+      flushStats();
+    },
+    // a tournament won: a special tournament's GP or an endurance race (apex-room.js), or a time trial one (apex-tournament.js)
     tournament() {
       const c = counting();
       if (c == null) return;
       c.tournaments++;
+      flushStats();
+    },
+    // a tournament played (since 2.26): a race or endurance tournament finished (apex-room.js), a time trial one where a
+    // time was set (apex-tournament.js)
+    entered() {
+      const c = counting();
+      if (c == null) return;
+      c.entered++;
       flushStats();
     },
     flush: flushStats,
@@ -794,6 +820,200 @@
   const tiedBest = list => list.filter(e => e.position === list[0]?.position);
   const shownPlace = list => tiedBest(list).find(e => e.id === get(BEST_KEY)) || list[0] || null;
   const bestPlace = (profiles, circuits) => boardPlaces(profiles, circuits).then(shownPlace);
+
+  // ---------------------------------------------------------------- alerts (2.26)
+  // A banner at the top of the screen, with a short sound, that does not stop the driving: a friend request received,
+  // a pit stop advised in an endurance race (apex-endurance.js, window.ApexAlert). kind: 'friend' or 'pit'; action:
+  // [label, callback] for a button. The sound plays at the game's own volume, nothing when the game is muted.
+  let alertBox = null, alertTimer = null, alertAudio = null;
+  const ALERT_MS = 6000;
+  function alertSound(kind) {
+    try {
+      alertAudio ??= new AudioContext();
+      if (alertAudio.state === 'suspended') alertAudio.resume();
+      const t0 = alertAudio.currentTime + 0.02, notes = kind === 'pit' ? [988, 988, 740] : [740, 1109];
+      notes.forEach((f, i) => {
+        const o = alertAudio.createOscillator(), g = alertAudio.createGain(), t = t0 + i * 0.17;
+        o.type = kind === 'pit' ? 'square' : 'sine';
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(kind === 'pit' ? 0.08 : 0.18, t + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+        o.connect(g).connect(alertAudio.destination);
+        o.start(t);
+        o.stop(t + 0.16);
+      });
+    } catch (e) { /* no sound */ }
+  }
+  function showAlert({ kind = 'friend', title, text, action = null }) {
+    const ui = document.getElementById('ui');
+    if (ui == null) return;
+    alertBox?.remove();
+    clearTimeout(alertTimer);
+    const box = alertBox = document.createElement('div');
+    box.className = 'apex-alert ' + kind;
+    box.setAttribute('role', 'status');
+    const words = box.appendChild(document.createElement('div'));
+    words.className = 'words';
+    words.appendChild(document.createElement('div')).className = 'title';
+    words.lastChild.textContent = title;
+    if (text) { words.appendChild(document.createElement('div')).className = 'text'; words.lastChild.textContent = text; }
+    if (action) {
+      const b = box.appendChild(document.createElement('button'));
+      b.textContent = action[0];
+      b.addEventListener('click', () => { box.remove(); action[1](); });
+    }
+    ui.appendChild(box);
+    alertSound(kind);
+    alertTimer = setTimeout(() => { box.classList.add('gone'); setTimeout(() => box.remove(), 400); }, ALERT_MS);
+  }
+  window.ApexAlert = showAlert;
+
+  // the profile card at any time, even while driving (2.26): F2, or the button of a friend request's alert
+  const PROFILE_KEY = 'F2';
+  function openFriends() {
+    if (overlay != null) close();
+    viewing = null; editing = false; securing = null;
+    if (account != null) tab = 'friends';
+    open();
+  }
+  window.addEventListener('keydown', event => {
+    if (event.code !== PROFILE_KEY || event.repeat) return;
+    event.preventDefault();
+    if (overlay != null) close();
+    else { if (account != null && social.requests > 0) tab = 'friends'; open(); }
+  }, true);
+
+  // ---------------------------------------------------------------- the player's badge while driving (2.26)
+  // In a game, top right: the player's car in its frame and a menu button (☰), a dot when friend requests wait. The
+  // menu: the profile card (docked bottom right, the game seen beside it), the friends, the garage, another livery,
+  // the settings; each with its shortcut, also listed in the settings (shortcuts).
+  const SHORTCUTS = [
+    ['F2', ['Ouvrir ou fermer votre profil', 'Open or close your profile']],
+    ['F3', ['Changer de livrée sans quitter la piste', 'Switch livery without leaving the track']],
+    ['F4', ['Ouvrir le garage, le jeu en pause (pas en course ni en tournoi)', 'Open the garage, the game paused (not in a race or a tournament)']],
+    ['Échap', ['Quitter la partie (le jeu demande d\'abord)', 'Leave the game (it asks first)']],
+  ];
+  let ingame = null, ingameMenu = null;
+  const inGame = () => !homeReady() && performance.now() - lastDriven < 1500 && !window.apexGarageOpen;
+  function closeIngameMenu() { ingameMenu?.remove(); ingameMenu = null; }
+  function ingameItem(menu, label, key, action, disabled = false, count = 0) {
+    const b = el(menu, 'button', 'item');
+    el(b, 'span', 'label', label);
+    if (count > 0) el(b, 'span', 'count', String(count));
+    if (key) el(b, 'kbd', null, key);
+    b.disabled = disabled;
+    b.addEventListener('click', () => { closeIngameMenu(); action(); });
+  }
+  function openIngameMenu() {
+    if (ingameMenu != null) return closeIngameMenu();
+    ingameMenu = el(ingame, 'div', 'menu');
+    ingameItem(ingameMenu, tr('Mon profil', 'My profile'), 'F2', () => { if (overlay != null) close(); viewing = null; editing = false; securing = null; tab = 'profile'; open(); });
+    ingameItem(ingameMenu, tr('Amis', 'Friends'), null, openFriends, account == null, social.requests);
+    ingameItem(ingameMenu, tr('Garage', 'Garage'), 'F4', () => window.ApexGarage?.open(), !window.ApexGarage?.allowed?.());
+    ingameItem(ingameMenu, tr('Changer de livrée', 'Switch livery'), 'F3', () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F3', code: 'F3' })));
+    if (typeof window.apexOpenSettings === 'function') ingameItem(ingameMenu, tr('Paramètres', 'Settings'), null, () => window.apexOpenSettings());
+  }
+  function updateIngame() {
+    const show = inGame(), ui = document.getElementById('ui');
+    ui?.classList.toggle('apex-has-ingame', show);   // the room's board moves down under the badge
+    if (!show) { if (ingame != null) { ingame.remove(); ingame = null; ingameMenu = null; } return; }
+    if (ui == null) return;
+    if (ingame == null || !ingame.isConnected) {
+      ingame = el(ui, 'div', 'apex-ingame');
+      // a div, not a button: the theme paints the last button of a block in the accent colour
+      const button = el(ingame, 'div', 'badge');
+      button.setAttribute('role', 'button');
+      button.tabIndex = 0;
+      button.title = tr('Menu du joueur', 'Player menu');
+      button.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); openIngameMenu(); } });
+      const car = el(button, 'img', 'car');
+      car.src = 'images/car_thumbnail_placeholder.png';
+      car.draggable = false;
+      button.insertAdjacentHTML('beforeend', '<svg class="burger" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16M4 12h16M4 17.5h16"/></svg>');
+      button.addEventListener('click', event => { event.stopPropagation(); openIngameMenu(); });
+      ingame.addEventListener('mousedown', event => event.stopPropagation());   // not the game's camera drag
+    }
+    const p = currentProfile(), car = ingame.querySelector('.car');
+    if (p && car.dataset.style !== p.carStyle) showCar(car, p.carStyle);
+    paintFrame(car, pickedFrame());
+    ingame.classList.toggle('requests', account != null && social.requests > 0);
+  }
+  setInterval(updateIngame, 400);
+  document.addEventListener('click', event => { if (ingameMenu != null && !ingame?.contains(event.target)) closeIngameMenu(); });
+  // the shortcuts, in the settings menu (patch_bundle.js): a section of their own
+  const shortcuts = {
+    // a part of the settings' Controls, after Vehicle (patch_bundle.js): rows drawn like the game's key bindings, the
+    // keys fixed (shown, not changed)
+    title: () => 'GoofyTrack',
+    rows(box) {
+      for (const [key, text] of SHORTCUTS) {
+        const row = document.createElement('div');
+        row.className = 'setting key-binding apex-shortcut';
+        row.appendChild(document.createElement('p')).textContent = tr(text[0], text[1]);
+        const wrapper = row.appendChild(document.createElement('div'));
+        wrapper.className = 'button-wrapper';
+        const keyBox = wrapper.appendChild(document.createElement('button'));   // a button: the game's key-binding styles
+        keyBox.className = 'button apex-fixed-key';
+        keyBox.tabIndex = -1;
+        keyBox.textContent = key === 'Échap' ? tr('Échap', 'Escape') : key;
+        keyBox.title = tr('Touche fixe', 'Fixed key');
+        box.appendChild(row);
+      }
+      const note = document.createElement('p');
+      note.className = 'apex-shortcut-note';
+      note.textContent = tr('En partie, le bouton ☰ en haut à droite ouvre aussi le profil, les amis, le garage et les livrées.', 'In a game, the ☰ button at the top right also opens the profile, the friends, the garage and the liveries.');
+      box.appendChild(note);
+    },
+  };
+
+  // ---------------------------------------------------------------- a time of a track's leaderboard (2.26)
+  // A click on another player's time asks what to do (patch_bundle.js): race their ghost (the game's own pick, up to 10
+  // at once: toggle) or see their GoofyTrack profile, found by the board's token hash, else by their name. Your own time
+  // is picked at once, as before.
+  const MAX_GHOSTS = 10;               // the game's own limit
+  let boardPick = null;
+  function closeBoardPick() {
+    boardPick?.remove();
+    boardPick = null;
+    document.removeEventListener('keydown', boardPickKey, true);
+  }
+  function boardPickKey(event) {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeBoardPick();
+  }
+  const findBoardPlayer = entry => (entry.userId
+    ? call('GET', '/account/player?hash=' + encodeURIComponent(entry.userId), null, account?.session).catch(() => null)
+    : Promise.resolve(null)).then(player => player || (entry.nickname ? fetchPlayer(entry.nickname) : null));
+  function boardEntry(entry, toggle) {
+    const ui = document.getElementById('ui');
+    if (entry.isSelf || ui == null) return toggle();
+    closeBoardPick();
+    const box = boardPick = el(ui, 'div', 'apex-board-pick');
+    box.addEventListener('click', event => { if (event.target === box) closeBoardPick(); });
+    document.addEventListener('keydown', boardPickKey, true);
+    const card = el(box, 'div', 'card');
+    el(card, 'div', 'name', entry.nickname || '?');
+    const race = el(card, 'button', 'primary', entry.selected ? tr('Ne plus affronter son fantôme', 'Stop racing their ghost') : tr('Affronter son fantôme', 'Race their ghost'));
+    race.disabled = !entry.selected && entry.full;
+    race.addEventListener('click', () => { closeBoardPick(); toggle(); });
+    const profile = el(card, 'button', null, tr('Recherche du profil…', 'Looking for the profile…'));
+    profile.disabled = true;
+    findBoardPlayer(entry).then(player => {
+      if (!box.isConnected) return;
+      if (player == null) { profile.textContent = tr('Pas de compte GoofyTrack', 'No GoofyTrack account'); return; }
+      profile.disabled = false;
+      profile.textContent = tr('Voir son profil', 'See their profile') + ' · ' + idText(player.id);
+      profile.addEventListener('click', () => { closeBoardPick(); openPlayer(player.id); });
+    });
+    el(card, 'p', 'hint', !entry.selected && entry.full
+      ? tr(`Déjà ${MAX_GHOSTS} fantômes choisis : retirez-en un pour en ajouter un autre.`, `${MAX_GHOSTS} ghosts picked already: take one off to add another.`)
+      : tr(`Astuce : choisissez jusqu'à ${MAX_GHOSTS} joueurs du classement pour affronter tous leurs fantômes en même temps.`,
+        `Tip: pick up to ${MAX_GHOSTS} players of the board to race all their ghosts at once.`));
+    el(card, 'button', 'cancel', tr('Annuler', 'Cancel')).addEventListener('click', closeBoardPick);
+  }
 
   // ---------------------------------------------------------------- interface
   let overlay = null, toast = null;
@@ -829,7 +1049,10 @@
     document.removeEventListener('keydown', onKey, true);
   }
   function onKey(event) {
-    if (event.key !== 'Escape') return;
+    if (event.key !== 'Escape') {
+      if (overlay != null && !overlay.contains(event.target) && event.code !== PROFILE_KEY) event.stopImmediatePropagation();
+      return;
+    }
     event.preventDefault();
     event.stopImmediatePropagation();
     close();
@@ -863,12 +1086,19 @@
   const CLOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M10 2.5h4M12 2.5v3.5M12 13.5V9.5M18.5 6.5l1.5-1.5"/></svg>';
   // the speed badges: a high-speed train seen from the side, its long nose, its windows and the rail
   const TRAIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 16.5h15c2.8 0 5-1.3 5-2.7 0-1.3-3.2-2.8-7.5-4.3H2"/><path d="M5 12.5h7.5" stroke-width="2"/><path d="M2.5 20h19" stroke-width="1.6"/></svg>';
-  // the VIP diamond: a cut gem in a violet to pink gradient, its facets in light lines
-  const DIAMOND = '<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="apx-vip" x1="0" y1="0" x2="1" y2="1">'
-    + '<stop offset="0" stop-color="#6a3dff"/><stop offset="0.45" stop-color="#b45cff"/><stop offset="1" stop-color="#ff5fa8"/></linearGradient></defs>'
-    + '<path d="M6.5 3.5h11l4 5.5L12 21 2.5 9z" fill="url(#apx-vip)"/>'
-    + '<path d="M2.5 9h19M9.5 3.5 7.5 9 12 21l4.5-12-2-5.5M7.5 9 12 3.5 16.5 9" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="0.9" stroke-linejoin="round"/>'
-    + '<path d="M6.5 3.5h11l4 5.5L12 21 2.5 9z" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="0.8" stroke-linejoin="round"/></svg>';
+  // the race wins badges: a chequered flag on its pole (2.26)
+  const FLAG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21.5V3"/><path d="M5 4h13.5l-3 4.5 3 4.5H5"/><path d="M9.5 4v9M14 4v9" stroke-width="1.4"/></svg>';
+  // the tournament wins badges: a cup, its handles and its foot
+  const CUP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h10v4.5a5 5 0 0 1-10 0z"/><path d="M7 5.5H4a3 3 0 0 0 3.6 4M17 5.5h3a3 3 0 0 1-3.6 4M12 13v4.5M8 21h8M9.5 17.5h5"/></svg>';
+  // the tracks badges: a map pin
+  const PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.5s-6.5-6.3-6.5-11.2a6.5 6.5 0 0 1 13 0c0 4.9-6.5 11.2-6.5 11.2z"/><path d="M12 8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4z"/></svg>';
+  // the VIP emblem (2.26): a violet shield edged in gold, VIP in gold letters
+  const VIP_MARK = '<svg viewBox="0 0 44 28" aria-hidden="true"><defs>'
+    + '<linearGradient id="apx-vip-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4b22c9"/><stop offset="1" stop-color="#b347e8"/></linearGradient>'
+    + '<linearGradient id="apx-vip-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3b0"/><stop offset="0.5" stop-color="#f7c21a"/><stop offset="1" stop-color="#d98a0a"/></linearGradient></defs>'
+    + '<path d="M6 2h32l4.5 8.5L22 26 1.5 10.5z" fill="url(#apx-vip-fill)" stroke="url(#apx-vip-gold)" stroke-width="2.2" stroke-linejoin="round"/>'
+    + '<path d="M8 4.5h28" stroke="rgba(255,255,255,0.35)" stroke-width="1.2" stroke-linecap="round"/>'
+    + '<text x="22" y="15.6" text-anchor="middle" font-family="Bahnschrift, Segoe UI, sans-serif" font-size="11.5" font-weight="900" fill="url(#apx-vip-gold)">VIP</text></svg>';
   // ---------------------------------------------------------------- badges
   // Shown next to a name, two at most: 'creator' (the check mark), 'vip' (the diamond: friends and the first
   // players), 'p1:<trackId>', 'p2:…', 'p3:…' while
@@ -901,21 +1131,57 @@
     { kind: 'kmh', stat: 'vmax', unit: 1, icon: TRAIN, title: ['Vitesse', 'Speed'], tiers: [
       { n: 574.8, short: 'TGV', name: ['Record du TGV', 'TGV record'], tone: 'tgv' },   // the TGV V150, 3 April 2007
     ] },
+    // since 2.26: the races won online, the tournaments won (the Stats tab's counts), the official tracks finished
+    // (count: from the save, officialDone; the server hears them as raceWins, tournamentWins and tracksDone)
+    { kind: 'win', stat: 'wins', unit: 1, icon: FLAG, title: ['Courses gagnées', 'Races won'], tiers: [
+      { n: 1, short: '1', name: ['Première victoire', 'First win'], tone: 'green' },
+      { n: 10, short: '10', name: ['Vainqueur', 'Winner'], tone: 'blue' },
+      { n: 25, short: '25', name: ['Champion', 'Champion'], tone: 'purple' },
+      { n: 50, short: '50', name: ['Dominateur', 'Dominator'], tone: 'gold' },
+      { n: 100, short: '100', name: ['Intouchable', 'Untouchable'], tone: 'red' },
+      { n: 250, short: '250', name: ['Légende des courses', 'Racing legend'], tone: 'world' },
+    ] },
+    { kind: 'cup', stat: 'tournaments', unit: 1, icon: CUP, title: ['Tournois gagnés', 'Tournaments won'], tiers: [
+      { n: 1, short: '1', name: ['Premier trophée', 'First trophy'], tone: 'green' },
+      { n: 3, short: '3', name: ['Compétiteur', 'Competitor'], tone: 'blue' },
+      { n: 5, short: '5', name: ['Chasseur de coupes', 'Cup hunter'], tone: 'purple' },
+      { n: 10, short: '10', name: ['Collectionneur de trophées', 'Trophy collector'], tone: 'gold' },
+      { n: 25, short: '25', name: ['Roi des tournois', 'Tournament king'], tone: 'red' },
+      { n: 50, short: '50', name: ['Panthéon', 'Hall of fame'], tone: 'world' },
+    ] },
+    { kind: 'map', stat: null, count: () => officialDone, unit: 1, icon: PIN, title: ['Pistes officielles', 'Official tracks'], tiers: [
+      { n: 10, short: '10', name: ['Explorateur', 'Explorer'], tone: 'green' },
+      { n: 25, short: '25', name: ['Arpenteur', 'Surveyor'], tone: 'blue' },
+      { n: 50, short: '50', name: ['Cartographe', 'Cartographer'], tone: 'purple' },
+      { n: 75, short: '75', name: ['Connaisseur', 'Connoisseur'], tone: 'gold' },
+      { n: 95, short: '95', name: ['Toutes les pistes', 'Every track'], tone: 'world' },   // the 87 of the game and the 8 of the mod (2.26)
+    ] },
   ];
-  const UNITS = { km: ' km', h: ' h', kmh: ' km/h' };
+  // a family's count, all PCs together (the official tracks: the most the save showed, officialDone)
+  const familyCount = f => (f.count ? f.count() : bestCount(f.stat));
+  let officialDone = 0;
+  const plural = (n, one, many) => (n > 1 ? many : one);
+  const UNITS = { km: () => ' km', h: () => ' h', kmh: () => ' km/h', win: n => tr(plural(n, ' victoire', ' victoires'), plural(n, ' win', ' wins')),
+    cup: n => tr(plural(n, ' tournoi', ' tournois'), plural(n, ' tournament', ' tournaments')), map: n => tr(plural(n, ' piste', ' pistes'), plural(n, ' track', ' tracks')) };
   const digitsOf = (family, n) => (family.kind === 'kmh' || (n < 10 && family.kind === 'h') ? 1 : 0);
-  const countText = (family, n) => n.toLocaleString(french() ? 'fr-FR' : 'en-US', { maximumFractionDigits: digitsOf(family, n) }) + UNITS[family.kind];
+  const countText = (family, n) => n.toLocaleString(french() ? 'fr-FR' : 'en-US', { maximumFractionDigits: digitsOf(family, n) }) + UNITS[family.kind](n);
   const doneText = (family, n) => ({
     km: tr(`${countText(family, n)} parcourus`, `${countText(family, n)} driven`),
     h: tr(`${countText(family, n)} au volant`, `${countText(family, n)} at the wheel`),
     kmh: tr(`${countText(family, n)} atteints`, `${countText(family, n)} reached`),
+    win: tr(`${countText(family, n)} en multijoueur`, `${countText(family, n)} online`),
+    cup: tr(`${countText(family, n)} gagné${plural(n, '', 's')}`, `${countText(family, n)} won`),
+    map: tr(`${countText(family, n)} officielle${plural(n, '', 's')} bouclée${plural(n, '', 's')}`, `${countText(family, n)} finished`),
   })[family.kind];
   const goalText = (family, n) => ({
     km: tr(`Parcourir ${countText(family, n)}`, `Drive ${countText(family, n)}`),
     h: tr(`Rouler ${countText(family, n)}`, `Drive for ${countText(family, n)}`),
     kmh: tr(`Atteindre ${countText(family, n)}`, `Reach ${countText(family, n)}`),
+    win: tr(`Gagner ${n} course${plural(n, '', 's')} en multijoueur`, `Win ${n} multiplayer race${plural(n, '', 's')}`),
+    cup: tr(`Gagner ${n} tournoi${plural(n, '', 's')}`, `Win ${n} tournament${plural(n, '', 's')}`),
+    map: tr(`Boucler ${n} pistes officielles`, `Finish ${n} official tracks`),
   })[family.kind];
-  const earnedCounted = () => COUNTED_BADGES.flatMap(f => { const best = bestCount(f.stat); return f.tiers.filter(t => best >= t.n * f.unit).map(t => f.kind + ':' + t.n); });
+  const earnedCounted = () => COUNTED_BADGES.flatMap(f => { const best = familyCount(f); return f.tiers.filter(t => best >= t.n * f.unit).map(t => f.kind + ':' + t.n); });
   const trackName = id => MOD_TRACKS.find(t => t.id === id)?.name || tr('un circuit du mod', 'a mod circuit');
   function badgeInfo(id) {
     if (id === 'creator') return { label: tr('Co-créateur de GoofyTrack', 'GoofyTrack co-creator') };
@@ -933,15 +1199,69 @@
   }
   // the badges this player owns: the server's last word (the check mark alone, before it knew of badges), and the
   // counted badges this PC has seen won, before the server hears of them
+  // (the P1, P2, P3 badges of the mod's circuits are gone since 2.26: an older server still sends them)
+  const PODIUM_BADGE = /^p[123]:/;
   const ownedBadges = () => {
     if (account == null) return [];
     const server = Array.isArray(account.badges) ? account.badges : account.verified === 'creator' ? ['creator'] : [];
-    return [...new Set([...server, ...earnedCounted()])];
+    return [...new Set([...server.filter(b => !PODIUM_BADGE.test(b)), ...earnedCounted()])];
   };
-  // those picked and still owned; by default the check mark of the creators
+  // what opens the frames: the badges, and the podiums on the mod's circuits (p1, p2, p3)
+  const frameKeys = () => [...ownedBadges(), ...(account != null && Array.isArray(account.places) ? account.places : [])];
+  // The statuses (2.26): co-creator (the check mark) and VIP (the emblem, and a violet ring: pickedFrame) are no longer
+  // badges: always shown next to the name, for everybody to see, they take none of the two badge places
+  const STATUS = ['creator', 'vip'];
+  const shownBadges = ids => ids.filter(b => !STATUS.includes(b));
+  const statusOfSelf = () => {
+    const owned = ownedBadges();
+    return { creator: owned.includes('creator') || account?.verified === 'creator', vip: owned.includes('vip') };
+  };
+  // another player's: what the server says (verified, vip), or a VIP badge an older server still sends
+  const statusOfPlayer = v => ({ creator: v?.verified === 'creator', vip: v?.vip === true || (Array.isArray(v?.badges) && v.badges.includes('vip')) });
+  // the marks, and the VIP's name outlined in violet (apx-vip-name)
+  function statusMarks(parent, status) {
+    badgeMarks(parent, STATUS.filter(id => status?.[id]));
+    parent.classList.toggle('apx-vip-name', !!status?.vip);
+  }
+  // A player's statuses by account number (the rooms' player lists and name tags, apex-room.js): from their card,
+  // kept 5 minutes; your own at once
+  const STATUS_KEEP = 5 * 60 * 1000;
+  const statuses = new Map();          // account number -> { time, status, promise }
+  function statusFetch(id) {
+    if (!(Number.isSafeInteger(id) && id > 0)) return Promise.resolve(null);
+    if (account != null && id === account.id) return Promise.resolve(statusOfSelf());
+    const known = statuses.get(id);
+    if (known && Date.now() - known.time < STATUS_KEEP) return known.promise;
+    const entry = { time: Date.now(), status: known?.status ?? null };
+    entry.promise = fetchPlayer(id).then(p => (entry.status = p ? statusOfPlayer(p) : entry.status));
+    statuses.set(id, entry);
+    return entry.promise;
+  }
+  // what is known now (null: not yet, asked meanwhile)
+  function cachedStatus(id) {
+    if (account != null && id === account.id) return statusOfSelf();
+    statusFetch(id);
+    return statuses.get(id)?.status ?? null;
+  }
+  // the marks next to a name drawn by the game or a room, once the status is known
+  function markName(element, id) {
+    const apply = s => {
+      if (s == null || !element.isConnected && element.parentNode == null) return;
+      if (element.querySelector(':scope > .verified') == null) statusMarks(element, s);
+    };
+    const now = cachedStatus(id);
+    if (now != null) apply(now);
+    else statusFetch(id).then(apply);
+  }
+  // a name's marks: its statuses, then the badges picked
+  function nameMarks(parent, status, badges) {
+    statusMarks(parent, status);   // first, so the badges come after them
+    badgeMarks(parent, shownBadges(badges));
+  }
+  // those picked and still owned (none by default)
   function pickedBadges() {
-    const owned = ownedBadges(), picked = readJson(BADGES_KEY);
-    return (Array.isArray(picked) ? picked : owned.filter(b => b === 'creator')).filter(b => owned.includes(b)).slice(0, MAX_BADGES);
+    const owned = shownBadges(ownedBadges()), picked = readJson(BADGES_KEY);
+    return (Array.isArray(picked) ? picked : []).filter(b => owned.includes(b)).slice(0, MAX_BADGES);
   }
   // another player's: those the server shows, or the check mark of an older server
   const badgesOfPlayer = v => (Array.isArray(v?.badges) ? v.badges : v?.verified === 'creator' ? ['creator'] : []);
@@ -951,7 +1271,7 @@
       if (info == null) continue;
       if (id === 'creator' || id === 'vip') {
         const mark = el(parent, 'span', id === 'vip' ? 'verified vip' : 'verified');
-        mark.innerHTML = id === 'vip' ? DIAMOND : CHECK;
+        mark.innerHTML = id === 'vip' ? VIP_MARK : CHECK;
         mark.title = info.label;
         continue;
       }
@@ -1024,9 +1344,10 @@
     toast.setAttribute('role', 'status');
     badgeMarks(el(toast, 'div', 'mark'), [id]);
     const text = el(toast, 'div', 'text');
-    el(text, 'div', 'title', tr('Nouveau badge !', 'New badge!'));
+    const given = STATUS.includes(id);
+    el(text, 'div', 'title', given ? tr('Nouveau statut !', 'New status!') : tr('Nouveau badge !', 'New badge!'));
     el(text, 'div', 'name', info.name ?? info.label);
-    if (!info.tier) el(text, 'div', 'sub', tr('Offert par l\'équipe GoofyTrack : mettez-le sur votre profil', 'Given by the GoofyTrack team: put it on your profile'));
+    if (given) el(text, 'div', 'sub', tr('Offert par l\'équipe GoofyTrack : affiché d\'office à côté de votre nom', 'Given by the GoofyTrack team: always shown next to your name'));
     const done = info.tier ? doneText(info.family, info.tier.n) : null;
     if (info.tier) el(text, 'div', 'sub', account != null
       ? tr(`${done} : mettez-le sur votre profil`, `${done}: put it on your profile`)
@@ -1063,11 +1384,11 @@
     { id: 'pink', label: ['Rose', 'Pink'], ring: '#ff5fa8' },
     // won: a podium on a circuit of the mod (bronze for any, silver for P2 or P1, gold for P1), the creators', the VIPs'
     { id: 'bronze', label: ['Bronze', 'Bronze'], ring: metal('#f6cfa6', '#cd8540', '#8c4f1c'), needs: ['p1', 'p2', 'p3'],
-      hint: ['Gagné avec un badge de podium P1, P2 ou P3', 'Won with a P1, P2 or P3 podium badge'] },
+      hint: ['Gagné en montant sur le podium (top 3) du classement d\'un circuit du mod', 'Won with a podium (top 3) on a mod circuit\'s board'] },
     { id: 'silver', label: ['Argent', 'Silver'], ring: metal('#ffffff', '#cdd3dc', '#8b95a3'), needs: ['p1', 'p2'],
-      hint: ['Gagné avec un badge P1 ou P2', 'Won with a P1 or P2 badge'] },
+      hint: ['Gagné en étant P1 ou P2 du classement d\'un circuit du mod', 'Won by being P1 or P2 on a mod circuit\'s board'] },
     { id: 'gold', label: ['Or', 'Gold'], ring: metal('#ffe58a', '#f2c230', '#c48f0a'), needs: ['p1'], glow: 'gold',
-      hint: ['Gagné avec un badge P1', 'Won with a P1 badge'] },
+      hint: ['Gagné en étant P1 du classement d\'un circuit du mod', 'Won by being P1 on a mod circuit\'s board'] },
     { id: 'creator', label: ['Créateur', 'Creator'], ring: 'conic-gradient(from 200deg, #f5c518, #f20d16, #f5c518, #f20d16, #f5c518)', needs: ['creator'], glow: 'gold',
       hint: ['Réservé aux co-créateurs de GoofyTrack', 'For the GoofyTrack co-creators'] },
     { id: 'vip', label: ['VIP', 'VIP'], ring: metal('#6a3dff', '#b45cff', '#ff5fa8'), needs: ['vip'], glow: 'vip',
@@ -1075,9 +1396,12 @@
   ];
   const frameLabel = f => tr(f.label[0], f.label[1]);
   const frameAllowed = (f, owned) => !f.needs || owned.some(b => f.needs.includes(String(b).split(':')[0]));
-  // the frame picked, if still allowed (else the default, red); another player's comes checked by the server
-  const pickedFrame = (id = get(FRAME_KEY)) => FRAMES.find(f => f.id === id && frameAllowed(f, ownedBadges())) || FRAMES[0];
+  // the frame picked, if still allowed (else the default: red, violet for a VIP, 2.26); another player's comes checked
+  // by the server
+  const VIP_FRAME = () => FRAMES.find(f => f.id === 'vip');
+  const pickedFrame = (id = get(FRAME_KEY)) => FRAMES.find(f => f.id === id && frameAllowed(f, frameKeys())) || (statusOfSelf().vip ? VIP_FRAME() : FRAMES[0]);
   const frameById = id => FRAMES.find(f => f.id === id) || FRAMES[0];
+  const frameOfPlayer = v => (v?.frame ? frameById(v.frame) : statusOfPlayer(v).vip ? VIP_FRAME() : FRAMES[0]);
   function paintFrame(img, f) {
     img.style.setProperty('--apx-frame', f.ring.startsWith('#') ? `linear-gradient(${f.ring}, ${f.ring})` : f.ring);
     img.classList.add('framed');
@@ -1128,7 +1452,7 @@
       name.textContent = '';
       flag(name, p?.countryCode);
       el(name, 'span', null, p ? p.nickname : tr('Profil', 'Profile'));
-      badgeMarks(name, pickedBadges());
+      nameMarks(name, statusOfSelf(), pickedBadges());
       const status = badge.querySelector('.status');
       status.textContent = account && kind === 'ok' ? account.name + (account.id ? ' · ' + idText(account.id) : '') : state;
       status.className = 'status ' + kind;
@@ -1162,11 +1486,14 @@
   // name, or takes it away (two at most: the one shown longest makes way).
   function renderBadgeWall(body) {
     const owned = ownedBadges(), picked = pickedBadges();
-    const all = [...COUNTED_BADGES.flatMap(f => f.tiers.map(t => f.kind + ':' + t.n)), ...MOD_TRACKS.flatMap(t => [1, 2, 3].map(n => 'p' + n + ':' + t.id)), 'creator', 'vip'];
-    el(body, 'p', 'hint', account == null
-      ? tr('Connectez-vous à un compte GoofyTrack pour gagner des badges et les afficher à côté de votre nom.', 'Log in to a GoofyTrack account to earn badges and show them next to your name.')
-      : tr(`${all.filter(id => owned.includes(id)).length} badge(s) gagné(s) sur ${all.length}. Cliquez sur un badge gagné pour l'afficher à côté de votre nom (deux au plus).`,
-        `${all.filter(id => owned.includes(id)).length} of ${all.length} badges won. Click a badge you won to show it next to your name (two at most).`));
+    const all = COUNTED_BADGES.flatMap(f => f.tiers.map(t => f.kind + ':' + t.n));
+    if (account == null) el(body, 'p', 'hint', tr('Connectez-vous à un compte GoofyTrack pour gagner des badges et les afficher à côté de votre nom.', 'Log in to a GoofyTrack account to earn badges and show them next to your name.'));
+    else {
+      const head = el(body, 'div', 'badge-count');
+      const line = el(head, 'p', 'state');
+      line.append(tr('Badges gagnés : ', 'Badges won: '), Object.assign(document.createElement('strong'), { textContent: `${all.filter(id => owned.includes(id)).length} / ${all.length}` }));
+      el(head, 'button', null, tr('Modifier mes badges', 'Edit my badges')).addEventListener('click', editBadges);
+    }
     const pick = id => {
       const now = pickedBadges();
       const next = now.includes(id) ? now.filter(b => b !== id) : [...now, id].slice(-MAX_BADGES);
@@ -1185,7 +1512,7 @@
 
     // the counted badges, a section per family, with a gauge up to each tier not won yet
     for (const family of COUNTED_BADGES) {
-      const best = bestCount(family.stat) / family.unit;
+      const best = familyCount(family) / family.unit;
       el(body, 'h3', null, tr(family.title[0], family.title[1]));
       const wall = el(body, 'div', 'badge-wall');
       for (const t of family.tiers) {
@@ -1202,26 +1529,19 @@
       }
     }
 
-    el(body, 'h3', null, tr('Podiums des circuits', 'Circuit podiums'));
-    el(body, 'p', 'hint', tr('Entrez dans le top 3 du classement en ligne d\'un circuit du mod : le badge dure tant que vous gardez la place.',
-      'Get into the top 3 of a mod circuit\'s online board: the badge lasts as long as you keep the place.'));
-    const circuits = el(body, 'div', 'badge-circuits');
-    for (const t of MOD_TRACKS) {
-      const row = el(circuits, 'div', 'badge-circuit');
-      el(row, 'span', 'name', t.name);
-      for (const n of [1, 2, 3]) badgeMarks(slot(row, 'p' + n + ':' + t.id, 'place').b, ['p' + n + ':' + t.id]);
-    }
-
-    el(body, 'h3', null, tr('Spéciaux', 'Special'));
-    const special = el(body, 'div', 'badge-wall');
-    for (const [id, how] of [['creator', tr('Réservé aux co-créateurs de GoofyTrack', 'For the GoofyTrack co-creators')],
-      ['vip', tr('Offert aux amis des créateurs et aux premiers joueurs', 'Given to the creators\' friends and the first players')]]) {
-      const { b, on } = slot(special, id, 'badge-tile');
+    // the statuses, not badges (2.26): shown by themselves next to the name
+    const status = statusOfSelf(), mine = STATUS.filter(id => status[id]);
+    if (!mine.length) return;
+    el(body, 'h3', null, tr('Votre statut', 'Your status'));
+    const wall = el(body, 'div', 'badge-wall');
+    for (const id of mine) {
+      const b = el(wall, 'div', 'badge-tile won status');
       badgeMarks(el(b, 'div', 'mark'), [id]);
       const text = el(b, 'div', 'text');
       el(text, 'div', 'name', badgeInfo(id).label);
-      el(text, 'div', 'how', how);
-      if (on) el(text, 'div', 'shown', tr('Sur votre profil', 'On your profile'));
+      el(text, 'div', 'how', id === 'vip'
+        ? tr('Affiché d\'office à côté de votre nom, avec un contour violet : il ne prend pas de place de badge', 'Always shown next to your name, with a violet ring: it takes no badge place')
+        : tr('Affiché d\'office à côté de votre nom : il ne prend pas de place de badge', 'Always shown next to your name: it takes no badge place'));
     }
   }
 
@@ -1247,16 +1567,33 @@
       tile(tr('Podiums', 'Podiums'), count(s.podiums), percent(s.podiums, s.races));
       tile(tr('Place moyenne', 'Average place'), s.races > 0 ? 'P' + number(s.places / s.races, 1) : '—');
 
-      tile = section(tr('Tournois', 'Tournaments'));
-      tile(tr('Tournois gagnés', 'Tournaments won'), count(s.tournaments)).title = tr('Tournois chrono, course et endurance', 'Time trial, race and endurance tournaments');
+      // Grand Prix and Endurance, between players or in a special tournament: four sections (counted since 2.26)
+      const events = [
+        [tr('Course : Grand Prix', 'Race: Grand Prix'), s.gps, s.gpWins,
+          tr('Grands Prix entre joueurs terminés sur Forest Speedway ou Monaco GP (comptés depuis la 2.26)', 'Grands Prix between players finished on Forest Speedway or Monaco GP (counted since 2.26)')],
+        [tr('Course : Endurance', 'Race: Endurance'), s.ends, s.endWins,
+          tr('Endurances entre joueurs terminées (comptées depuis la 2.26)', 'Endurance races between players finished (counted since 2.26)')],
+        [tr('Tournoi : Grand Prix', 'Tournament: Grand Prix'), s.tGps, s.tGpWins,
+          tr('Grands Prix des tournois spéciaux terminés (comptés depuis la 2.26)', 'Special tournaments\' Grands Prix finished (counted since 2.26)')],
+        [tr('Tournoi : Endurance', 'Tournament: Endurance'), s.tEnds, s.tEndWins,
+          tr('Endurances des tournois spéciaux terminées (comptées depuis la 2.26)', 'Special tournaments\' endurance races finished (counted since 2.26)')],
+      ];
+      for (const [title, played, won, about] of events) {
+        tile = section(title);
+        tile(tr('Joués', 'Played'), count(played)).title = about;
+        tile(tr('Gagnés', 'Won'), count(won), percent(won, played));
+      }
+
+      tile = section(tr('Tous les tournois', 'All tournaments'));
+      tile(tr('Tournois joués', 'Tournaments played'), count(s.entered)).title = tr('Tournois spéciaux Grand Prix et Endurance terminés, tournois chrono avec un temps (comptés depuis la 2.26)', 'Special Grand Prix and Endurance tournaments finished, time trial tournaments with a time (counted since 2.26)');
+      tile(tr('Tournois gagnés', 'Tournaments won'), count(s.tournaments)).title = tr('Tournois chrono, Grand Prix et Endurance (le badge Coupe)', 'Time trial, Grand Prix and Endurance tournaments (the Cup badge)');
     }
 
     const tile = section(tr('Pistes', 'Tracks'));
     if (best !== undefined) tile(tr('Meilleure place', 'Best place'), best ? 'P' + best.position : '—', best ? MOD_TRACKS.find(t => t.id === best.trackId)?.name : null);
     if (known(s.official) || best === undefined) {
-      tile(tr('Pistes officielles', 'Official tracks'), `${count(s.official)} / ${OFFICIAL_TRACKS.length}`).title = tr('Bouclées au moins une fois, circuits du mod compris', 'Finished at least once, the mod\'s circuits included');
+      tile(tr('Pistes officielles', 'Official tracks'), `${count(s.official)} / ${OFFICIAL_TRACKS.length}`).title = tr('Bouclées au moins une fois', 'Finished at least once');
     }
-    tile(tr('Circuits du mod', 'Mod circuits'), `${count(s.circuits)} / ${MOD_TRACKS.length}`);
     tile(tr('Pistes avec un record', 'Tracks with a record'), count(s.tracks));
     tile(tr('Pistes perso', 'Custom tracks'), count(s.custom));
   }
@@ -1268,25 +1605,7 @@
       if (!body.isConnected) return;
       wait.remove();
       statSections(body, { ...s, circuits: s.circuits.length });
-
-      // the place on each circuit's online board, best first
-      el(body, 'h3', null, tr('Classements des circuits du mod', 'Mod circuit boards'));
-      const list = el(body, 'div', 'board-places');
-      if (!s.circuits.length) el(list, 'p', 'hint', tr('Bouclez un circuit du mod pour entrer dans son classement.', 'Finish a mod circuit to get on its board.'));
-      else {
-        el(list, 'p', 'hint', '…');
-        boardPlaces(s.hashes, s.circuits).then(all => {
-          list.textContent = '';
-          if (!all.length) el(list, 'p', 'hint', tr('Classements injoignables pour l\'instant.', 'The boards cannot be reached right now.'));
-          for (const e of all) {
-            const row = el(list, 'div', 'board-place' + (e.position <= 3 ? ' p' + e.position : ''));
-            el(row, 'span', 'pos', 'P' + e.position);
-            el(row, 'span', 'name', e.name);
-          }
-        });
-      }
-      el(body, 'p', 'hint', tr('Distance, temps, vitesse et courses : comptés par GoofyTrack depuis la version 2.17, sur tous vos PC et, connecté à un compte, tous ses profils de jeu.',
-        'Distance, time, speed and races: counted by GoofyTrack since version 2.17, on all your PCs and, logged in to an account, all its game profiles.'));
+      madeList(body, account?.name);
     });
   }
 
@@ -1316,7 +1635,7 @@
     const who = el(header, 'div', 'who');
     const title = el(who, 'h2');
     el(title, 'span', null, p ? p.nickname : tr('Profil', 'Profile'));
-    badgeMarks(title, pickedBadges());
+    nameMarks(title, statusOfSelf(), pickedBadges());
     const country = el(who, 'div', 'country');
     if (p?.countryCode) { flag(country, p.countryCode); el(country, 'span', null, countryName(p.countryCode)); }
     else el(country, 'span', null, tr('Pays non choisi', 'No country set'));
@@ -1334,7 +1653,7 @@
 
     const tabs = el(panel, 'div', 'card-tabs');
     if (tab === 'stats' && !p) tab = 'profile';
-    for (const [t, label] of [['profile', tr('Profil', 'Profile')], ...(p ? [['stats', tr('Stats', 'Stats')]] : []), ['badges', tr('Badges', 'Badges')], ['friends', tr('Amis', 'Friends')]]) {
+    for (const [t, label] of [['profile', tr('Profil', 'Profile')], ['badges', tr('Badges', 'Badges')], ...(p ? [['stats', tr('Stats', 'Stats')]] : []), ['friends', tr('Amis', 'Friends')]]) {
       const button = el(tabs, 'button', t === tab ? 'active' : null, label);
       if (t === 'friends' && account && social.requests > 0) el(button, 'span', 'count', String(social.requests));
       button.addEventListener('click', () => { tab = t; render(); });
@@ -1365,16 +1684,11 @@
         bestPlace(s.hashes, s.circuits).then(best => fill(tiles.place, best ? 'P' + best.position : '—', best ? best.name : null));
       });
     }
-    madeList(body, account?.name);
 
     if (account != null) {
-      const [state, kind] = accountState();
-      const line = el(body, 'p', 'state ' + kind);
-      line.append(tr('Compte ', 'Account '), Object.assign(document.createElement('strong'), { textContent: account.name }), ' · ',
-        syncing || lastError || lastSync == null ? (lastError || state) : tr('synchronisé ', 'synced ') + ago(lastSync));
       const row = el(body, 'div', 'row');
       el(row, 'button', null, tr('Modifier le profil', 'Edit profile')).addEventListener('click', editProfile);
-      el(row, 'button', null, tr('Changer de profil', 'Switch profile')).addEventListener('click', switchProfile);
+      el(row, 'button', null, tr('Modifier mes badges', 'Edit my badges')).addEventListener('click', editBadges);
       const now = el(row, 'button', null, tr('Synchroniser', 'Sync now'));
       now.disabled = !!syncing;
       now.addEventListener('click', () => { sync().catch(() => {}); render(); });
@@ -1383,14 +1697,17 @@
       el(row, 'button', null, tr('Se déconnecter', 'Log out')).addEventListener('click', () => logOut().then(() => { render(); checkRequired(); }));
       if (!account.recovery) el(body, 'p', 'hint warn', tr('Pas encore de code de secours : sans lui, un mot de passe oublié ne se remplace pas. Créez-le dans Sécurité.',
         'No recovery code yet: without it, a forgotten password cannot be replaced. Make one in Security.'));
-      el(body, 'p', 'hint', tr('Profils, records et fantômes, pistes perso et réglages suivent ce compte sur chaque PC où vous vous connectez. Se déconnecter garde tout sur ce PC.',
-        'Profiles, records and ghosts, custom tracks and settings follow this account on every PC you log in on. Logging out keeps everything on this PC.'));
+      const [state, kind] = accountState();
+      const line = el(body, 'p', 'state account-line ' + kind);
+      line.title = tr('Profils, records et fantômes, pistes perso et réglages suivent ce compte sur chaque PC où vous vous connectez.',
+        'Profiles, records and ghosts, custom tracks and settings follow this account on every PC you log in on.');
+      line.append(tr('Compte ', 'Account '), Object.assign(document.createElement('strong'), { textContent: account.name }), ' · ',
+        syncing || lastError || lastSync == null ? (lastError || state) : tr('synchronisé ', 'synced ') + ago(lastSync));
       return;
     }
 
     const row = el(body, 'div', 'row');
     el(row, 'button', null, tr('Modifier le profil', 'Edit profile')).addEventListener('click', editProfile);
-    el(row, 'button', null, tr('Changer de profil', 'Switch profile')).addEventListener('click', switchProfile);
     el(body, 'h3', null, tr('Compte GoofyTrack', 'GoofyTrack account'));
     el(body, 'p', 'hint', tr('Connectez-vous pour retrouver vos profils, records, pistes perso et réglages sur tous vos PC.',
       'Log in to find your profiles, records, custom tracks and settings on all your PCs.'));
@@ -1476,6 +1793,52 @@
     const info = readJson(GAME + 'startup_info');     // the game's own (PolyTrack 0.6.3): no field means done
     return info != null && typeof info === 'object' && info.isTutorialCompleted !== false;
   };
+  // ---- the tutorial (2.26): once its lap is done, a button leaves it; however it is left (that button, Escape), the
+  // game goes back to the home screen, where the account is asked (checkRequired), instead of the track list (it was
+  // a way round the account, playing as "Anonymous")
+  let tutorialRun = null;        // { seen: time of the last frame, button } while the tutorial's track is driven
+  let lastDriven = 0;            // the last frame of a game (any game): the in-game badge is shown meanwhile
+  let leavingTutorial = 0;       // tries left to get back to the home screen
+  const TUTORIAL_GONE_MS = 1500;   // no frame for that long: the tutorial's track was left
+  function tutorialFrame(car) {
+    lastDriven = performance.now();
+    if (tutorialRun == null) {
+      if (tutorialDone()) return;
+      tutorialRun = { seen: 0, button: null };
+    }
+    tutorialRun.seen = performance.now();
+    let finished = false;
+    try { finished = car.hasFinished(); } catch (e) { /* not a car */ }
+    if (finished && tutorialRun.button == null) {
+      const ui = document.getElementById('ui');
+      if (ui == null) return;
+      const b = tutorialRun.button = document.createElement('button');
+      b.className = 'apex-tutorial-done';
+      b.textContent = tr('Terminer le didacticiel', 'Finish the tutorial');
+      b.addEventListener('click', leaveTutorial);
+      ui.appendChild(b);
+    }
+  }
+  // the game's own way out: the Exit button of its end screen, else Escape (which asks first)
+  function leaveTutorial() {
+    const exit = [...document.querySelectorAll('#ui button')].find(b => b.querySelector('img[src="images/quit.svg"]') && b.offsetParent != null);
+    if (exit) exit.click();
+    else window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+  }
+  setInterval(() => {
+    if (tutorialRun != null && performance.now() - tutorialRun.seen > TUTORIAL_GONE_MS) {
+      tutorialRun.button?.remove();
+      tutorialRun = null;
+      leavingTutorial = 20;
+    }
+    if (leavingTutorial <= 0) return;
+    if (homeReady()) { leavingTutorial = 0; checkRequired(); return; }
+    leavingTutorial--;
+    // back, screen after screen (the track page, the track list), until the home screen
+    const back = [...document.querySelectorAll('#ui button')].find(b => b.querySelector('img[src="images/back.svg"]') && b.offsetParent != null && !b.disabled);
+    back?.click();
+  }, 400);
+
   // the profile's name and flag, as the game's own window would send them (saveProfile)
   function renameProfile(nickname) {
     try {
@@ -1742,10 +2105,10 @@
     grid.addEventListener('scroll', () => { kept.flagScroll = grid.scrollTop; });
 
     const badgesTitle = el(body, 'h3');
-    const owned = ownedBadges();
+    const owned = shownBadges(ownedBadges());
     if (account == null) el(body, 'p', 'hint', tr('Connectez-vous à un compte GoofyTrack pour gagner des badges.', 'Log in to a GoofyTrack account to earn badges.'));
-    else if (!owned.length) el(body, 'p', 'hint', tr('Pas encore de badge : roulez 500 km, ou montez sur le podium d\'un circuit du mod. Tous les badges sont dans l\'onglet Badges de votre carte.',
-      'No badge yet: drive 500 km, or make the podium on a mod circuit. Every badge is on the Badges tab of your card.'));
+    else if (!owned.length) el(body, 'p', 'hint', tr('Pas encore de badge : roulez 500 km, ou passez 5 heures au volant. Tous les badges sont dans l\'onglet Badges de votre carte.',
+      'No badge yet: drive 500 km, or spend 5 hours driving. Every badge is on the Badges tab of your card.'));
     // redrawn in place, not with the whole panel: the flag list keeps its scroll and the flag picked in view
     const list = owned.length ? el(body, 'div', 'badge-list') : null;
     const fillBadges = () => {
@@ -1762,8 +2125,8 @@
       }
     };
     fillBadges();
-    if (list) el(body, 'p', 'hint', tr('Deux au plus, à côté de votre nom. Un badge P1, P2 ou P3 dure tant que vous gardez votre place sur le podium.',
-      'Two at most, next to your name. A P1, P2 or P3 badge lasts as long as you keep your place on the podium.'));
+    if (list) el(body, 'p', 'hint', tr('Deux au plus, à côté de votre nom.', 'Two at most, next to your name.'));
+    if (editFocus === 'badges') { editFocus = null; requestAnimationFrame(() => { body.scrollTop = badgesTitle.offsetTop - body.offsetTop - 8; }); }
 
     // the frame: the colours for everyone, the frames won while their badge is owned (locked otherwise, with how to win them)
     const frameTitle = el(body, 'h3', null, tr('Cadre', 'Frame'));
@@ -1773,7 +2136,7 @@
       framePicked.textContent = ' · ' + frameLabel(pickedFrame(draft.frame));
       frames.textContent = '';
       for (const f of FRAMES) {
-        const allowed = frameAllowed(f, owned);
+        const allowed = frameAllowed(f, frameKeys());
         const b = el(frames, 'button', 'frame-option' + (f.id === pickedFrame(draft.frame).id ? ' selected' : '') + (allowed ? '' : ' locked'));
         b.style.setProperty('--apx-frame', f.ring.startsWith('#') ? `linear-gradient(${f.ring}, ${f.ring})` : f.ring);
         b.title = frameLabel(f) + (f.hint ? ' · ' + tr(f.hint[0], f.hint[1]) : '');
@@ -1852,11 +2215,12 @@
     car.src = 'images/car_thumbnail_placeholder.png';
     car.draggable = false;
     if (v.carStyle) showCar(car, v.carStyle, false);
-    paintFrame(car, v.self ? pickedFrame() : frameById(v.frame));
+    paintFrame(car, v.self ? pickedFrame() : frameOfPlayer(v));
     const who = el(header, 'div', 'who');
     const title = el(who, 'h2');
     el(title, 'span', null, v.nickname);
-    badgeMarks(title, v.self ? pickedBadges() : badgesOfPlayer(v));
+    if (v.self) nameMarks(title, statusOfSelf(), pickedBadges());
+    else nameMarks(title, statusOfPlayer(v), badgesOfPlayer(v));
     const country = el(who, 'div', 'country');
     if (v.countryCode) { flag(country, v.countryCode); el(country, 'span', null, countryName(v.countryCode)); }
     el(who, 'span', 'player-id', idText(v.id));
@@ -1927,6 +2291,7 @@
     });
     el(body, 'div', 'friends-list', tr('Chargement…', 'Loading…'));
     loadFriends();
+    confirmRemove();
   }
 
   const STATE_ORDER = { hosting: 0, room: 0, menu: 1, playing: 1, offline: 2 };
@@ -1967,16 +2332,33 @@
     for (const f of data.friends) {
       const actions = [];
       if (f.room) actions.push([tr('Rejoindre', 'Join'), 'primary', () => joinRoom(f.room)]);
-      // removing takes a second click
-      actions.push(removing === f.id
-        ? [tr('Retirer ?', 'Remove?'), 'danger', () => { removing = null; act('remove', f.id); }]
-        : ['✕', 'remove', () => { removing = f.id; loadFriends(); }]);
+      actions.push(['✕', 'remove', () => { removing = { id: f.id, nickname: f.nickname }; confirmRemove(); }]);
       friendRow(list, f, actions);
     }
     if (data.sent.length) {
       el(list, 'h3', null, tr('Demandes envoyées', 'Requests sent'));
       for (const s of data.sent) friendRow(list, s, [[tr('Annuler', 'Cancel'), null, () => act('cancel', s.id)]]);
     }
+  }
+
+  // "remove this friend?" over the card, until answered (kept as the card is drawn again: removing)
+  function confirmRemove() {
+    const panel = overlay?.querySelector('.panel');
+    if (panel == null || removing == null || panel.querySelector(':scope > .apx-confirm')) return;
+    const who = removing;
+    const back = el(panel, 'div', 'apx-confirm');
+    const box = el(back, 'div', 'box');
+    const text = el(box, 'p');
+    text.append(tr('Êtes-vous sûr de vouloir retirer ', 'Are you sure you want to remove '), Object.assign(document.createElement('strong'), { textContent: who.nickname }),
+      tr(' de vos amis ?', ' from your friends?'));
+    const row = el(box, 'div', 'row');
+    const done = () => { removing = null; back.remove(); };
+    el(row, 'button', null, tr('Annuler', 'Cancel')).addEventListener('click', done);
+    el(row, 'button', 'danger', tr('Retirer', 'Remove')).addEventListener('click', () => {
+      done();
+      friendsCall('POST', { action: 'remove', id: who.id }).catch(() => {}).then(loadFriends);
+    });
+    back.addEventListener('click', event => { if (event.target === back) done(); });
   }
 
   function friendRow(list, f, actions) {
@@ -1991,12 +2373,12 @@
     car.src = 'images/car_thumbnail_placeholder.png';
     car.draggable = false;
     if (f.carStyle && homeReady()) showCar(car, f.carStyle, false);
-    if (f.frame && f.frame !== FRAMES[0].id) paintFrame(car, frameById(f.frame));   // the friends list rings only a frame picked
+    if (frameOfPlayer(f) !== FRAMES[0]) paintFrame(car, frameOfPlayer(f));   // the friends list rings only a frame picked (or a VIP's)
     const text = el(row, 'div', 'text');
     const name = el(text, 'div', 'name');
     flag(name, f.countryCode);
     el(name, 'span', null, f.nickname);
-    badgeMarks(name, badgesOfPlayer(f));
+    nameMarks(name, statusOfPlayer(f), badgesOfPlayer(f));
     el(text, 'div', 'sub', `${f.name} · ${idText(f.id)}`);
     el(text, 'div', 'presence ' + f.state, stateText(f));
     const buttons = el(row, 'div', 'actions');
@@ -2010,7 +2392,7 @@
   function open() {
     if (overlay != null) return;
     overlay = document.createElement('div');
-    overlay.className = 'apex-account';
+    overlay.className = 'apex-account' + (homeReady() ? '' : ' docked');   // in a game: bottom right, the game seen beside it (2.26)
     overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
     // typing a name must not drive the game
     for (const type of ['keydown', 'keyup', 'keypress']) overlay.addEventListener(type, event => { if (event.key !== 'Escape') event.stopPropagation(); });
@@ -2143,8 +2525,21 @@
 #ui .apex-account .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px 0; }
 #ui .apex-profile .verified, #ui .apex-account .verified { flex: none; display: inline-flex; width: 18px; height: 18px; color: #f5c518; }
 #ui .apex-account h2 .verified { width: 22px; height: 22px; }
+/* the statuses next to a name drawn by the game or a room (player list, standings: markName), sized to its text */
+#ui .player-list-ui .verified, #ui .apex-room-board .verified {
+  flex: none; display: inline-flex; vertical-align: middle; width: 1em; height: 1em; margin-left: 6px; color: #f5c518;
+}
+#ui .player-list-ui .verified.vip, #ui .apex-room-board .verified.vip { width: 1.6em; filter: drop-shadow(0 0 3px rgba(180, 92, 255, 0.55)); }
+#ui .player-list-ui .verified svg, #ui .apex-room-board .verified svg { width: 100%; height: 100%; }
+/* a VIP's name: outlined in violet, everywhere it is shown (2.26) */
+#ui .apx-vip-name {
+  text-shadow: -1px -1px 0 #8f3dff, 1px -1px 0 #8f3dff, -1px 1px 0 #8f3dff, 1px 1px 0 #8f3dff, 0 0 10px rgba(162, 77, 255, 0.7);
+}
+#ui .apx-vip-name .badge-km, #ui .apx-vip-name .badge-podium, #ui .apx-vip-name .verified, #ui .apx-vip-name .tag { text-shadow: none; }
+#ui .apex-profile .verified.vip, #ui .apex-account .verified.vip, #ui .track-info-ui .verified.vip { width: 28px; height: 18px; }
+#ui .apex-account h2 .verified.vip { width: 35px; height: 22px; }
 #ui .apex-profile .verified.vip, #ui .apex-account .verified.vip, #ui .track-info-ui .verified.vip {
-  filter: drop-shadow(0 0 3px rgba(228, 92, 240, 0.55)); animation: apx-vip-glow 2.8s ease-in-out infinite;
+  filter: drop-shadow(0 0 3px rgba(180, 92, 255, 0.55)); animation: apx-vip-glow 2.8s ease-in-out infinite;
 }
 @keyframes apx-vip-glow { 50% { filter: drop-shadow(0 0 6px rgba(255, 111, 174, 0.9)); } }
 @media (prefers-reduced-motion: reduce) { #ui .verified.vip { animation: none; } }
@@ -2268,6 +2663,7 @@
 #ui .track-info-ui .track-author > span.apex-author:hover { color: var(--apx-accent, #f20d16); }
 #ui .track-info-ui .track-author .verified { display: inline-flex; width: 16px; height: 16px; color: #f5c518; }
 #ui .track-info-ui .track-author .verified svg { width: 100%; height: 100%; }
+#ui .track-info-ui .track-author .verified.vip { width: 25px; height: 16px; }
 #ui .apex-account .card-tabs { display: flex; gap: 6px; margin: 12px 22px 0 22px; padding: 4px; border-radius: var(--apx-r-pill, 999px); background-color: var(--apx-fill, rgba(255, 255, 255, 0.055)); }
 #ui .apex-account .card-tabs button { flex: 1; background: none; }
 #ui .apex-account .card-tabs button.active { background-color: var(--apx-ink-700, #222835); font-weight: 600; }
@@ -2304,6 +2700,21 @@
 #ui .apex-account .friend .actions button { padding: 7px 12px; font-size: 13px; }
 #ui .apex-account .friend .actions .remove { width: 30px; height: 30px; padding: 0; border-radius: 50%; }
 #ui .apex-account .friend .actions .danger { color: #fff; background-color: #b3261e; }
+#ui .apex-account > .panel { position: relative; }
+#ui .apex-account .apx-confirm {
+  position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
+  border-radius: inherit; background-color: rgba(0, 0, 0, 0.55);
+}
+#ui .apex-account .apx-confirm .box {
+  width: calc(100% - 48px); padding: 18px 20px; border-radius: var(--apx-r-md, 12px); background-color: rgba(16, 18, 24, 0.98);
+  box-shadow: inset 0 0 0 1px var(--apx-line, rgba(255, 255, 255, 0.09)), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+#ui .apex-account .apx-confirm p { margin: 0 0 16px 0; font-size: 15px; line-height: 1.4; }
+#ui .apex-account .apx-confirm .row { justify-content: flex-end; margin: 0; }
+#ui .apex-account .apx-confirm .danger { color: #fff; background-color: #b3261e; }
+#ui .apex-account .badge-count { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+#ui .apex-account .badge-count .state { margin: 0; }
+#ui .apex-account .account-line { margin: 4px 0 0 0; }
 #ui .menu-ui > .apex-profile.requests::after {
   content: ""; position: absolute; top: 4px; left: 48px; width: 12px; height: 12px; border-radius: 50%;
   background-color: var(--apx-accent, #f20d16); box-shadow: 0 0 0 2px var(--apx-glass-strong, rgba(12, 14, 19, 0.92));
@@ -2320,6 +2731,93 @@
 }
 #ui .apex-account-toast button:first-of-type { color: var(--apx-accent-ink, #fff); background-color: var(--apx-accent, #f20d16); }
 #ui .apex-account-toast button:last-of-type { color: var(--apx-fg, #f3f5f8); background-color: var(--apx-fill, rgba(255, 255, 255, 0.055)); }
+#ui.apex-has-ingame .apex-room-board { top: 80px; }
+#ui .apex-account.docked {
+  align-items: flex-end; justify-content: flex-end; padding: 84px calc(16px + var(--safe-area-horizontal, 0px)) 96px 16px;
+  background: none; pointer-events: none;
+}
+#ui .apex-account.docked > .panel { pointer-events: auto; width: min(420px, calc(100% - 32px)); }
+#ui .apex-ingame { position: absolute; top: 14px; right: calc(16px + var(--safe-area-horizontal, 0px)); z-index: 99; pointer-events: auto; font-family: var(--apx-font, sans-serif); }
+/* the ☰ on the left, the car in its frame on the right (2.26) */
+#ui .apex-ingame > .badge {
+  position: relative; display: flex; flex-direction: row-reverse; align-items: center; gap: 10px; padding: 5px 5px 5px 14px; border: none; cursor: pointer;
+  border-radius: var(--apx-r-pill, 999px); color: var(--apx-fg, #f3f5f8); background-color: var(--apx-glass-strong, rgba(12, 14, 19, 0.92));
+  box-shadow: inset 0 0 0 1px var(--apx-line, rgba(255, 255, 255, 0.09)), var(--apx-shadow, 0 18px 50px rgba(0, 0, 0, 0.45));
+}
+#ui .apex-ingame > .badge:hover { background-color: var(--apx-ink-700, #222835); }
+#ui .apex-ingame .car {
+  width: 44px; height: 44px; border-radius: 50%; object-fit: cover;
+  background: radial-gradient(circle at 50% 45%, #4a5266, #1c2029 75%); box-shadow: 0 0 0 2px var(--apx-accent, #f20d16);
+}
+#ui .apex-ingame img.car.framed { margin: -2px; border: 2px solid transparent; box-shadow: none; background: radial-gradient(circle at 50% 45%, #4a5266, #1c2029 75%) padding-box, var(--apx-frame) border-box; }
+#ui .apex-ingame .burger { width: 24px; height: 24px; }
+#ui .apex-ingame .burger path { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+#ui .apex-ingame.requests > .badge::after {
+  content: ""; position: absolute; top: 3px; right: 3px; width: 12px; height: 12px; border-radius: 50%;
+  background-color: var(--apx-accent, #f20d16); box-shadow: 0 0 0 2px var(--apx-glass-strong, rgba(12, 14, 19, 0.92));
+}
+#ui .apex-ingame > .menu {
+  position: absolute; top: calc(100% + 8px); right: 0; display: flex; flex-direction: column; gap: 2px; min-width: 240px; padding: 6px;
+  border-radius: var(--apx-r-md, 12px); background-color: var(--apx-glass-strong, rgba(12, 14, 19, 0.96));
+  box-shadow: inset 0 0 0 1px var(--apx-line, rgba(255, 255, 255, 0.09)), var(--apx-shadow, 0 18px 50px rgba(0, 0, 0, 0.45));
+}
+#ui .apex-ingame .item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: none; border-radius: var(--apx-r-sm, 8px); cursor: pointer;
+  font: inherit; font-size: 15px; font-weight: 600; text-align: left; color: var(--apx-fg, #f3f5f8); background: none;
+}
+#ui .apex-ingame .item:hover:not(:disabled) { background-color: var(--apx-fill, rgba(255, 255, 255, 0.08)); }
+#ui .apex-ingame .item:disabled { opacity: 0.4; cursor: default; }
+#ui .apex-ingame .item .label { flex: 1; }
+#ui .apex-ingame .item .count { padding: 1px 7px; border-radius: 999px; font-size: 12px; color: #fff; background-color: var(--apx-accent, #f20d16); }
+#ui .apex-shortcut .apex-fixed-key { cursor: default; pointer-events: none; }
+#ui .apex-ingame kbd {
+  padding: 2px 7px; border-radius: 5px; font-family: inherit; font-size: 12px; font-weight: 700;
+  color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); box-shadow: inset 0 0 0 1px var(--apx-line, rgba(255, 255, 255, 0.25));
+}
+#ui .apex-shortcut-note { margin: 2px 20px 14px; font-size: 16px; text-align: left; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.62)); }
+#ui .apex-tutorial-done {
+  position: absolute; left: 50%; bottom: 120px; z-index: 102; transform: translateX(-50%); padding: 16px 34px; border: none; cursor: pointer;
+  border-radius: var(--apx-r-pill, 999px); pointer-events: auto; font-family: var(--apx-font, sans-serif); font-size: 22px; font-weight: 800;
+  color: var(--apx-accent-ink, #fff); background-color: var(--apx-accent, #f20d16); box-shadow: var(--apx-shadow, 0 18px 50px rgba(0, 0, 0, 0.45));
+  animation: apex-alert-in 0.3s ease-out;
+}
+#ui .apex-board-pick {
+  position: absolute; inset: 0; z-index: 103; display: flex; align-items: center; justify-content: center; pointer-events: auto;
+  background-color: rgba(8, 10, 14, 0.55); font-family: var(--apx-font, sans-serif);
+}
+#ui .apex-board-pick .card {
+  display: flex; flex-direction: column; gap: 10px; width: min(380px, calc(100% - 32px)); padding: 20px; border-radius: var(--apx-r-md, 12px);
+  color: var(--apx-fg, #f3f5f8); background-color: var(--apx-glass-strong, rgba(12, 14, 19, 0.96));
+  box-shadow: inset 0 0 0 1px var(--apx-line, rgba(255, 255, 255, 0.09)), var(--apx-shadow, 0 18px 50px rgba(0, 0, 0, 0.45));
+}
+#ui .apex-board-pick .name { margin-bottom: 4px; font-size: 22px; font-weight: 800; overflow-wrap: anywhere; }
+#ui .apex-board-pick button {
+  padding: 11px 16px; border: none; border-radius: var(--apx-r-pill, 999px); cursor: pointer; font: inherit; font-size: 16px; font-weight: 700;
+  color: var(--apx-fg, #f3f5f8); background-color: var(--apx-fill, rgba(255, 255, 255, 0.08));
+}
+#ui .apex-board-pick button.primary { color: var(--apx-accent-ink, #fff); background-color: var(--apx-accent, #f20d16); }
+#ui .apex-board-pick button.cancel { background: none; font-weight: 500; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); }
+#ui .apex-board-pick button:disabled { cursor: default; opacity: 0.5; }
+#ui .apex-board-pick .hint { margin: 2px 0 0; font-size: 13px; line-height: 1.4; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); }
+#ui .apex-alert {
+  position: absolute; left: 50%; top: 84px; z-index: 102; transform: translateX(-50%); display: flex; align-items: center; gap: 16px;
+  min-width: 300px; max-width: min(520px, calc(100% - 32px)); padding: 12px 14px 12px 18px; border-radius: var(--apx-r-sm, 8px);
+  pointer-events: auto; font-family: var(--apx-font, sans-serif); color: var(--apx-fg, #f3f5f8);
+  background-color: var(--apx-glass-strong, rgba(12, 14, 19, 0.92)); border-left: 6px solid var(--apx-accent, #f20d16);
+  box-shadow: var(--apx-shadow, 0 18px 50px rgba(0, 0, 0, 0.45)); animation: apex-alert-in 0.25s ease-out; transition: opacity 0.4s, transform 0.4s;
+}
+#ui .apex-alert.pit { border-left-color: #f2c230; }
+#ui .apex-alert.gone { opacity: 0; transform: translate(-50%, -12px); }
+@keyframes apex-alert-in { from { opacity: 0; transform: translate(-50%, -12px); } }
+@media (prefers-reduced-motion: reduce) { #ui .apex-alert { animation: none; transition: none; } }
+#ui .apex-alert .words { flex: 1; min-width: 0; }
+#ui .apex-alert .title { font-size: 18px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+#ui .apex-alert.pit .title { color: #f2c230; }
+#ui .apex-alert .text { margin-top: 2px; font-size: 14px; color: var(--apx-fg-muted, rgba(243, 245, 248, 0.75)); }
+#ui .apex-alert button {
+  padding: 7px 16px; border: none; border-radius: var(--apx-r-pill, 999px); cursor: pointer; font: inherit; font-size: 14px; font-weight: 700;
+  color: var(--apx-accent-ink, #fff); background-color: var(--apx-accent, #f20d16);
+}
 `;
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -2337,11 +2835,22 @@
 
   window.ApexAccount = {
     ready, sync, open,
+    boardEntry,                              // a time of a leaderboard clicked (patch_bundle.js, 2.26)
+    driving: tutorialFrame,                  // the car being driven, every frame (patch_bundle.js): the tutorial's end, the in-game badge
+    shortcuts,                               // GoofyTrack's shortcuts, in the settings menu (patch_bundle.js)
     presence: () => sendPresence(),          // the room changed (apex-lobby.js): friends see it at once
     get name() { return account?.name ?? null; },
     get id() { return account?.id ?? null; },     // the account's number, told to the players of a room (apex-room.js)
     // the profile picked in the game { token, nickname, countryCode, carStyle } or null (apex-tournament.js)
     profile: () => currentProfile(),
+    // the players ranked on one stat of their card (apex-rankings.js, 2.26): { players, top: [...], me }; logged in,
+    // the server also says where the player stands
+    rankings: stat => call('GET', 'account/rankings?stat=' + encodeURIComponent(stat), null, account?.session),
+    // a player's statuses next to their name ({ verified, vip }: the server's), as on the cards (2.26)
+    statusMarks: (parent, player) => statusMarks(parent, statusOfPlayer(player)),
+    // by account number (apex-room.js): the marks next to a name, and the statuses known now ({ creator, vip } or null)
+    markName,
+    cachedStatus: id => (Number.isSafeInteger(id) && id > 0 ? cachedStatus(id) : null),
     // a player's card by account number, from the room's player list (apex-room.js); null: a player with no account
     openPlayer: id => {
       if (Number.isSafeInteger(id) && id > 0) return openPlayer(id);
