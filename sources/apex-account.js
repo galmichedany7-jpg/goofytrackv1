@@ -1199,12 +1199,17 @@
   }
   // the badges this player owns: the server's last word (the check mark alone, before it knew of badges), and the
   // counted badges this PC has seen won, before the server hears of them
-  // (the P1, P2, P3 badges of the mod's circuits are gone since 2.26: an older server still sends them)
+  // (the P1, P2, P3 badges: only on the circuits of PODIUM_TRACKS, the server's word, while the place is held)
   const PODIUM_BADGE = /^p[123]:/;
+  // the circuits of the mod whose podium gives a P1, P2 or P3 badge: all but Montbéliard (server/accounts.js,
+  // PODIUM_TRACKS there, by id)
+  const PODIUM_TRACK_NAMES = ['Killer Loop', 'Monaco GP', 'Forest Speedway', 'Strasbourg', 'Goofy Coaster', 'Dijon', 'Spa-Francorchamps'];
+  const PODIUM_TRACKS = PODIUM_TRACK_NAMES.map(name => MOD_TRACKS.find(t => t.name === name)).filter(Boolean);
+  const podiumBadgeOk = b => !PODIUM_BADGE.test(b) || PODIUM_TRACKS.some(t => t.id === b.slice(3));
   const ownedBadges = () => {
     if (account == null) return [];
     const server = Array.isArray(account.badges) ? account.badges : account.verified === 'creator' ? ['creator'] : [];
-    return [...new Set([...server.filter(b => !PODIUM_BADGE.test(b)), ...earnedCounted()])];
+    return [...new Set([...server.filter(podiumBadgeOk), ...earnedCounted()])];
   };
   // what opens the frames: the badges, and the podiums on the mod's circuits (p1, p2, p3)
   const frameKeys = () => [...ownedBadges(), ...(account != null && Array.isArray(account.places) ? account.places : [])];
@@ -1486,7 +1491,8 @@
   // name, or takes it away (two at most: the one shown longest makes way).
   function renderBadgeWall(body) {
     const owned = ownedBadges(), picked = pickedBadges();
-    const all = COUNTED_BADGES.flatMap(f => f.tiers.map(t => f.kind + ':' + t.n));
+    const PLACES = ['p1', 'p2', 'p3'];
+    const all = [...COUNTED_BADGES.flatMap(f => f.tiers.map(t => f.kind + ':' + t.n)), ...PODIUM_TRACKS.flatMap(t => PLACES.map(p => p + ':' + t.id))];
     if (account == null) el(body, 'p', 'hint', tr('Connectez-vous à un compte GoofyTrack pour gagner des badges et les afficher à côté de votre nom.', 'Log in to a GoofyTrack account to earn badges and show them next to your name.'));
     else {
       const head = el(body, 'div', 'badge-count');
@@ -1526,6 +1532,23 @@
           el(text, 'div', 'how', `${number(best, digitsOf(family, best))} / ${countText(family, t.n)}`);
         }
         if (on) el(text, 'div', 'shown', tr('Sur votre profil', 'On your profile'));
+      }
+    }
+
+    // the podiums: a line per circuit, its P1, P2 and P3 (kept while the place is held on the circuit's board)
+    if (PODIUM_TRACKS.length) {
+      el(body, 'h3', null, tr('Podiums des circuits', 'Circuit podiums'));
+      el(body, 'p', 'hint', tr('Montez sur le podium du classement d\'un de ces circuits : le badge reste tant que vous gardez la place.',
+        'Get on the podium of one of these circuits\' boards: the badge stays while you hold the place.'));
+      const list = el(body, 'div', 'badge-circuits');
+      for (const t of PODIUM_TRACKS) {
+        const row = el(list, 'div', 'badge-circuit');
+        el(row, 'div', 'name', t.name);
+        for (const p of PLACES) {
+          const id = p + ':' + t.id, { b } = slot(row, id, 'place');
+          badgeMarks(b, [id]);
+          b.title = badgeInfo(id).label;
+        }
       }
     }
 

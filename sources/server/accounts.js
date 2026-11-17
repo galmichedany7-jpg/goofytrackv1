@@ -54,7 +54,7 @@
 // Its file in the gist goes with its name (the old one deleted, its history keeps it).
 //
 // Badges, shown next to a player's name: 'creator' (CREATOR_IDS), 'vip' (VIP_IDS), 'p1:<trackId>', 'p2:…', 'p3:…' while the
-// player holds that place on a circuit of the mod (records.js), and the counted badges, 'km:<km>', 'h:<hours>' and 'kmh:<km/h>',
+// player holds that place on a circuit of PODIUM_TRACKS (records.js), and the counted badges, 'km:<km>', 'h:<hours>' and 'kmh:<km/h>',
 // once they have driven that far, that long or that fast (vmax: tenths of km/h; it took over from topSpeed, counted before the TGV badge existed, no longer read) (COUNTED_BADGES: the game counts them, in the encrypted save, and gives the
 // most of its profiles with the presence, profile.distance in metres and profile.driving in seconds; the account keeps
 // the most it heard, so a badge won stays). A player picks up to two of the badges they own (the presence's
@@ -120,6 +120,17 @@ const UNLOCKS = new Map((process.env.UNLOCKS ?? 'mp4_7a:7777+1,r26:7777+1+3').sp
 const NICKNAMES = new Map((process.env.NICKNAMES ?? '3:Dash').split(',').filter(Boolean)
   .map(pair => pair.split(':')).map(([id, name]) => [Number(id), String(name || '').trim().slice(0, 32)]).filter(([, name]) => name));
 const COUNTRY = /^[a-z]{2}$/i;
+// the circuits of the mod whose podium gives a P1, P2 or P3 badge: all but Montbéliard (apex-account.js, PODIUM_TRACKS
+// there, by name)
+const PODIUM_TRACKS = new Set([
+  'dd4d3636b347118d57dcb7ea309bb553c4c1e35bf6252d4d77ad705c2cb6fec2',   // Killer Loop
+  'f7c06cd5a3cd6133f682373295f63549f1192bf96431b9b75a8f952501c7ed2b',   // Monaco GP
+  'c096c62c6e0d265dd1cab23e73d67bfc21b27887429b4240ffccfbb2599aaa44',   // Forest Speedway
+  '4fde45a313188e998567244241cee164c7bd7b0f2fe130006c8d831eac9e4c18',   // Strasbourg
+  '88589f0152bf10a5822db52936fcf286c246c08828709a49f0061bf3e2fdb6df',   // Goofy Coaster
+  '4dc7f1c12726ce23fe8a4d1f6faa61424af357b6c2f06a5e883a3fa37333b892',   // Dijon
+  '09126ab4ef902c5c8d3d3449f5129129c6b51d8946f630f5f876407781f18a4b',   // Spa-Francorchamps
+]);
 // the frames a player can put around their car (apex-account.js, FRAMES there): the badges one of which it needs
 // (by kind: 'p1' for any P1 badge), or null for the colours anyone picks
 const FRAMES = {
@@ -463,11 +474,12 @@ function createAccounts({ githubToken = process.env.GITHUB_TOKEN, gistId = proce
   };
   const bestPlaceOfAccount = a => hashesOf(a).map(h => bestPlace(h, a.profile.bestTrack)).filter(Boolean)
     .reduce((b, p) => (b == null || p.position < b.position || (p.position === b.position && p.trackId === a.profile.bestTrack) ? p : b), null);
-  // the badges a player owns now
-  // (since 2.26 the places on the mod's circuits are no longer badges: they still open the bronze, silver and gold
-  // frames, frameOf)
+  // the badges a player owns now: the statuses, the counted badges, and 'p1:<trackId>', 'p2:…', 'p3:…' while they hold
+  // that place on a circuit of PODIUM_TRACKS (a place on any circuit of the mod still opens the bronze, silver and
+  // gold frames, frameOf)
   const badgesOf = a => [...(CREATOR_IDS.has(a.id) ? ['creator'] : []), ...(isVip(a) ? ['vip'] : []),
-    ...Object.entries(COUNTED_BADGES).flatMap(([kind, c]) => c.tiers.filter(n => (a[c.count] || 0) >= n * c.unit).map(n => kind + ':' + n))];
+    ...Object.entries(COUNTED_BADGES).flatMap(([kind, c]) => c.tiers.filter(n => (a[c.count] || 0) >= n * c.unit).map(n => kind + ':' + n)),
+    ...podiumOfAccount(a).filter(p => PODIUM_TRACKS.has(p.trackId)).map(p => 'p' + p.position + ':' + p.trackId)];
   // the frame picked, if the badges or places it needs are still owned (else none: the game shows its default)
   const frameOf = a => {
     const needs = FRAMES[a.profile?.frame];
